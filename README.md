@@ -26,10 +26,15 @@ Este proyecto busca proporcionar una solución ágil y moderna, orientada a coor
 
 ### Configuración
 
+- Docker
+
+### Instalación y Ejecución
+
 1. **Clonar el repositorio:**
    ```bash
    git clone https://github.com/RichardC022/Gestion_Publicaciones_Cientificas.git
    cd Gestion_Publicaciones_Cientificas
+
 
 2. **Configurar entorno virtual con Docker:**
    Todo el entorno se levanta aislado mediante contenedores Docker.
@@ -121,7 +126,7 @@ Este proyecto busca proporcionar una solución ágil y moderna, orientada a coor
    ├── requirements.txt
    └── README.md
    ```
-
+   
 ## 6. Información adicional
 1. **Metodología de Desarrollo:**
    Specification-Driven Development (SDD) utilizando la estructura de Spec Kit.
@@ -130,3 +135,4 @@ Este proyecto busca proporcionar una solución ágil y moderna, orientada a coor
    - **main:**  Producción
    - **develop:**  Rama de integración principal
    - **dev/'integrante'-setup:**  Ramas de características para desarrollo de nuevas funcionalidades por cada integrante.
+
