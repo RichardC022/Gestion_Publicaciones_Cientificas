@@ -12,21 +12,121 @@ Este proyecto busca proporcionar una solución ágil y moderna, orientada a coor
 
 ## 2. Tecnologías utilizadas
 
-- **Frontend:** React.js / HTML5 / CSS3 / Tailwind CSS (//Por definir)
-- **Backend:** Python (FastAPI / Django) (//Por definir)
-- **Base de Datos:** PostgreSQL / MySQL / MongoDB (//Por definir)
-- **Contenedores y DevOps:** Docker 
+- **Backend:** Python 3.11+, Django 5.1.15
+- **Base de Datos:** MySQL 
+- **Contenedores y DevOps:** Docker, Docker Compose
+- **Documentación & Especificaciones:** Spec Kit (Metodología SDD)
 - **Otras Herramientas:** Git, VS Code
 
 ## 3. Instalación
 ### Requisitos previos
 - Python (3.10+)
 - Git
-- Docker
+- Docker con Docker Compose habilitado
 
-### Instalación y Ejecución
+### Configuración
 
 1. **Clonar el repositorio:**
    ```bash
    git clone https://github.com/RichardC022/Gestion_Publicaciones_Cientificas.git
    cd Gestion_Publicaciones_Cientificas
+
+2. **Configurar entorno virtual con Docker:**
+   Todo el entorno se levanta aislado mediante contenedores Docker.
+
+3. **Desplegar los contenedores:**
+   ```bash
+   docker compose up -d --build
+
+## 4. Uso
+### Comandos de ejecución principal
+1. **Levantar los servicios en segundo plano:**
+   ```bash
+   docker compose up -d
+
+2. **Ejecutar migraciones de la BD:**
+   ```bash
+   docker compose exec web python manage.py migrate
+
+3. **Crear un superusuario (Admin):**
+   ```bash
+   docker compose exec web python manage.py createsuperuser
+
+4. **Detener los servicios:**
+   ```bash
+   docker compose down
+
+### Acceso a las plataformas
+1. **Panel de Django:**
+   ```bash
+   http://localhost:8000/admin
+
+2. **App Web:**
+   ```bash
+   http://localhost:8000/
+
+## 5. Estructura del proyecto 
+   ```bash
+   Proyecto_GPC/
+   ├── .spec-kit/
+   │   ├── constitution.md
+   │   ├── specify.md
+   │   ├── clarify.md
+   │   └── plan.md
+   ├── config/
+   │   ├── __init__.py
+   │   ├── asgi.py
+   │   ├── settings.py
+   │   ├── urls.py
+   │   └── wsgi.py
+   ├── apps/
+   │   ├── __init__.py
+   │   ├── users/
+   │   │   ├── migrations/
+   │   │   │   └── __init__.py
+   │   │   ├── __init__.py
+   │   │   ├── admin.py
+   │   │   ├── apps.py
+   │   │   ├── models.py
+   │   │   ├── serializers.py
+   │   │   ├── urls.py
+   │   │   └── views.py
+   │   ├── publications/
+   │   │   ├── migrations/
+   │   │   │   └── __init__.py
+   │   │   ├── __init__.py
+   │   │   ├── admin.py
+   │   │   ├── apps.py
+   │   │   ├── models.py
+   │   │   ├── serializers.py
+   │   │   ├── urls.py
+   │   │   └── views.py
+   │   └── reviews/
+   │       ├── migrations/
+   │       │   └── __init__.py
+   │       ├── __init__.py
+   │       ├── admin.py
+   │       ├── apps.py
+   │       ├── models.py
+   │       ├── serializers.py
+   │       ├── urls.py
+   │       └── views.py
+   ├── media/
+   ├── static/
+   ├── .dockerignore
+   ├── .gitignore
+   ├── docker-compose.yml
+   ├── Dockerfile
+   ├── manage.py
+   ├── requirements.txt
+   └── README.md
+   ```
+
+## 6. Información adicional
+1. **Metodología de Desarrollo:**
+   Specification-Driven Development (SDD) utilizando la estructura de Spec Kit.
+
+2. **Estrategia de ramas en Git:**
+   - **main:**  Producción
+   - **develop:**  Rama de integración principal
+   - **dev/'integrante'-setup:**  Ramas de características para desarrollo de nuevas funcionalidades por cada integrante.
