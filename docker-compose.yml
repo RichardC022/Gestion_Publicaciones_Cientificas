@@ -1,0 +1,37 @@
+services:
+  db:
+    image: mysql:8.0
+    container_name: mysql_db
+    restart: always
+    environment:
+      MYSQL_DATABASE: PROYECTO_GPC
+      MYSQL_USER: boot
+      MYSQL_PASSWORD: incorrecta22
+      MYSQL_ROOT_PASSWORD: root22
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+  web:
+    build: .
+    container_name: django_app
+    restart: always
+    command: >
+      bash -c "python manage.py migrate &&
+               python manage.py runserver 0.0.0.0:8000"
+    volumes:
+      - .:/app
+    ports:
+      - "8000:8000"
+    environment:
+      - DB_HOST=db
+      - DB_NAME=PROYECTO_GPC
+      - DB_USER=boot
+      - DB_PASSWORD=incorrecta22
+      - DB_PORT=3306
+    depends_on:
+      - db
+
+volumes:
+  mysql_data:
