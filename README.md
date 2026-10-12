@@ -1,1 +1,1 @@
-# Gestion_Publicaciones_Cientificas
+# Gestion Publicaciones Cientificas
