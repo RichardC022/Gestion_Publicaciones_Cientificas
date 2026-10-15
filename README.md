@@ -24,10 +24,6 @@ Este proyecto busca proporcionar una solución ágil y moderna, orientada a coor
 - Git
 - Docker con Docker Compose habilitado
 
-### Configuración
-
-- Docker
-
 ### Instalación y Ejecución
 
 1. **Clonar el repositorio:**
