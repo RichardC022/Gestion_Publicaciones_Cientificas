@@ -84,10 +84,38 @@ Este proyecto es desarrollado por los siguientes estudiantes de la Carrera de Co
 1. **Panel de Django:** http://localhost:8000/admin
 2. **App Web:** http://localhost:8000/
 
-## 6. Estructura del proyecto
+## 6. Calidad, pruebas e integración continua
+
+La constitución exige cero advertencias de linters y pruebas deterministas. El
+pipeline de GitHub Actions (`.github/workflows/ci.yml`) se ejecuta en cada push y
+Pull Request hacia `main` y `develop`, y corre:
+
+- `ruff check` (linting)
+- `black --check` (formato)
+- `isort --check` (orden de importaciones)
+- `python manage.py check`
+- `python manage.py makemigrations --check` (sin migraciones faltantes)
+- `pytest` (suite de pruebas)
+
+### Ejecutar localmente dentro del contenedor
+
+```bash
+docker compose exec web pytest
+docker compose exec web ruff check apps config
+docker compose exec web black --check apps config --exclude migrations
+docker compose exec web isort --check --profile black apps config --skip migrations
+```
+
+> La suite usa `config.settings_test` (SQLite en memoria), por lo que no requiere
+> un servidor MySQL para ejecutarse.
+
+## 7. Estructura del proyecto
 
 ```bash
 Proyecto_GPC/
+├── .github/
+│   └── workflows/
+│       └── ci.yml
 ├── .spec-kit/
 │   ├── constitution.md
 │   ├── specify.md
@@ -97,40 +125,38 @@ Proyecto_GPC/
 │   ├── __init__.py
 │   ├── asgi.py
 │   ├── settings.py
+│   ├── settings_test.py
 │   ├── urls.py
 │   └── wsgi.py
 ├── apps/
 │   ├── __init__.py
-│   ├── users/
+│   ├── core/               # Modelo base de auditoría + AuditLog
 │   │   ├── migrations/
-│   │   │   └── __init__.py
-│   │   ├── __init__.py
 │   │   ├── admin.py
 │   │   ├── apps.py
 │   │   ├── models.py
-│   │   ├── serializers.py
-│   │   ├── urls.py
-│   │   └── views.py
-│   ├── publications/
+│   │   └── tests.py
+│   ├── users/              # Autenticación, roles y RBAC
 │   │   ├── migrations/
-│   │   │   └── __init__.py
-│   │   ├── __init__.py
 │   │   ├── admin.py
 │   │   ├── apps.py
 │   │   ├── models.py
-│   │   ├── serializers.py
 │   │   ├── urls.py
-│   │   └── views.py
-│   └── reviews/
+│   │   └── tests.py
+│   ├── publications/       # Manuscritos, versiones y catálogo
+│   │   ├── migrations/
+│   │   ├── admin.py
+│   │   ├── apps.py
+│   │   ├── models.py
+│   │   ├── urls.py
+│   │   └── tests.py
+│   └── reviews/            # Evaluación a doble ciego y veredictos
 │       ├── migrations/
-│       │   └── __init__.py
-│       ├── __init__.py
 │       ├── admin.py
 │       ├── apps.py
 │       ├── models.py
-│       ├── serializers.py
 │       ├── urls.py
-│       └── views.py
+│       └── tests.py
 ├── dossier/
 │   ├── dossier_requisitos.md
 │   └── Requisitos.pdf
@@ -141,11 +167,12 @@ Proyecto_GPC/
 ├── docker-compose.yml
 ├── Dockerfile
 ├── manage.py
+├── pyproject.toml
 ├── requirements.txt
 └── README.md
 ```
 
-## 7. Información adicional
+## 8. Información adicional
 
 1. **Metodología de Desarrollo:**
    Specification-Driven Development (SDD) utilizando la estructura de Spec Kit.

@@ -16,8 +16,17 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 # Tests intentionally assert broad failures and use plain assert helpers.
 "**/tests.py" = ["B017", "SIM117"]
-# Django settings ship with long, unbreakable validator dotted paths.
-"config/settings.py" = ["E501"]
+# Django settings ship with long, unbreakable validator dotted paths, and star
+# imports are the documented way to extend settings modules.
+"config/settings.py" = ["E501", "F403", "F405"]
+"config/settings_test.py" = ["E402", "E501", "F401", "F403", "F405"]
 
 [tool.isort]
 profile = "black"
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings_test"
+python_files = ["test_*.py", "*_test.py", "tests.py"]
+testpaths = ["apps"]
+addopts = "--strict-markers -ra"
+
