@@ -43,8 +43,12 @@ Este proyecto es desarrollado por los siguientes estudiantes de la Carrera de Co
    cd Gestion_Publicaciones_Cientificas
    ```
 
-2. **Configurar entorno virtual con Docker:**
-   Todo el entorno se levanta aislado mediante contenedores Docker.
+2. **Configurar variables de entorno:**
+   Copia la plantilla y ajusta los valores (contraseñas y `SECRET_KEY`):
+   ```bash
+   cp .env.example .env
+   ```
+   En Windows (PowerShell): `Copy-Item .env.example .env`.
 
 3. **Desplegar los contenedores:**
    ```bash

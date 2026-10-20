@@ -33,7 +33,7 @@ El entorno de desarrollo local, los flujos de integración continua (CI) y los d
 ### 1. Matriz de Tecnologías
 - **Entorno de Ejecución:** Python 3.11+
 - **Framework Backend:** Django (Patrón MVT con arquitectura extensible a API REST)
-- **Base de Datos Principal:** PostgreSQL 15+
+- **Base de Datos Principal:** MySQL 8.0+
 - **Contenedores y Orquestación:** Docker Engine y Docker Compose
 - **Control de Versiones:** Git / GitHub
 - **Almacenamiento de Archivos:** Django Staticfiles y Almacenamiento Protegido de Medios (`media/`) para manuscritos académicos
@@ -164,7 +164,7 @@ El repositorio implementa una arquitectura modular desacoplada. Se prohíben est
 ## Seguridad, Privacidad y Cumplimiento
 
 ### 1. Gestión de Secretos y Variables de Entorno
-- **Segregación de Credenciales:** Prohibido almacenar contraseñas, credenciales de PostgreSQL, tokens de servicios o la clave `SECRET_KEY` en el control de versiones.
+- **Segregación de Credenciales:** Prohibido almacenar contraseñas, credenciales de MySQL, tokens de servicios o la clave `SECRET_KEY` en el control de versiones.
 - **Carga vía `.env`:** Todas las variables sensibles se gestionarán a través de archivos `.env`, los cuales deben estar permanentemente ignorados en `.gitignore`.
 - **Plantilla Base:** Debe mantenerse actualizado el archivo `.env.example` en la raíz del repositorio, conteniendo todas las variables necesarias con valores de ejemplo seguros o vacíos.
 

@@ -4,14 +4,20 @@ services:
     container_name: mysql_db
     restart: always
     environment:
-      MYSQL_DATABASE: PROYECTO_GPC
-      MYSQL_USER: boot
-      MYSQL_PASSWORD: incorrecta22
-      MYSQL_ROOT_PASSWORD: root22
+      MYSQL_DATABASE: ${DB_NAME:-PROYECTO_GPC}
+      MYSQL_USER: ${DB_USER:-boot}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD no definido en .env}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD no definido en .env}
     ports:
       - "3307:3306"
     volumes:
       - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   web:
     build: .
@@ -24,14 +30,11 @@ services:
       - .:/app
     ports:
       - "8000:8000"
-    environment:
-      - DB_HOST=db
-      - DB_NAME=PROYECTO_GPC
-      - DB_USER=boot
-      - DB_PASSWORD=incorrecta22
-      - DB_PORT=3306
+    env_file:
+      - .env
     depends_on:
-      - db
+      db:
+        condition: service_healthy
 
 volumes:
   mysql_data:
