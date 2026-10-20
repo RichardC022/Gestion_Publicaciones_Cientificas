@@ -1,189 +1,197 @@
 <!-- Sync Impact Report
-Versión: 0.0.0 -> 1.0.0
+Versión: 1.0.0 -> 2.0.0
 Fecha de Ratificación: 2026-10-15
-Última Enmienda: 2026-10-15
+Última Enmienda: 2026-10-20
 Resumen de Cambios:
-- Redacción inicial y ratificación formal de la Constitución de ScientificPub UNL bajo el estándar GitHub Spec Kit en idioma español.
-- Establecimiento de directrices estrictas: evaluación a doble ciego, desarrollo guiado por especificaciones (SDD), calidad de software y flujo 100% containerizado.
+- Reenfoque del documento hacia reglas exclusivamente técnicas, de arquitectura y de calidad.
+- Se eliminan los principios no técnicos (propósito académico, SDD, container-first como principio)
+  y todo contenido de historias de usuario.
+- Principios redefinidos:
+  * I. Arquitectura MVC sobre Django (nuevo)
+  * II. Seguridad, RBAC y Doble Ciego (ampliado a partir del antiguo principio II)
+  * III. Manejo de Archivos PDF y Versionamiento Inmutable (nuevo)
+  * IV. Auditoría Inmutable (nuevo)
+  * V. Calidad de Código, Pruebas y Verificación Continua (renombrado del antiguo IV)
+- Se añaden secciones: Restricciones y Supuestos Técnicos, Requisitos No Funcionales, y
+  Estándares de Desarrollo y Entrega.
+- Se conserva el stack unificado en MySQL 8.0+ y el flujo container-first dentro de los estándares.
 -->
 
 # Constitución de ScientificPub UNL
 
-## Principios Fundamentales
+## Core Principles
 
-### I. Propósito Académico e Integridad Institucional
-ScientificPub UNL es la plataforma oficial de gestión de manuscritos y publicaciones científicas de la Universidad Nacional de Loja (UNL). Toda decisión de diseño arquitectónico, modelado de datos y flujo de usuario DEBE salvaguardar la credibilidad institucional, el cumplimiento de derechos de autor y el rigor científico. El sistema opera como el registro fidedigno de la producción intelectual de los docentes de la universidad.
+### I. Arquitectura Modelo-Vista-Controlador sobre Django
 
-### II. Confidencialidad y Evaluación a Doble Ciego (NO NEGOCIABLE)
-El anonimato durante el proceso de revisión por pares es absoluto e inquebrantable. La plataforma DEBE desacoplar de forma sistemática la identidad de los autores respecto a los manuscritos postulados, matrices de evaluación, dictámenes y registros del sistema accesibles por los revisores. Los borradores en formato PDF DEBEN someterse a una sanitización automatizada de metadatos (propiedades de autor, firmas del software de creación y datos de afiliación institucional) antes de ser asignados a los revisores. Cualquier vulneración del protocolo de anonimato constituye una falla crítica del sistema.
+El servidor DEBE implementarse en Python con el framework Django, aplicando el patrón
+de arquitectura Modelo-Vista-Controlador (MVC) que Django materializa en su esquema
+MVT (Model-View-Template con capa de control en el enrutador y la capa de servicios).
+Esta arquitectura es la única autorizada para la capa de servidor.
 
-### III. Desarrollo Guiado por Especificaciones (SDD) y Trazabilidad
-Ninguna implementación de código podrá preceder a una especificación formal y ratificada. Todo incremento funcional, modificación de esquemas de datos o ajuste de flujos de trabajo DEBE originarse a partir de especificaciones estructuradas bajo el marco de Spec Kit (`.specify/`). Todas las iteraciones de borradores académicos, rondas de evaluación y resoluciones editoriales DEBEN ser inmutables en su versionado y contar con auditoría integral.
+Reglas no negociables:
 
-### IV. Calidad de Código y Verificación Continua
-El código se escribe una vez y se mantiene a lo largo de múltiples ciclos académicos. Cada contribución a la base de código DEBE superar estrictos controles de calidad: cero advertencias de linters, conformidad en análisis estático, pruebas automatizadas deterministas y cobertura completa de anotaciones de tipos. Los casos límite no validados o estados de error ambiguos en evaluaciones académicas son inaceptables.
+- **Lenguaje y framework:** Python 3.11+ y Django. Queda prohibido introducir frameworks
+  de servidor alternativos (Flask, FastAPI, Node.js) para la lógica de negocio principal.
+- **Separación en capas:** La lógica de dominio reside en los modelos y servicios; las
+  vistas/serializadores solo orquestan entrada/salida; el enrutador solo despacha.
+  Se prohíbe concentrar reglas de negocio en las vistas o en el `urls.py`.
+- **Aislamiento de dependencias:** Toda dependencia DEBE declararse en `requirements.txt`
+  y resolverse dentro de un entorno virtual reproducible (contenedor Docker).
+- **Sin acoplamiento cruzado:** Los módulos de dominio (`apps/users`, `apps/publications`,
+  `apps/reviews`) DEBEN ser desacoplados; se prohíben las dependencias circulares.
+- **Integración controlada:** Las integraciones externas (almacenamiento de objetos tipo
+  AWS S3, resolución de DOI) y las bibliotecas de reportes (Pandas/Matplotlib) se exponen
+  a través de interfaces de servicio, nunca incrustadas en modelos o vistas.
 
-### V. Enfoque Container-First y Paridad Absoluta de Entornos
-El entorno de desarrollo local, los flujos de integración continua (CI) y los despliegues en servidores institucionales DEBEN ejecutarse bajo especificaciones de contenedor idénticas. Las divergencias causadas por configuraciones locales en los equipos de los desarrolladores no serán toleradas; Docker constituye la única fuente de verdad para la ejecución del sistema.
+**Racional:** Un único patrón de servidor elimina la ambigüedad arquitectónica, facilita
+las pruebas automatizadas, el mantenimiento a lo largo de ciclos académicos y la
+incorporación de nuevos desarrolladores al equipo.
 
----
+### II. Seguridad y Control de Acceso: RBAC y Doble Ciego (NO NEGOCIABLE)
 
-## Arquitectura y Stack Tecnológico
+Todo acceso a datos y operaciones DEBE estar gobernado por Control de Accesos Basado en
+Roles (RBAC). El anonimato de la evaluación por pares a doble ciego es un requisito
+absoluto e inquebrantable.
 
-### 1. Matriz de Tecnologías
-- **Entorno de Ejecución:** Python 3.11+
-- **Framework Backend:** Django (Patrón MVT con arquitectura extensible a API REST)
-- **Base de Datos Principal:** MySQL 8.0+
-- **Contenedores y Orquestación:** Docker Engine y Docker Compose
-- **Control de Versiones:** Git / GitHub
-- **Almacenamiento de Archivos:** Django Staticfiles y Almacenamiento Protegido de Medios (`media/`) para manuscritos académicos
+Reglas no negociables:
 
-### 2. Estructura Modular del Proyecto
-El repositorio implementa una arquitectura modular desacoplada. Se prohíben estrictamente las dependencias circulares y el acoplamiento cruzado entre aplicaciones.
+- **RBAC obligatorio:** Cada operación verificada en el backend DEBE validar el rol del
+  usuario. Un acceso no autorizado en un endpoint protegido DEBE responder `403 Forbidden`.
+  Se aprovechan de forma nativa el sistema de grupos y permisos de Django.
+- **Roles del sistema:** Autor, Revisor, Editor y Administrador. Un docente PUEDE tener
+  más de un rol; la resolución de permisos DEBE combinar sus roles sin escalar privilegios.
+- **Doble ciego inviolable:** Un usuario con rol Revisor JAMÁS DEBE acceder a los campos de
+  identidad de los Autores (nombres, correos, filiación) mientras el manuscrito permanezca
+  en evaluación. La restricción DEBE aplicarse en la capa de consulta a la base de datos y
+  en los serializadores/plantillas del módulo `apps/reviews/`, no solo en la interfaz.
+- **Sanitización de documentos:** Antes de exponer un PDF a un Revisor, el sistema DEBE
+  eliminar metadatos de autoría (propiedades de autor, firmas del software de creación y
+  afiliación institucional). Cualquier vulneración del anonimato constituye una falla crítica.
+- **Transporte y credenciales:** Toda comunicación DEBE usar HTTPS. Las credenciales nunca
+  se almacenan ni transmiten en texto plano; los secretos se inyectan por variables de entorno.
 
-```text
-/
-├── config/                  # Configuración central del proyecto Django
-│   ├── __init__.py
-│   ├── asgi.py              # Punto de entrada ASGI (procesos asíncronos)
-│   ├── settings.py          # Configuración basada en variables de entorno
-│   ├── urls.py              # Enrutador principal de URLs
-│   └── wsgi.py              # Punto de entrada WSGI
-├── apps/                    # Módulos de dominio de negocio
-│   ├── users/               # Autenticación, roles institucionales y RBAC
-│   ├── publications/        # Postulación, versionado de borradores y catálogo
-│   └── reviews/             # Evaluación a doble ciego, asignación y dictámenes
-├── media/                   # Almacenamiento protegido (manuscritos PDF)
-├── static/                  # Recursos estáticos institucionales (CSS, JS, imágenes)
-├── .spec-kit/               # Configuración del espacio de trabajo de Spec Kit
-├── .specify/                # Especificaciones y memoria viva de SDD
-├── Dockerfile               # Definición multi-etapa del contenedor de la aplicación
-├── docker-compose.yml       # Orquestación de servicios (web, db)
-├── requirements.txt         # Dependencias fijadas del proyecto
-└── manage.py                # Interfaz CLI de Django
-```
+**Racional:** La imparcialidad de la revisión por pares depende del anonimato efectivo, y
+el control de acceso previene operaciones indebidas. Un fallo aquí compromete la validez
+académica de todo el proceso editorial.
 
----
+### III. Manejo de Archivos PDF y Versionamiento Inmutable (NO NEGOCIABLE)
 
-## Estándares y Convenciones de Código
+El sistema acepta única y exclusivamente documentos en formato PDF y conserva cada versión
+de forma inmutable.
 
-### 1. Idioma y Nomenclatura
-- **Idioma del Código:** Todos los artefactos técnicos—variables, funciones, clases, tablas de base de datos, comentarios de código, mensajes de commit y títulos de Pull Requests—DEBEN redactarse en **inglés**.
-- **Vocabulario Institucional:** Aunque los conceptos del dominio de la UNL se documenten en español, los modelos de datos y código técnico se mantienen en inglés (ejemplo: `Manuscript`, `ReviewAssignment`, `EvaluationRubric`, `FacultyMember`).
-- **Convenciones de Nombres:**
-  - Clases y Modelos: `PascalCase` (ejemplo: `ManuscriptVersion`, `ReviewVerdict`).
-  - Funciones, Métodos y Variables: `snake_case` (ejemplo: `assign_blind_reviewer`, `is_metadata_scrubbed`).
-  - Constantes: `UPPER_SNAKE_CASE` (ejemplo: `MAX_UPLOAD_SIZE_MB`, `BLIND_REVIEW_WINDOW_DAYS`).
+Reglas no negociables:
 
-### 2. Formato y Análisis Estático
-- **Formateador de Código:** `black` obligatorio (longitud máxima de línea: 88 caracteres). La ejecución previa al commit es mandatoria.
-- **Orden de Importaciones:** `isort` obligatorio con perfil `profile = "black"`. Los bloques de importación deben respetar estrictamente el estándar PEP 8: Librería estándar, librerías de terceros, aplicaciones locales de Django.
-- **Linters:** Se exige cero advertencias bajo `flake8` o `ruff`.
+- **Formato exclusivo:** El sistema DEBE aceptar única y exclusivamente archivos en formato
+  PDF. Cualquier otro tipo (`docx`, `png`, etc.) DEBE rechazarse con `400 Bad Request`.
+- **Persistencia con identificador único:** Cada archivo almacenado DEBE poseer un
+  identificador único de versión.
+- **No sobrescritura:** Una nueva carga del autor JAMÁS DEBE sobrescribir ni alterar un
+  archivo de versión anterior. Cada corrección crea un registro nuevo e independiente.
+- **Almacenamiento protegido:** Los PDF DEBEN residir en almacenamiento controlado
+  (`media/` protegido o almacenamiento de objetos) con acceso restringido por rol, nunca
+  expuestos como recursos estáticos públicos sin autorización.
 
-### 3. Documentación y Tipado
-- **Docstrings:** Todos los módulos, clases y métodos públicos DEBEN incluir docstrings bajo la especificación PEP 257 (estilo Google o Sphinx), detallando parámetros, tipos de retorno y excepciones de negocio.
-- **Type Hints:** Toda firma de función o método DEBE declarar anotaciones de tipos de Python (`Optional`, `Union`, `List`, `Dict`, o sintaxis de unión `A | B`).
+**Racional:** La trazabilidad documental y la integridad de la producción científica exigen
+que ninguna versión histórica pueda perderse o ser modificada, y que el formato sea
+homogéneo para su validación y sanitización.
 
----
+### IV. Auditoría Inmutable de Acciones Críticas
 
-## Flujo de Trabajo en Git y Estrategia de Ramas
+Toda acción relevante del sistema DEBE generar un registro de auditoría inalterable.
 
-### 1. Topología de Ramas
-- **`main`:** Rama de producción. Contiene únicamente código estable, auditado y desplegado. El push directo está estrictamente bloqueado. Cada entrega se etiqueta mediante versionado semántico (`vMAJOR.MINOR.PATCH`).
-- **`develop`:** Rama de integración continua. Punto de convergencia de todas las funcionalidades aprobadas. El push directo está bloqueado.
-- **`feature/<issue-id>-<short-description>`:** Ramas para nuevas funcionalidades, creadas exclusivamente a partir de `develop`.
-- **`fix/<issue-id>-<short-description>`:** Ramas para corrección de errores, originadas desde `develop`.
-- **`hotfix/<issue-id>-<short-description>`:** Parches de emergencia para producción, creados directamente desde `main` y fusionados posteriormente tanto en `main` como en `develop`.
+Reglas no negociables:
 
-### 2. Pull Requests (PR) y Controles de Calidad
-1. **Alcance:** Cada PR debe abordar una sola historia de usuario o corrección de fallo. Se rechazarán PRs masivos o no focalizados.
-2. **Revisión de Código Obligatoria:** Se requiere la aprobación explícita de al menos **un revisor técnico** (Tech Lead o par asignado) previo a la integración.
-3. **Validación Automática:** Toda comprobación de CI (construcción de imagen Docker, dry-run de migraciones, suite de tests, `black`, `isort`, linters) DEBE estar en verde.
-4. **Estrategia de Integración:** Se aplicará `Squash and Merge` para ramas `feature/` y `fix/`, preservando un historial limpio y lineal en `develop`.
+- **Eventos auditados:** Al menos las siguientes acciones generan auditoría: inicio de sesión,
+  creación y cambio de estado de manuscritos, asignación de revisores, registro de
+  evaluaciones, emisión de veredictos y cambios de rol o permisos.
+- **Contenido del registro:** Cada registro DEBE incluir como mínimo el usuario responsable,
+  la fecha/hora y la acción ejecutada, más la entidad afectada.
+- **Inmutabilidad:** Los registros de auditoría DEBEN ser de solo-anexado (append-only). Se
+  prohíbe su edición o eliminación por usuarios ordinarios, incluyendo desde el panel de
+  administración.
+- **Retención:** Los registros DEBEN conservarse íntegros para efectos de trazabilidad y
+  cumplimiento.
 
----
+**Racional:** Sin una bitácora inmutable no es posible reconstruir el historial editorial,
+resolver disputas de autoría ni demostrar cumplimiento normativo.
 
-## Entorno de Desarrollo (Estándares Docker)
+### V. Calidad de Código, Pruebas y Verificación Continua
 
-### 1. Política Estricta de Aislamiento
-- **Prohibición en Host:** Queda **ESTRICTAMENTE PROHIBIDO** instalar paquetes, ejecutar pruebas o correr comandos de base de datos directamente en el sistema operativo del host de desarrollo.
-- Todo el ciclo de desarrollo DEBE ejecutarse dentro de los contenedores gestionados por Docker Compose.
+El código se escribe una vez y se mantiene a lo largo de múltiples ciclos. Cada contribución
+DEBE superar controles de calidad estrictos y automatizados.
 
-### 2. Comandos Operativos Estándar
-- **Levantar el entorno completo:**
-  ```bash
-  docker compose up --build -d
-  ```
-- **Monitorear registros de la aplicación:**
-  ```bash
-  docker compose logs -f web
-  ```
-- **Ejecutar comandos de Django:**
-  ```bash
-  docker compose exec web python manage.py <comando>
-  ```
-- **Correr suite de pruebas automatizadas:**
-  ```bash
-  docker compose exec web python manage.py test
-  ```
-- **Detener el entorno:**
-  ```bash
-  docker compose down
-  ```
+Reglas no negociables:
 
----
+- **Formato y estilo:** `black` (línea máxima 88) e `isort` (perfil `black`) son obligatorios.
+- **Linting:** Cero advertencias bajo `ruff` o `flake8`.
+- **Tipado y documentación:** Toda firma pública DEBE declarar anotaciones de tipo; todo
+  módulo, clase y método público DEBE incluir docstring (PEP 257).
+- **Pruebas:** Toda funcionalidad DEBE acompañarse de pruebas automatizadas deterministas.
+  Los casos límite y los estados de error DEBEN estar cubiertos explícitamente.
+- **Verificación continua:** Toda contribución DEBE pasar el pipeline de CI en verde
+  (linters, análisis estático, `manage.py check`, migraciones al día y suite de pruebas)
+  antes de integrarse.
 
-## Gestión de Base de Datos y Protocolo de Migraciones
+**Racional:** La calidad sostenida y la verificación automática reducen regresiones y
+garantizan que el sistema siga siendo confiable tras cada cambio.
 
-### 1. Estándares para el Diseño de Modelos
-- **Identificadores Únicos:** Uso explícito de `BigAutoField` o `UUIDField` para todas las entidades primarias.
-- **Campos de Auditoría:** Todo modelo de negocio DEBE heredar de un modelo base abstracto con:
-  - `created_at = models.DateTimeField(auto_now_add=True)`
-  - `updated_at = models.DateTimeField(auto_now=True)`
-- **Integridad Referencial:** Se restringe el uso de `models.CASCADE` en entidades críticas (manuscritos, revisiones, evaluaciones y registros de auditoría). Se exige el uso de `models.PROTECT` o `models.SET_NULL` para prevenir eliminaciones accidentales en cascada.
-- **Nombres de Tabla e Índices:** Es obligatorio definir `db_table` explícito e índices en campos clave de búsqueda y filtros frecuentes (estado de postulación, fechas, llaves foráneas).
+## Restricciones y Supuestos Técnicos
 
-### 2. Generación y Aplicación de Migraciones
-- **Generación en Contenedor:** Las migraciones DEBEN generarse exclusivamente desde el contenedor:
-  ```bash
-  docker compose exec web python manage.py makemigrations
-  ```
-- **Aplicación de Migraciones:**
-  ```bash
-  docker compose exec web python manage.py migrate
-  ```
-- **Inmutabilidad:** Una vez que un archivo de migración ha sido fusionado en `develop` o `main`, adquiere carácter de **INMUTABLE**. Jamás se debe editar, eliminar o regenerar retroactivamente.
-- **Resolución de Conflictos:** Ante colisiones de ramas en migraciones, se debe ejecutar:
-  ```bash
-  docker compose exec web python manage.py makemigrations --merge
-  ```
-  La migración de resolución debe verificarse en el contenedor antes de solicitar el merge.
+- **Alcance congelado:** El alcance se limita al flujo de revisión y publicación en el
+  catálogo interno. La integración con bases externas (Scopus y similares) queda fuera de
+  esta iteración.
+- **Formato de archivo:** PDF exclusivamente, conforme al Principio III.
+- **Privacidad:** Restricción de doble ciego conforme al Principio II.
+- **Autenticación:** Uso de correos institucionales de la Universidad Nacional de Loja.
+- **Stack base:** Python 3.11+, Django 5.x, MySQL 8.0+, Docker y Docker Compose. Las
+  migraciones DEBEN generarse y aplicarse dentro del contenedor; una migración fusionada
+  es inmutable.
+- **Escalabilidad futura:** La incorporación de bibliotecas científicas (Pandas/Matplotlib)
+  para reportes DEBE hacerse mediante servicios desacoplados (Principio I).
 
----
+## Requisitos No Funcionales de Cumplimiento Obligatorio
 
-## Seguridad, Privacidad y Cumplimiento
+- **RNF-01 (Rendimiento):** Soportar 50 usuarios concurrentes con tasa de éxito ≥ 95% y
+  tiempo de respuesta < 2 s (percentil 95).
+- **RNF-02 (Integridad y control):** El backend DEBE aplicar control de acceso en cada
+  operación y apoyarse en restricciones de integridad en la base de datos.
+- **RNF-05 (Persistencia documental):** Versiones PDF persistentes con identificador único,
+  sin sobrescritura (Principio III).
+- **RNF-06 (Cifrado):** Toda comunicación por HTTPS; credenciales nunca en texto plano.
+- **RNF-07 (Doble ciego):** Anonimato obligatorio en la API y en la interfaz (Principio II).
+- **RNF-08 (Auditoría):** Acciones relevantes generan registros inmutables con usuario,
+  fecha y acción (Principio IV).
 
-### 1. Gestión de Secretos y Variables de Entorno
-- **Segregación de Credenciales:** Prohibido almacenar contraseñas, credenciales de MySQL, tokens de servicios o la clave `SECRET_KEY` en el control de versiones.
-- **Carga vía `.env`:** Todas las variables sensibles se gestionarán a través de archivos `.env`, los cuales deben estar permanentemente ignorados en `.gitignore`.
-- **Plantilla Base:** Debe mantenerse actualizado el archivo `.env.example` en la raíz del repositorio, conteniendo todas las variables necesarias con valores de ejemplo seguros o vacíos.
+## Estándares de Desarrollo y Entrega
 
-### 2. Blindaje de la Evaluación a Doble Ciego
-- **Sanitización de Documentos:** Los archivos PDF subidos por los docentes deben ser despojados de metadatos de autoría y software antes de persistir en el almacenamiento permanente.
-- **Protección de Datos en Vistas:** Las vistas, serializadores y plantillas del módulo `apps/reviews/` tienen estrictamente prohibido exponer identificadores o nombres de autores a los revisores.
-- **Control de Acceso Basado en Roles (RBAC):** Se deben implementar validadores de permisos y decoradores que garanticen la separación tajante de privilegios entre `Docente` (Autor), `Coordinador` (Administrador/Editor) y `Revisor` (Evaluador).
+- **Entorno container-first:** El desarrollo, la integración continua y el despliegue se
+  ejecutan bajo especificaciones de contenedor idénticas; Docker es la única fuente de
+  verdad de ejecución.
+- **Idioma técnico:** Variables, funciones, clases, tablas, comentarios, mensajes de commit
+  y títulos de Pull Request en inglés. La documentación de dominio puede redactarse en español.
+- **Diseño de datos:** Uso de `BigAutoField`/`UUIDField` como identificador; `created_at` y
+  `updated_at` en todo modelo de negocio; `PROTECT`/`SET_NULL` en entidades críticas;
+  `db_table` e índices explícitos en campos de filtrado frecuente.
+- **Flujo de trabajo Git:** `main` (producción), `develop` (integración) y ramas
+  `feature/`, `fix/`, `hotfix/`. Push directo bloqueado en `main` y `develop`; integración
+  por Pull Request con `Squash and Merge` y aprobación de al menos un revisor técnico.
+- **Comandos operativos:** Las operaciones de Django y las pruebas se ejecutan dentro del
+  contenedor (`docker compose exec web ...`), no directamente en el host.
 
----
+## Governance
 
-## Gobernanza
+- **Supremacía:** Esta Constitución prevalece sobre cualquier acuerdo verbal, convención
+  informal o atajo técnico. Todo Pull Request que la infrinja DEBE ser rechazado.
+- **Compliance en revisiones:** Toda revisión de PR DEBE verificar el cumplimiento de estos
+  principios, en especial los Principios II, III y IV (no negociables).
+- **Procedimiento de enmienda:** Cualquier modificación DEBE abrir un Issue que justifique la
+  necesidad técnica, seguido de un Pull Request con aprobación del Tech Lead y del Comité
+  Académico.
+- **Versionado semántico:**
+  - **MAJOR:** Eliminación o redefinición incompatible de principios.
+  - **MINOR:** Incorporación de nuevos principios, secciones o directrices materiales.
+  - **PATCH:** Correcciones de estilo, aclaraciones o ajustes no semánticos.
+- **Revisión de cumplimiento:** En cada incremento se DEBE verificar que los requisitos no
+  funcionales obligatorios (RNF-01, RNF-02, RNF-05, RNF-06, RNF-07, RNF-08) sigan satisfechos.
 
-1. **Supremacía Constitucional:** La presente Constitución prevalece sobre cualquier acuerdo verbal, convención informal o atajo técnico. Todo Pull Request que infrinja estas cláusulas será rechazado de forma concluyente.
-2. **Procedimiento de Enmiendas:** Cualquier modificación a este documento requerirá la apertura de un Issue formal que justifique la necesidad técnica o institucional, seguido de un Pull Request con la aprobación del Tech Lead y del Comité Académico correspondiente.
-3. **Versionado Semántico de la Constitución:**
-   - **MAJOR:** Eliminación o rediseño estructural de principios fundamentales.
-   - **MINOR:** Inclusión de nuevas secciones operativas, tecnologías o directrices de cumplimiento.
-   - **PATCH:** Corrección de estilo, aclaraciones textuales o ajustes ortográficos.
-
----
-
-**Versión**: 1.0.0 | **Ratificada**: 2026-10-15 | **Última Enmienda**: 2026-10-15
+**Version**: 2.0.0 | **Ratified**: 2026-10-15 | **Last Amended**: 2026-10-20
