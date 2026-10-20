@@ -74,7 +74,16 @@ Este proyecto es desarrollado por los siguientes estudiantes de la Carrera de Co
    docker compose exec web python manage.py createsuperuser
    ```
 
-4. **Detener los servicios:**
+4. **Crear usuarios de demostración (un rol por cuenta):**
+   ```bash
+   docker compose exec web python manage.py seed_demo
+   ```
+   Crea las cuentas `admin.unl`, `editor.unl`, `revisor.unl`, `autor.unl` y
+   `docente.unl` (esta última con rol combinado Autor + Revisor). Todas comparten
+   la contraseña de demostración `Demo.12345`. Es idempotente: se puede repetir sin
+   duplicar usuarios.
+
+5. **Detener los servicios:**
    ```bash
    docker compose down
    ```
@@ -82,7 +91,8 @@ Este proyecto es desarrollado por los siguientes estudiantes de la Carrera de Co
 ### Acceso a las plataformas
 
 1. **Panel de Django:** http://localhost:8000/admin
-2. **App Web:** http://localhost:8000/
+2. **Inicio de sesión:** http://localhost:8000/users/login/
+3. **App Web (redirige al login):** http://localhost:8000/
 
 ## 6. Calidad, pruebas e integración continua
 

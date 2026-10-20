@@ -2,6 +2,7 @@
 
 from django.core.exceptions import ValidationError
 from django.test import TestCase
+from django.urls import reverse
 
 from apps.users.models import User, UserRole
 
@@ -59,3 +60,59 @@ class UserRoleTests(TestCase):
         self.assertFalse(
             self.client.login(username="author3", password="wrong-password")
         )
+
+
+class LoginViewTests(TestCase):
+    """Verify the session-based login, logout and dashboard flow."""
+
+    def setUp(self) -> None:
+        """Create an author account used across the view tests."""
+        self.user = User.objects.create_user(
+            username="autora",
+            password="pass12345",
+            first_name="Ana",
+            last_name="Autora",
+        )
+
+    def test_login_page_renders(self) -> None:
+        """The login screen renders with the institutional look."""
+        response = self.client.get(reverse("users:login"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "ScientificPub UNL")
+        self.assertTemplateUsed(response, "registration/login.html")
+
+    def test_login_success_redirects_to_dashboard(self) -> None:
+        """Valid credentials start a session and land on the dashboard."""
+        response = self.client.post(
+            reverse("users:login"),
+            {"username": "autora", "password": "pass12345"},
+        )
+        self.assertRedirects(response, reverse("users:dashboard"))
+
+    def test_login_failure_shows_error(self) -> None:
+        """Invalid credentials re-render the form with an error message."""
+        response = self.client.post(
+            reverse("users:login"),
+            {"username": "autora", "password": "wrong"},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Credenciales incorrectas")
+
+    def test_dashboard_requires_login(self) -> None:
+        """Anonymous visitors are redirected to the login screen."""
+        response = self.client.get(reverse("users:dashboard"))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse("users:login"), response.url)
+
+    def test_dashboard_shows_role_after_login(self) -> None:
+        """An authenticated member sees their active role on the dashboard."""
+        self.client.login(username="autora", password="pass12345")
+        response = self.client.get(reverse("users:dashboard"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Ana Autora")
+
+    def test_logout_closes_session(self) -> None:
+        """Logging out redirects to the login screen."""
+        self.client.login(username="autora", password="pass12345")
+        response = self.client.post(reverse("users:logout"))
+        self.assertRedirects(response, reverse("users:login"))
