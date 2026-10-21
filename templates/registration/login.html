@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block title %}Iniciar sesión · ScientificPub UNL{% endblock %}
+
+{% block body %}
+<div class="auth-shell">
+  <aside class="auth-hero">
+    <div class="auth-hero__brand">
+      <span class="auth-hero__logo">S</span>
+      ScientificPub UNL
+    </div>
+
+    <div>
+      <h1 class="auth-hero__title">Repositorio institucional de publicaciones científicas</h1>
+      <p class="auth-hero__text">
+        Gestione el flujo editorial completo: envío de manuscritos, revisión por pares a
+        doble ciego y publicación en el catálogo de la Universidad Nacional de Loja.
+      </p>
+      <ul class="auth-hero__points">
+        <li><span>1</span> Flujo editorial trazable con control de versiones</li>
+        <li><span>2</span> Revisión por pares con anonimato garantizado</li>
+        <li><span>3</span> Auditoría inmutable de cada decisión</li>
+      </ul>
+    </div>
+
+    <small>Universidad Nacional de Loja · Facultad de la Energía, las Industrias y los Recursos Naturales No Renovables</small>
+  </aside>
+
+  <main class="auth-panel">
+    <div class="auth-card">
+      <h2>Bienvenido</h2>
+      <p class="subtitle">Ingrese con sus credenciales institucionales.</p>
+
+      {% if form.errors %}
+        <div class="alert alert-error">
+          Credenciales incorrectas. Verifique su usuario y contraseña.
+        </div>
+      {% endif %}
+
+      {% if next %}
+        {% if user.is_authenticated %}
+          <div class="alert alert-error">
+            Su cuenta no tiene permisos para acceder a esta página.
+          </div>
+        {% else %}
+          <div class="alert alert-error">
+            Inicie sesión para continuar.
+          </div>
+        {% endif %}
+      {% endif %}
+
+      <form method="post" action="{% url 'users:login' %}" novalidate>
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ next }}">
+
+        <div class="field">
+          <label for="{{ form.username.id_for_label }}">Usuario institucional</label>
+          <input
+            type="text"
+            name="{{ form.username.html_name }}"
+            id="{{ form.username.id_for_label }}"
+            autocomplete="username"
+            autofocus
+            required>
+        </div>
+
+        <div class="field">
+          <label for="{{ form.password.id_for_label }}">Contraseña</label>
+          <input
+            type="password"
+            name="{{ form.password.html_name }}"
+            id="{{ form.password.id_for_label }}"
+            autocomplete="current-password"
+            required>
+        </div>
+
+        <button type="submit" class="btn-primary">Iniciar sesión</button>
+      </form>
+
+      <p class="auth-foot">
+        ¿No tiene acceso? Contacte al administrador del repositorio.
+      </p>
+    </div>
+  </main>
+</div>
+{% endblock %}

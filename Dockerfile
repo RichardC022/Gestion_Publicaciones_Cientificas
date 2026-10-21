@@ -3,12 +3,10 @@ FROM python:3.11-slim
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-# Instalar dependencias del sistema requeridas para mysqlclient
+# Dependencias del sistema para PostgreSQL (psycopg[binary] incluye binarios)
 RUN apt-get update && apt-get install -y \
-    default-libmysqlclient-dev \
+    libpq-dev \
     build-essential \
-    pkg-config \
-    gcc \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

@@ -1,0 +1,32 @@
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+exclude = ["migrations", ".venv", "venv"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "SIM", "RUF"]
+ignore = [
+    # Django ``Meta`` options are class attributes by design; RUF012 is a
+    # false positive for these declarations.
+    "RUF012",
+    # Concatenating Django admin ``fieldsets``/``list_display`` tuples is idiomatic.
+    "RUF005",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests intentionally assert broad failures and use plain assert helpers.
+"**/tests.py" = ["B017", "SIM117"]
+# Django settings ship with long, unbreakable validator dotted paths, and star
+# imports are the documented way to extend settings modules.
+"config/settings.py" = ["E501", "F403", "F405"]
+"config/settings_test.py" = ["E402", "E501", "F401", "F403", "F405"]
+
+[tool.isort]
+profile = "black"
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings_test"
+python_files = ["test_*.py", "*_test.py", "tests.py"]
+testpaths = ["apps"]
+addopts = "--strict-markers -ra"
+
