@@ -14,7 +14,7 @@ Resumen de Cambios:
   * V. Calidad de Código, Pruebas y Verificación Continua (renombrado del antiguo IV)
 - Se añaden secciones: Restricciones y Supuestos Técnicos, Requisitos No Funcionales, y
   Estándares de Desarrollo y Entrega.
-- Se conserva el stack unificado en MySQL 8.0+ y el flujo container-first dentro de los estándares.
+- Se conserva el stack unificado en PostgreSQL 16+ y el flujo container-first dentro de los estándares.
 -->
 
 # Constitución de ScientificPub UNL
@@ -143,7 +143,7 @@ garantizan que el sistema siga siendo confiable tras cada cambio.
 - **Formato de archivo:** PDF exclusivamente, conforme al Principio III.
 - **Privacidad:** Restricción de doble ciego conforme al Principio II.
 - **Autenticación:** Uso de correos institucionales de la Universidad Nacional de Loja.
-- **Stack base:** Python 3.11+, Django 5.x, MySQL 8.0+, Docker y Docker Compose. Las
+- **Stack base:** Python 3.11+, Django 5.x, PostgreSQL 16+, Docker y Docker Compose. Las
   migraciones DEBEN generarse y aplicarse dentro del contenedor; una migración fusionada
   es inmutable.
 - **Escalabilidad futura:** La incorporación de bibliotecas científicas (Pandas/Matplotlib)

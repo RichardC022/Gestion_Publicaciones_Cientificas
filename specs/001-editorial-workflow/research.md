@@ -32,7 +32,7 @@ implementación con su justificación, alineadas a la Constitución v2.0.0.
   dentro de XMP); `exiftool` vía subprocess (más completo pero añade dependencia de sistema);
   PyMuPDF.
 
-## R3. Bloqueo optimista y edición concurrente (Django ORM + MySQL 8.0)
+## R3. Bloqueo optimista y edición concurrente (Django ORM + PostgreSQL 16)
 
 - **Decision**: Campo `version = PositiveIntegerField(default=0)` en modelos editables. Cada
   guardado usa un UPDATE condicional atómico:
@@ -41,7 +41,7 @@ implementación con su justificación, alineadas a la Constitución v2.0.0.
   Exponer `version` en el serializador. Implementado en `ManuscriptService`.
 - **Rationale**: Los editores mantienen formularios abiertos minutos; el bloqueo pesimista
   (`select_for_update`) retiene locks entre peticiones y arriesga deadlocks/agotamiento del pool
-  en MySQL InnoDB. El UPDATE condicional es atómico y sin bloqueo (FR-004a, SC-011).
+  en PostgreSQL (MVCC). El UPDATE condicional es atómico y sin bloqueo (FR-004a, SC-011).
 - **Alternatives considered**: `django-concurrency` (`IntegerVersionField`, añade dependencia);
   `select_for_update()` dentro de `transaction.atomic()` (solo para secciones críticas muy cortas);
   `django-optimistic-lock` (sin mantenimiento).
@@ -65,13 +65,14 @@ implementación con su justificación, alineadas a la Constitución v2.0.0.
 
 - **Decision**: Modelo `AuditLog` en `apps/core` que extiende un `BaseModel` de solo-anexado:
   se sobrescriben `save()` y `delete()` para bloquear modificaciones y borrados, y se refuerza la
-  inmutabilidad a nivel de **base de datos** con triggers MySQL `BEFORE UPDATE`/`BEFORE DELETE`
-  que emiten `SIGNAL SQLSTATE '45000'`. Toda escritura pasa por `AuditService` (acción, usuario,
+  inmutabilidad a nivel de **base de datos** con triggers PostgreSQL `BEFORE UPDATE`/`BEFORE DELETE`
+  que ejecutan una función PL/pgSQL con `RAISE EXCEPTION`. Toda escritura pasa por `AuditService` (acción, usuario,
   entidad afectada, fecha). La bitácora se expone solo-lectura al Administrador.
 - **Rationale**: Las protecciones a nivel ORM son eludibles por `queryset.update()` o SQL crudo;
   la Constitución (Principio IV) exige inmutabilidad real y trazabilidad (FR-021, FR-022, SC-004).
 - **Alternatives considered**: `django-auditlog` (diffs a nivel de campo, pero no garantiza
-  append-only a nivel BD); `django-simple-history` (snapshots); `django-pghistory` (solo Postgres).
+  append-only a nivel BD); `django-simple-history` (snapshots); `django-pghistory` (historial a
+  nivel PostgreSQL, pero no garantiza append-only estricto).
 
 ## R6. Estados del ciclo de vida y transiciones
 
@@ -89,9 +90,9 @@ implementación con su justificación, alineadas a la Constitución v2.0.0.
 - **Decision**: pytest + pytest-django con `config.settings_test` (SQLite en memoria) para
   pruebas rápidas en CI; pruebas de contrato sobre DRF. La suite completa debe pasar en verde
   junto con ruff, black --check, isort --check, `manage.py check` y `makemigrations --check`.
-- **Rationale**: Determinismo y velocidad en CI (Principio V); MySQL real se valida en el
+- **Rationale**: Determinismo y velocidad en CI (Principio V); PostgreSQL real se valida en el
   entorno Docker (container-first) cuando Docker está disponible.
-- **Alternatives considered**: Ejecutar MySQL en CI (más lento, mayor costo); solo pruebas
+- **Alternatives considered**: Ejecutar PostgreSQL en CI (más lento, mayor costo); solo pruebas
   manuales (insuficiente para Principio V).
 
 ## R8. Metadatos obligatorios del manuscrito

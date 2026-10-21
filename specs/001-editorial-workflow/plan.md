@@ -6,7 +6,7 @@
 
 ## Summary
 
-Implementar el flujo editorial completo de ScientificPub UNL sobre Django 5.1 + MySQL 8.0:
+Implementar el flujo editorial completo de ScientificPub UNL sobre Django 5.1 + PostgreSQL 16:
 autenticación institucional con selección de rol (RBAC), registro y versionado inmutable de
 manuscritos en PDF, asignación de revisores con doble ciego (anonimización de PDF), emisión de
 veredictos, auditoría inmutable, notificaciones por correo y catálogo público. La API se expone
@@ -21,9 +21,9 @@ calidad/CI (Principio V).
 
 **Primary Dependencies**: Django 5.1.x, djangorestframework, djangorestframework-simplejwt
 (JWT), pypdf (validación de PDF), pikepdf (sanitización de metadatos), django-filter,
-django-cors-headers, Pillow (transitivo si aplica), mysqlclient (driver MySQL)
+django-cors-headers, Pillow (transitivo si aplica), psycopg (driver PostgreSQL)
 
-**Storage**: MySQL 8.0+ (respaldo de datos de negocio); sistema de archivos `media/` protegido
+**Storage**: PostgreSQL 16+ (respaldo de datos de negocio); sistema de archivos `media/` protegido
 para PDFs (almacenamiento de objetos S3 como evolución futura tras interfaz de servicio)
 
 **Testing**: pytest + pytest-django (unitarias, integración y contrato); `config.settings_test`
@@ -56,7 +56,7 @@ plazo; 8 estados de ciclo de vida; 4 actores con RBAC combinable
 | III. PDF exclusivo + versionamiento inmutable (NO NEGOCIABLE) | Validación real de PDF; cada versión con identificador único; no sobrescritura; almacenamiento protegido | PASS |
 | IV. Auditoría inmutable | Bitácora append-only; inmutabilidad reforzada a nivel de BD; eventos críticos cubiertos | PASS |
 | V. Calidad / Pruebas / CI | black (88), isort (black), ruff 0 warnings, type hints + docstrings PEP 257, pytest determinista, CI verde | PASS |
-| Restricciones / RNF | MySQL 8.0, container-first, HTTPS, migraciones dentro del contenedor | PASS |
+| Restricciones / RNF | PostgreSQL 16, container-first, HTTPS, migraciones dentro del contenedor | PASS |
 
 **Resultado inicial**: Sin violaciones. No se requiere Complexity Tracking.
 
@@ -67,7 +67,7 @@ plazo; 8 estados de ciclo de vida; 4 actores con RBAC combinable
 | I. MVC sobre Django | Apps desacopladas; servicios (`ManuscriptService`, `AuditService`, `PDFService`) concentran la lógica; serializadores/vistas solo orquestan | PASS |
 | II. RBAC + Doble Ciego | `IsRole` + `get_object`; serializadores de `reviews` sin identidad del Autor; PDF sanitizado con `pikepdf` antes de exponerlo | PASS |
 | III. PDF + versionamiento inmutable | Validación estructural `pypdf`; `ManuscriptVersion` con `number` único y `unique_together`; no sobrescritura | PASS |
-| IV. Auditoría inmutable | `AuditLog` append-only + triggers MySQL `SIGNAL SQLSTATE` | PASS |
+| IV. Auditoría inmutable | `AuditLog` append-only + triggers PostgreSQL (`RAISE EXCEPTION`) | PASS |
 | V. Calidad / Pruebas / CI | pytest + settings_test; suite en CI junto a linters y `makemigrations --check` | PASS |
 
 **Resultado post-diseño**: Sin violaciones introducidas. Gate superado.
@@ -91,7 +91,7 @@ specs/001-editorial-workflow/
 
 ```text
 config/
-├── settings.py          # settings base (MySQL, DRF, JWT, media, email)
+├── settings.py          # settings base (PostgreSQL, DRF, JWT, media, email)
 ├── settings_test.py     # SQLite en memoria para tests/CI
 ├── urls.py              # enrutador raíz (solo despacho)
 ├── asgi.py

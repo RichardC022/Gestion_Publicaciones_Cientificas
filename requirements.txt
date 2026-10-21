@@ -1,6 +1,6 @@
 asgiref>=3.8.1
 Django>=5.0,<5.2
-mysqlclient>=2.2.4
+psycopg[binary]>=3.1.18
 sqlparse>=0.5.0
 
 # Development tooling (constitution: black, isort, ruff, tests)

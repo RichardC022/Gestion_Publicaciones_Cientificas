@@ -1,6 +1,6 @@
 """Django settings for automated tests and CI.
 
-This module reuses the project settings but swaps MySQL for an in-memory SQLite
+This module reuses the project settings but swaps PostgreSQL for an in-memory SQLite
 database so the suite runs without external services. It is safe to commit
 because it contains no secrets and is only imported with ``settings_test``.
 """

@@ -23,7 +23,7 @@ Este proyecto es desarrollado por los siguientes estudiantes de la Carrera de Co
 ## 3. Tecnologías utilizadas
 
 - **Backend:** Python 3.11+, Django 5.1.15
-- **Base de Datos:** MySQL
+- **Base de Datos:** PostgreSQL 16
 - **Contenedores y DevOps:** Docker, Docker Compose
 - **Documentación & Especificaciones:** Spec Kit (Metodología SDD)
 - **Otras Herramientas:** Git, VS Code
@@ -117,7 +117,7 @@ docker compose exec web isort --check --profile black apps config --skip migrati
 ```
 
 > La suite usa `config.settings_test` (SQLite en memoria), por lo que no requiere
-> un servidor MySQL para ejecutarse.
+> un servidor PostgreSQL para ejecutarse.
 
 ## 7. Estructura del proyecto
 

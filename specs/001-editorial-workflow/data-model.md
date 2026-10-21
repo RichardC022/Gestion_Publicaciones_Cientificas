@@ -32,7 +32,8 @@ técnico en inglés para modelos/campos.
 | `created_at` | DateTimeField(auto_now_add) | fecha/hora |
 
 **Reglas de inmutabilidad**: `save()` bloquea updates si ya existe; `delete()` lanza excepción;
-triggers MySQL `BEFORE UPDATE`/`BEFORE DELETE` → `SIGNAL SQLSTATE '45000'`. Solo-lectura en la
+triggers PostgreSQL `BEFORE UPDATE`/`BEFORE DELETE` que ejecutan una función PL/pgSQL con
+`RAISE EXCEPTION`. Solo-lectura en la
 API para el Administrador (FR-021, FR-022, Principio IV).
 
 ### 1.3 `users.User` (extiende `AbstractUser`)
