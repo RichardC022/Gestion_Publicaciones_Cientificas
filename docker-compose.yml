@@ -1,17 +1,22 @@
 services:
   db:
-    image: mysql:8.0
-    container_name: mysql_db
+    image: postgres:16
+    container_name: postgres_db
     restart: always
     environment:
-      MYSQL_DATABASE: PROYECTO_GPC
-      MYSQL_USER: boot
-      MYSQL_PASSWORD: incorrecta22
-      MYSQL_ROOT_PASSWORD: root22
+      POSTGRES_DB: ${DB_NAME:-PROYECTO_GPC}
+      POSTGRES_USER: ${DB_USER:-boot}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD no definido en .env}
     ports:
-      - "3307:3306"
+      - "5433:5432"
     volumes:
-      - mysql_data:/var/lib/mysql
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-boot} -d ${DB_NAME:-PROYECTO_GPC}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   web:
     build: .
@@ -24,14 +29,11 @@ services:
       - .:/app
     ports:
       - "8000:8000"
-    environment:
-      - DB_HOST=db
-      - DB_NAME=PROYECTO_GPC
-      - DB_USER=boot
-      - DB_PASSWORD=incorrecta22
-      - DB_PORT=3306
+    env_file:
+      - .env
     depends_on:
-      - db
+      db:
+        condition: service_healthy
 
 volumes:
-  mysql_data:
+  postgres_data:

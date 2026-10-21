@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block title %}Panel · ScientificPub UNL{% endblock %}
+
+{% block body %}
+<header class="topbar">
+  <div class="topbar__brand">
+    <span class="topbar__logo">S</span>
+    ScientificPub UNL
+  </div>
+  <div class="topbar__user">
+    <span>{{ user.display_name }}</span>
+    <span class="badge">{{ user.get_active_role_display }}</span>
+    <form method="post" action="{% url 'users:logout' %}">
+      {% csrf_token %}
+      <button type="submit" class="btn-ghost">Cerrar sesión</button>
+    </form>
+  </div>
+</header>
+
+<main class="container">
+  <h1 class="page-title">Hola, {{ user.display_name }}</h1>
+  <p class="page-subtitle">
+    Rol activo: <strong>{{ user.get_active_role_display }}</strong>.
+    Roles habilitados: {{ user.roles|join:", " }}.
+  </p>
+
+  <section class="grid">
+    <article class="card">
+      <div class="icon">📝</div>
+      <h3>Mis manuscritos</h3>
+      <p>Registre, edite y dé seguimiento a sus envíos con control de versiones.</p>
+    </article>
+    <article class="card">
+      <div class="icon">🔒</div>
+      <h3>Mis revisiones</h3>
+      <p>Evaluaciones asignadas con anonimato de autor garantizado (doble ciego).</p>
+    </article>
+    <article class="card">
+      <div class="icon">🗂️</div>
+      <h3>Gestión editorial</h3>
+      <p>Asignación de revisores, solicitudes de corrección y veredictos.</p>
+    </article>
+    <article class="card">
+      <div class="icon">📚</div>
+      <h3>Catálogo público</h3>
+      <p>Exploración de artículos aprobados y publicados del repositorio.</p>
+    </article>
+  </section>
+</main>
+{% endblock %}
