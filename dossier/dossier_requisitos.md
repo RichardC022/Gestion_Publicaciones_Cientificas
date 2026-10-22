@@ -1,4 +1,4 @@
-# Dossier de Requisitos y Matriz de Trazabilidad (AA 2)
+290333493398# Dossier de Requisitos y Matriz de Trazabilidad (AA 2)
 
 **Universidad Nacional de Loja**  
 **Facultad de la Energía, las Industrias y los Recursos Naturales No Renovables**  
@@ -65,50 +65,51 @@ Esta falta de centralización genera cuellos de botella en la gestión, pérdida
 * **Quiero:** Registrar mi manuscrito ingresando los metadatos obligatorios y adjuntando el documento principal.
 * **Para:** Iniciar formalmente el proceso de revisión editorial en la plataforma.
 
-### HU-012: Validación del Archivo PDF
+### HU-003: Validación del Archivo PDF
 * **Como:** Autor.
 * **Quiero:** Que el sistema valide que el archivo adjunto sea exclusivamente en formato PDF y cumpla con las restricciones de tamaño.
 * **Para:** Asegurar que el documento cumple con los estándares técnicos antes de enviarlo a revisión.
 
 ---
 
-## 6. Requisitos Funcionales (RF)
-* **RF-01:** Autenticación de usuarios mediante credenciales institucionales.
-* **RF-02:** Registro de manuscrito con metadatos obligatorios y archivo PDF adjunto.
-* **RF-03:** Asignación de uno o más revisores autorizados por parte del Editor.
-* **RF-04:** Registro de evaluación con observaciones y recomendación por parte del Revisor.
-* **RF-05:** Consulta de estado de manuscritos y tareas pendientes por parte del Autor.
-* **RF-06:** Subida de nueva versión del manuscrito únicamente en estado "Requiere Correcciones".
-* **RF-07:** Cierre del proceso de evaluación y emisión de veredicto por parte del Editor.
-* **RF-08:** Generación automática de registros de auditoría para acciones críticas.
-* **RF-09:** Consulta de evaluaciones registradas por parte del Revisor.
-* **RF-10:** Consulta del historial de revisiones, estados y decisiones por parte del Editor.
-* **RF-11:** Consulta del registro de auditoría global por parte del Administrador.
-* **RF-12:** Selección de perfil (Autor/Revisor) para docentes autenticados.
-* **RF-13:** Búsqueda y consulta de artículos en el catálogo público mediante filtros.
-* **RF-14:** Restricción estricta de formato de archivo adjunto únicamente a PDF.
-* **RF-15:** Solicitud formal de correcciones y envío de observaciones al Autor por parte del Editor.
-* **RF-16:** Control de acceso y restricciones de operación por rol en frontend y backend.
-* **RF-17:** Visualización de nuevos envíos y cambio automático de estado a "En Revisión".
-* **RF-18:** Formulario de evaluación estructurado para la recomendación del Revisor.
-* **RF-19:** Registro de veredicto final (Aceptado, Rechazado o Requiere Correcciones).
-* **RF-20:** Envío de notificaciones automáticas por correo electrónico ante eventos clave.
-* **RF-21:** Edición de metadatos por el Autor en estados "Borrador" o "Requiere Corrección".
-* **RF-22:** Eliminación lógica de manuscritos mediante el cambio de estado a "Dado de baja".
+## Requisitos del Sistema
 
----
+### Requisitos Funcionales
 
-## 7. Requisitos No Funcionales (RNF)
-* **RNF-01 (Rendimiento):** Soporte de al menos 50 usuarios concurrentes, manteniendo un percentil 95 de tiempo de respuesta $\le$ 2 segundos y tasa de éxito $\ge$ 95%.
-* **RNF-02 (Integridad y Seguridad):** Validación de datos de entrada en backend, control de acceso por endpoint y restricciones de integridad en la base de datos.
-* **RNF-03 (Compatibilidad):** Interfaz compatible con las dos versiones estables más recientes de Chrome, Firefox y Edge.
-* **RNF-04 (Usabilidad):** Identificación visual de campos obligatorios, validación activa y mensajes de error guiados.
-* **RNF-05 (Almacenamiento Persistente):** Almacenamiento inalterable de archivos PDF con identificador único de versión, evitando la sobrescritura.
-* **RNF-06 (Cifrado de Comunicaciones):** Uso obligatorio de protocolo HTTPS en entornos desplegados y cifrado de credenciales.
-* **RNF-07 (Privacidad / Doble Ciego):** Ocultamiento estricto de los datos del Autor en las respuestas de la API destinadas al Revisor.
-* **RNF-08 (Inalterabilidad de Auditoría):** Registros de auditoría protegidos contra modificación o eliminación por usuarios ordinarios.
-* **RNF-09 (Manejo de Errores):** Respuestas de error estandarizadas en la API utilizando códigos HTTP apropiados sin exponer trazas internas.
+*   **RF-01:** El sistema deberá autenticar a los usuarios mediante sus credenciales institucionales y permitir el acceso únicamente si las credenciales son válidas y la cuenta está activa.
+*   **RF-02:** El sistema deberá permitir al autor registrar un manuscrito con los metadatos obligatorios definidos por el proyecto y adjuntar un documento PDF válido para iniciar el proceso editorial.
+*   **RF-03:** El sistema deberá permitir al editor asignar uno o más revisores autorizados a un manuscrito recibido y registrar cada asignación.
+*   **RF-04:** El sistema deberá permitir que cada revisor asignado registre una evaluación con observaciones y una recomendación para el manuscrito correspondiente.
+*   **RF-05:** El sistema deberá permitir que un autor consulte el estado de sus propios manuscritos y las acciones pendientes asociadas a cada uno.
+*   **RF-06:** El sistema permitirá al autor subir una nueva versión del manuscrito únicamente cuando el estado actual del documento sea "Requiere Correcciones".
+*   **RF-07:** El sistema permitirá a los editores cerrar el proceso de evaluación de un manuscrito y emitir un veredicto una vez que el documento cuente con al menos una evaluación registrada por parte de un revisor.
+*   **RF-08:** El sistema deberá guardar un registro de auditoría de las acciones críticas, incluyendo inicios de sesión, cambios de estado de manuscritos, subida de nuevas versiones y registro de veredictos finales.
+*   **RF-09:** El sistema deberá permitir que los revisores consulten las evaluaciones que hayan registrado en manuscritos que les fueron asignados.
+*   **RF-10:** El sistema deberá permitir que los editores consulten el historial de revisiones, los cambios de estado y las decisiones de los manuscritos bajo su gestión.
+*   **RF-11:** El sistema deberá permitir que los administradores consulten el registro de auditoría de las acciones relevantes realizadas en la plataforma.
+*   **RF-12:** El sistema deberá permitir que un docente autorizado seleccione, después de autenticarse, el rol de autor o revisor y mostrar las funciones permitidas para ese rol.
+*   **RF-13:** El sistema deberá permitir a los usuarios consultar y buscar artículos en el catálogo utilizando filtros por título, autor o palabras clave.
+*   **RF-14:** El sistema deberá permitir únicamente archivos cuyo formato corresponda a PDF y rechazar archivos de otros formatos.
+*   **RF-15:** El sistema deberá permitir al editor solicitar correcciones de un manuscrito y comunicar al autor las observaciones que debe atender.
+*   **RF-16:** El sistema deberá restringir cada operación según el rol y los permisos del usuario autenticado, tanto en la interfaz como en el backend.
+*   **RF-17:** El sistema deberá permitir al Editor visualizar los manuscritos recién enviados y asignar uno o más Revisores (Docentes) a cada documento. El sistema cambiará el estado del manuscrito a "En Revisión".
+*   **RF-18:** El sistema deberá permitir al Revisor completar un formulario de evaluación para el manuscrito asignado y emitir una recomendación.
+*   **RF-19:** El sistema permitirá al Editor registrar el veredicto final sobre el manuscrito, actualizando su estado a "Aceptado", "Rechazado" o "Requiere Correcciones".
+*   **RF-20:** El sistema deberá enviar notificaciones automáticas por correo electrónico a los usuarios implicados cuando ocurra un evento importante.
+*   **RF-21:** El sistema permitirá al Autor editar los metadatos de su manuscrito siempre y cuando el documento se encuentre en estado "Borrador" o "Requiere Corrección".
+*   **RF-22:** El sistema permitirá al Autor eliminar un manuscrito. Al hacerlo, el sistema cambiará el estado del registro a "Dado de baja" ocultándolo de la interfaz de usuario.
 
+### Requisitos No Funcionales
+
+*   **RNF-01:** El sistema debe soportar como mínimo 50 usuarios trabajando al mismo tiempo, sin afectar el rendimiento ni la integridad de los datos. El sistema deberá soportar al menos 50 usuarios concurrentes, manteniendo una tasa de solicitudes exitosas de al menos el 95% y un percentil 95 de tiempo de respuesta no superior a 2 segundos para las operaciones de consulta bajo una prueba de carga documentada.
+*   **RNF-02:** El backend deberá validar las entradas, aplicar control de acceso en cada operación protegida y utilizar restricciones de integridad en la base de datos para impedir registros inconsistentes.
+*   **RNF-03:** La interfaz web deberá funcionar en las dos versiones estables más recientes de Chrome, Firefox y Edge disponibles al momento de la prueba.
+*   **RNF-04:** La interfaz deberá identificar los campos obligatorios, validar su contenido y mostrar mensajes de error que indiquen cómo corregir las entradas inválidas.
+*   **RNF-05:** El sistema deberá almacenar las versiones PDF de forma persistente, asignar a cada versión un identificador único y evitar que una nueva carga sobreescriba el archivo de una versión anterior.
+*   **RNF-06:** Toda comunicación entre el navegador y el servidor deberá utilizar HTTPS en los entornos desplegados, y las credenciales no deberán transmitirse ni almacenarse en texto plano.
+*   **RNF-07:** Durante la revisión doble ciego, las respuestas y operaciones disponibles para el revisor no deberán exponer los datos de identidad del autor ni permitir recuperarlos mediante consultas directas a la API.
+*   **RNF-08:** Las acciones relevantes del proceso editorial deberán generar registros de auditoría con identificador del usuario, fecha y hora, operación y recurso afectado; estos registros no deberán poder modificarse desde las funciones ordinarias de los usuarios.
+*   **RNF-09:** Las respuestas de error de la API deberán utilizar códigos HTTP apropiados y un formato consistente que identifique el tipo de error sin revelar contraseñas, datos sensibles ni trazas internas.
 ---
 
 ## 8. Criterios de Aceptación (Formato BDD)
