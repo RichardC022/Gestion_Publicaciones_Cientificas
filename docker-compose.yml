@@ -1,37 +1,72 @@
+version: '3.8'
+
 services:
   db:
-    image: mysql:8.0
-    container_name: mysql_db
-    restart: always
+    image: postgres:16-alpine
+    restart: unless-stopped
     environment:
-      MYSQL_DATABASE: PROYECTO_GPC
-      MYSQL_USER: boot
-      MYSQL_PASSWORD: incorrecta22
-      MYSQL_ROOT_PASSWORD: root22
-    ports:
-      - "3307:3306"
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      TZ: ${TZ}
     volumes:
-      - mysql_data:/var/lib/mysql
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - backend_net
+
+  backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    env_file: .env
+    command: >
+      sh -c "python manage.py migrate --noinput &&
+             python manage.py collectstatic --noinput &&
+             gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3 --timeout 120 --access-logfile -"
+    volumes:
+      - media_data:/data/media
+      - static_data:/app/staticfiles
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health/')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - backend_net
+      - frontend_net
 
   web:
-    build: .
-    container_name: django_app
-    restart: always
-    command: >
-      bash -c "python manage.py migrate &&
-               python manage.py runserver 0.0.0.0:8000"
-    volumes:
-      - .:/app
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    restart: unless-stopped
     ports:
-      - "8000:8000"
-    environment:
-      - DB_HOST=db
-      - DB_NAME=PROYECTO_GPC
-      - DB_USER=boot
-      - DB_PASSWORD=incorrecta22
-      - DB_PORT=3306
+      - "80:80"
+      - "443:443"
+    volumes:
+      - media_data:/data/media:ro
+      - static_data:/app/staticfiles:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
     depends_on:
-      - db
+      backend:
+        condition: service_healthy
+    networks:
+      - frontend_net
 
 volumes:
-  mysql_data:
+  postgres_data:
+  media_data:
+  static_data:
+
+networks:
+  backend_net:
+    internal: true
+  frontend_net:
