@@ -1,0 +1,8 @@
+# Plantilla de cron para el sistema de publicaciones científicas.
+# Instálala como /etc/cron.d/gpc con permisos 0644 y propietario root.
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# Respaldo diario de PostgreSQL y del volumen media_data a las 02:15.
+# flock evita ejecuciones solapadas si un respaldo tarda más de un día.
+15 2 * * * root cd /opt/gpc && /usr/bin/flock -n /var/lock/gpc-backup.lock /opt/gpc/scripts/backup.sh >> /var/log/gpc-backup.log 2>&1
