@@ -3,6 +3,8 @@
 from django.http import HttpRequest, JsonResponse
 from django.urls import path
 
+from config.health import HealthView
+
 
 def api_root(request: HttpRequest) -> JsonResponse:
     """Return a minimal service descriptor for the API root."""
@@ -16,4 +18,5 @@ def api_root(request: HttpRequest) -> JsonResponse:
 
 urlpatterns = [
     path("", api_root, name="api-root"),
+    path("health/", HealthView.as_view(), name="health"),
 ]

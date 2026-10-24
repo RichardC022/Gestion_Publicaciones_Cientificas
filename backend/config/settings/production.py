@@ -47,6 +47,10 @@ if not CSRF_TRUSTED_ORIGINS:
 
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SECURE_SSL_REDIRECT = True
+# El healthcheck de Docker Compose sondea a Gunicorn directamente por HTTP
+# plano (el TLS termina en Nginx), por lo que el endpoint público de salud
+# queda exento de la redirección a HTTPS.
+SECURE_REDIRECT_EXEMPT = [r"^api/health/$"]
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
 SECURE_HSTS_SECONDS = 31_536_000
