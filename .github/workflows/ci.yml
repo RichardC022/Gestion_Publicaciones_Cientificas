@@ -69,7 +69,7 @@ jobs:
 
     # Valores exclusivos de CI; no son credenciales de producción.
     env:
-      DJANGO_SETTINGS_MODULE: config.settings
+      DJANGO_SETTINGS_MODULE: config.settings.development
       POSTGRES_DB: gpc_ci
       POSTGRES_USER: gpc_ci
       POSTGRES_PASSWORD: gpc_ci_password
@@ -107,7 +107,7 @@ jobs:
       - name: Run backend tests
         run: |
           set +e
-          pytest --ds=config.settings
+          pytest --ds=config.settings.development
           status=$?
           set -e
           if [ "${status}" -eq 5 ]; then
