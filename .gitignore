@@ -9,3 +9,7 @@ __pycache__/
 nginx/certs/*.pem
 nginx/certs/*.key
 nginx/certs/*.crt
+/backups/
+*.dump
+media.tar.gz
+SHA256SUMS
