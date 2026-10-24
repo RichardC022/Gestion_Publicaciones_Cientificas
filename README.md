@@ -33,6 +33,14 @@ Gestion_Publicaciones_Cientificas/
 ├── backend/
 │   ├── manage.py
 │   ├── config/
+│   │   ├── settings/
+│   │   │   ├── base.py
+│   │   │   ├── development.py
+│   │   │   └── production.py
+│   │   ├── urls.py
+│   │   ├── api.py
+│   │   ├── asgi.py
+│   │   └── wsgi.py
 │   ├── apps/
 │   ├── requirements/
 │   │   ├── base.txt
