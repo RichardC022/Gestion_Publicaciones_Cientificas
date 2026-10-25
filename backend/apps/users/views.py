@@ -9,6 +9,8 @@ is returned in the JSON body and lives in client memory only.
 from __future__ import annotations
 
 from django.conf import settings
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.core.validators import validate_ipv46_address
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.request import Request
@@ -17,6 +19,7 @@ from rest_framework.views import APIView
 
 from apps.users.models import RevocationReason
 from apps.users.serializers import (
+    DashboardSerializer,
     LoginSerializer,
     SessionUserSerializer,
     navigation_permissions,
@@ -24,12 +27,35 @@ from apps.users.serializers import (
 from apps.users.services.auth import (
     GENERIC_AUTH_MESSAGE,
     active_role_codes,
-    authenticate_by_identifier,
-    issue_session,
+    login,
     revoke_current,
     rotate,
 )
+from apps.users.services.dashboard import build_dashboard
 from config.exceptions import DomainError, ErrorCode
+from config.middleware import get_request_id
+
+
+def _client_ip(request: Request) -> str | None:
+    """Best-effort client IP for the attempt registry and the audit trail.
+
+    Nginx (TSK-04) forwards ``X-Forwarded-For`` and ``X-Real-IP``; the
+    first forwarded entry wins. Anything that is not a valid address is
+    dropped instead of breaking the login.
+    """
+    forwarded = (request.META.get("HTTP_X_FORWARDED_FOR") or "")
+    candidate = forwarded.split(",")[0].strip()
+    if not candidate:
+        candidate = (request.META.get("HTTP_X_REAL_IP") or "").strip()
+    if not candidate:
+        candidate = (request.META.get("REMOTE_ADDR") or "").strip()
+    if not candidate:
+        return None
+    try:
+        validate_ipv46_address(candidate)
+    except DjangoValidationError:
+        return None
+    return candidate
 
 
 def _set_refresh_cookie(response: Response, raw_refresh: str) -> None:
@@ -54,7 +80,12 @@ def _clear_refresh_cookie(response: Response) -> None:
 
 
 class LoginView(APIView):
-    """``POST /api/auth/login/``: validate credentials, open the session."""
+    """``POST /api/auth/login/``: validate credentials, open the session.
+
+    The full flow lives in the service (TSK-20): rate limit of five
+    failures per identifier in fifteen minutes, generic answer for every
+    credential failure and audit of success, failure and block.
+    """
 
     # Sin clases de autenticación: un Authorization viejo o vencido nunca
     # debe impedir iniciar sesión.
@@ -65,20 +96,17 @@ class LoginView(APIView):
         serializer = LoginSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        user = authenticate_by_identifier(
+        session = login(
             serializer.validated_data["identifier"],
             serializer.validated_data["password"],
+            ip_address=_client_ip(request),
+            user_agent=(request.META.get("HTTP_USER_AGENT") or "")[:300] or None,
+            request_id=get_request_id(request),
         )
-        if user is None:
-            # Credenciales inválidas, cuenta inexistente o cuenta inactiva:
-            # la misma respuesta genérica (plan §6.1).
-            raise DomainError(GENERIC_AUTH_MESSAGE, code=ErrorCode.AUTH_INVALID)
-
-        session = issue_session(user)
         response = Response(
             {
                 "access": session.access,
-                "user": SessionUserSerializer(user).data,
+                "user": SessionUserSerializer(session.record.user).data,
                 "roles": session.roles,
             },
             status=status.HTTP_200_OK,
@@ -143,3 +171,24 @@ class MeView(APIView):
                 "navigation": navigation_permissions(roles),
             }
         )
+
+
+class DashboardView(APIView):
+    """``GET /api/dashboard/``: every enabled section in one response.
+
+    Roles are re-read from PostgreSQL; sections appear only for the
+    active ones and each one resolves independently (plan sections 2.2
+    and 3.4). A failing section keeps the ``200`` and carries a
+    retryable message; the panel never asks to choose a role.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request: Request) -> Response:
+        dashboard = build_dashboard(request.user)
+        payload = {
+            "user": request.user,
+            "roles": dashboard["roles"],
+            "sections": dashboard["sections"],
+        }
+        return Response(DashboardSerializer(payload).data)

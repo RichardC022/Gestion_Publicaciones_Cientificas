@@ -39,6 +39,32 @@ class SessionUserSerializer(serializers.ModelSerializer):
         )
 
 
+class DashboardSectionSerializer(serializers.Serializer):
+    """One role section of the unified dashboard (plan section 2.2).
+
+    ``status`` is resolved independently per section; ``message``
+    carries the retryable notice when the section failed and ``data``
+    holds the section payload when it succeeded.
+    """
+
+    status = serializers.ChoiceField(choices=("ok", "error"), read_only=True)
+    data = serializers.JSONField(read_only=True, allow_null=True)
+    message = serializers.CharField(read_only=True, allow_null=True)
+
+
+class DashboardSerializer(serializers.Serializer):
+    """Single response of ``GET /api/dashboard/`` (plan section 2.2).
+
+    ``sections`` only contains the sections of the active roles; a
+    person without roles receives it explicitly empty. The panel never
+    asks to choose a role.
+    """
+
+    user = SessionUserSerializer(read_only=True)
+    roles = serializers.ListField(child=serializers.CharField(), read_only=True)
+    sections = serializers.DictField(child=DashboardSectionSerializer(), read_only=True)
+
+
 # Módulos de navegación habilitados por rol activo: la SPA renderiza
 # exactamente estas rutas con rolesGuard (plan section 3.3). Los permisos
 # se derivan de los roles activos leídos de la base de datos.

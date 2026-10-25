@@ -3,6 +3,7 @@
 from django.http import HttpRequest, JsonResponse
 from django.urls import include, path
 
+from apps.users.views import DashboardView
 from config.health import HealthView
 
 
@@ -20,4 +21,5 @@ urlpatterns = [
     path("", api_root, name="api-root"),
     path("health/", HealthView.as_view(), name="health"),
     path("auth/", include("apps.users.urls")),
+    path("dashboard/", DashboardView.as_view(), name="dashboard"),
 ]
