@@ -11,12 +11,15 @@ from __future__ import annotations
 from django.conf import settings
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.validators import validate_ipv46_address
+from django.db import transaction
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.audit.models import AuditLog
+from apps.audit.services import AuditService, AuditUnavailable
 from apps.users.models import RevocationReason
 from apps.users.serializers import (
     DashboardSerializer,
@@ -25,6 +28,7 @@ from apps.users.serializers import (
     navigation_permissions,
 )
 from apps.users.services.auth import (
+    AUDIT_UNAVAILABLE_MESSAGE,
     GENERIC_AUTH_MESSAGE,
     active_role_codes,
     login,
@@ -140,14 +144,36 @@ class RefreshView(APIView):
 
 
 class LogoutView(APIView):
-    """``POST /api/auth/logout/``: revoke the current refresh token (204)."""
+    """``POST /api/auth/logout/``: revoke the current refresh token (204).
+
+    The logout is a critical event of the audit trail (plan section 6.5):
+    the revocation and the audit row share one transaction, so if the
+    audit cannot be written the revocation rolls back and the endpoint
+    answers ``503`` instead of leaving a half-closed session.
+    """
 
     permission_classes = [IsAuthenticated]
 
     def post(self, request: Request) -> Response:
         raw_refresh = request.COOKIES.get(settings.REFRESH_COOKIE_NAME)
-        if raw_refresh:
-            revoke_current(raw_refresh, reason=RevocationReason.LOGOUT)
+        try:
+            with transaction.atomic():
+                if raw_refresh:
+                    revoke_current(raw_refresh, reason=RevocationReason.LOGOUT)
+                AuditService.record(
+                    action="LOGOUT",
+                    entity_type="SESSION",
+                    result=AuditLog.Result.SUCCESS,
+                    actor=request.user,
+                    request_id=get_request_id(request),
+                    ip_address=_client_ip(request),
+                    user_agent=(request.META.get("HTTP_USER_AGENT") or "")[:300]
+                    or None,
+                )
+        except AuditUnavailable as exc:
+            raise DomainError(
+                AUDIT_UNAVAILABLE_MESSAGE, code=ErrorCode.AUDIT_UNAVAILABLE
+            ) from exc
         response = Response(status=status.HTTP_204_NO_CONTENT)
         _clear_refresh_cookie(response)
         return response
