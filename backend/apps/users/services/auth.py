@@ -12,6 +12,14 @@ Responsibilities:
 * Re-read the active roles from PostgreSQL on every session operation. The
   ``roles`` claim embedded in the token is a hint for the interface, never
   an authorization source (plan section 2.9).
+* Rate limit the login (TSK-20, plan section 6.1): after five failed
+  attempts for an identifier in fifteen minutes the sixth attempt answers
+  ``429`` with ``Retry-After`` — checked before credential validation, so
+  the lock never reveals whether the account exists. The block expires by
+  itself when the failures age out of the window.
+* Audit every login flow event — success, failure and block — with the
+  attempted identifier, IP and result, never the password. If the audit
+  trail cannot be written the login fails closed with ``503``.
 """
 
 from __future__ import annotations
@@ -25,10 +33,13 @@ from django.db.models import Q
 from django.utils import timezone
 from rest_framework_simplejwt.tokens import RefreshToken
 
+from apps.audit.models import AuditLog
+from apps.audit.services import AuditService, AuditUnavailable
 from apps.users.models import (
     RevocationReason,
     User,
     UserRole,
+    LoginAttempt,
     RefreshToken as RefreshTokenRecord,
 )
 from config.exceptions import DomainError, ErrorCode
@@ -36,6 +47,19 @@ from config.exceptions import DomainError, ErrorCode
 #: Respuesta única ante credenciales inválidas, cuenta inexistente o cuenta
 #: deshabilitada (plan §6.1). Nunca se revela la causa exacta.
 GENERIC_AUTH_MESSAGE = "Credenciales institucionales inválidas."
+
+#: Respuesta del bloqueo por intentos excedidos (plan §6.1, TSK-20).
+LOCKED_MESSAGE = "Demasiados intentos fallidos. Intente de nuevo en unos minutos."
+
+#: Respuesta cuando la auditoría no puede escribirse: la acción se revierte
+#: y se falla cerrado con 503 (plan §6.5).
+AUDIT_UNAVAILABLE_MESSAGE = (
+    "No se pudo registrar la auditoría de la operación; la acción fue cancelada."
+)
+
+#: Límite institucional: cinco fallos por identificador en quince minutos.
+LOCKOUT_MAX_FAILURES = 5
+LOCKOUT_WINDOW = timedelta(minutes=15)
 
 #: Sesión emitida: tokens y registro de dominio del refresh.
 IssuedSession = namedtuple("IssuedSession", ("access", "refresh", "record", "roles"))
@@ -99,6 +123,161 @@ def authenticate_by_identifier(identifier: str, password: str) -> User | None:
     if not user.check_password(password) or not user.is_active:
         return None
     return user
+
+
+# ---------------------------------------------------------------------------
+# Límite de intentos y auditoría de login (TSK-20, plan sections 6.1 and 6.5)
+# ---------------------------------------------------------------------------
+
+
+def normalize_identifier(identifier: str) -> str:
+    """Canonical rate-limit key: trimmed and lower cased.
+
+    The institutional id, the username and the email are matched case
+    insensitively, so their failures must count towards the same lock.
+    """
+    return identifier.strip().lower()
+
+
+def lockout_remaining_seconds(identifier: str) -> int | None:
+    """Seconds of lock left, or ``None`` when the identifier is not blocked.
+
+    Blocked := :data:`LOCKOUT_MAX_FAILURES` failed attempts for the
+    identifier inside the trailing fifteen-minute window. The lock expires
+    by itself when those failures age out of the window; nothing has to be
+    cleaned up. Attempts rejected by the block are not counted as new
+    failures, so a persistent attacker cannot extend the lock and the
+    legitimate user can always return once the window has passed.
+    """
+    failures = list(
+        LoginAttempt.objects.filter(
+            identifier=identifier,
+            successful=False,
+            attempted_at__gte=timezone.now() - LOCKOUT_WINDOW,
+        ).order_by("-attempted_at")[:LOCKOUT_MAX_FAILURES]
+    )
+    if len(failures) < LOCKOUT_MAX_FAILURES:
+        return None
+    oldest_counted = failures[-1].attempted_at
+    remaining = int(
+        (oldest_counted + LOCKOUT_WINDOW - timezone.now()).total_seconds()
+    )
+    return max(remaining, 1)
+
+
+def _audit_login(
+    *,
+    result: str,
+    reason: str | None = None,
+    actor: User | None = None,
+    details: dict,
+    ip_address: str | None,
+    user_agent: str | None,
+    request_id: str | None,
+) -> None:
+    """Append one login-flow audit event; fail closed with ``503``."""
+    try:
+        with transaction.atomic():
+            AuditService.record(
+                action="LOGIN",
+                entity_type="SESSION",
+                result=result,
+                actor=actor,
+                reason=reason,
+                request_id=request_id,
+                ip_address=ip_address,
+                user_agent=user_agent,
+                details=details,
+            )
+    except AuditUnavailable as exc:
+        raise DomainError(
+            AUDIT_UNAVAILABLE_MESSAGE, code=ErrorCode.AUDIT_UNAVAILABLE
+        ) from exc
+
+
+def login(
+    identifier: str,
+    password: str,
+    *,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
+    request_id: str | None = None,
+) -> IssuedSession:
+    """Full institutional login: rate limit, credentials, audit, session.
+
+    Raises:
+        DomainError ``AUTH_LOCKED``: ``429`` with ``Retry-After`` when the
+            identifier is blocked after five failures in fifteen minutes.
+            The check runs before credential validation, so the answer
+            never reveals whether the account exists.
+        DomainError ``AUTH_INVALID``: ``401`` with the generic message for
+            invalid credentials, nonexistent or inactive accounts.
+        DomainError ``AUDIT_UNAVAILABLE``: ``503`` when the audit trail
+            cannot be written; the session is not issued and the attempt
+            is not kept (plan section 6.5).
+    """
+    identifier = normalize_identifier(identifier)
+    details = {"identifier": identifier}
+
+    # 1) Bloqueo por límite de intentos, antes de validar credenciales.
+    retry_after = lockout_remaining_seconds(identifier)
+    if retry_after is not None:
+        _audit_login(
+            result=AuditLog.Result.DENIED,
+            reason="Límite de intentos de acceso excedido.",
+            details={**details, "retry_after": retry_after},
+            ip_address=ip_address,
+            user_agent=user_agent,
+            request_id=request_id,
+        )
+        raise DomainError(
+            LOCKED_MESSAGE,
+            code=ErrorCode.AUTH_LOCKED,
+            headers={"Retry-After": str(retry_after)},
+        )
+
+    # 2) Validación de credenciales con respuesta genérica.
+    user = authenticate_by_identifier(identifier, password)
+
+    # 3) Intento y auditoría en la misma transacción (plan section 6.5);
+    #    la contraseña jamás se persiste.
+    try:
+        with transaction.atomic():
+            LoginAttempt.objects.create(
+                identifier=identifier,
+                successful=user is not None,
+                ip_address=ip_address,
+            )
+            if user is None:
+                AuditService.record(
+                    action="LOGIN",
+                    entity_type="SESSION",
+                    result=AuditLog.Result.FAILURE,
+                    reason=GENERIC_AUTH_MESSAGE,
+                    request_id=request_id,
+                    ip_address=ip_address,
+                    user_agent=user_agent,
+                    details=details,
+                )
+            else:
+                session = issue_session(user)
+                AuditService.record(
+                    action="LOGIN",
+                    entity_type="SESSION",
+                    result=AuditLog.Result.SUCCESS,
+                    actor=user,
+                    request_id=request_id,
+                    ip_address=ip_address,
+                    user_agent=user_agent,
+                    details=details,
+                )
+                return session
+    except AuditUnavailable as exc:
+        raise DomainError(
+            AUDIT_UNAVAILABLE_MESSAGE, code=ErrorCode.AUDIT_UNAVAILABLE
+        ) from exc
+
+    raise DomainError(GENERIC_AUTH_MESSAGE, code=ErrorCode.AUTH_INVALID)
 
 
 def issue_session(user: User) -> IssuedSession:

@@ -96,6 +96,9 @@ class DomainError(exceptions.APIException):
             code=ErrorCode.STATE_CONFLICT,
             details={"status": manuscript.status},
         )
+
+    ``headers`` adds explicit response headers — for example the
+    ``Retry-After`` of a ``429`` lockout (TSK-20).
     """
 
     status_code = 400
@@ -107,12 +110,14 @@ class DomainError(exceptions.APIException):
         code: str = ErrorCode.VALIDATION_ERROR,
         details: Any = None,
         status_code: int | None = None,
+        headers: dict[str, str] | None = None,
     ) -> None:
         self.error_code = code
         self.error_details = {} if details is None else details
         if status_code is None:
             status_code = _STATUS_BY_CODE.get(code, 400)
         self.status_code = status_code
+        self.headers = dict(headers) if headers else None
         super().__init__(message)
 
 
@@ -251,4 +256,10 @@ def exception_handler(exc: BaseException, context: dict[str, Any]) -> Any:
 
     code, message, details = _describe(exc)
     response.data = build_error_envelope(code, message, details, request_id)
+
+    # Cabeceras explícitas del error de dominio (p. ej. Retry-After en 429).
+    extra_headers = getattr(exc, "headers", None)
+    if extra_headers:
+        for header, value in extra_headers.items():
+            response[header] = value
     return response
