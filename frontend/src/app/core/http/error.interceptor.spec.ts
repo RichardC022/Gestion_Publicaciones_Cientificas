@@ -14,6 +14,7 @@ import { filter } from 'rxjs/operators';
 
 import { authInterceptor } from '../auth/auth.interceptor';
 import { AuthStore } from '../auth/auth.store';
+import { ApiError } from '../models/api-error.model';
 import { LoginResponse, SessionUser } from '../models/session-user.model';
 import { API_BASE_URL } from './api-base-url.token';
 import { requestIdInterceptor } from './request-id.interceptor';
@@ -250,5 +251,38 @@ describe('errorInterceptor', () => {
     const requestId = request.request.headers.get('X-Request-ID');
     expect(requestId).toMatch(/^[A-Za-z0-9@._~-]{1,64}$/);
     request.flush(envelope('NOT_FOUND', 'No encontrado.'), { status: 404, statusText: 'Not Found' });
+  });
+
+  it('un 401 del login llega al componente con el mensaje del envelope (regresión TSK-26)', () => {
+    let failure: ApiError | undefined;
+    client.post('/api/auth/login/', {}).subscribe({ error: (error) => (failure = error) });
+
+    httpMock
+      .expectOne('/api/auth/login/')
+      .flush(envelope('AUTH_INVALID', 'Credenciales institucionales inválidas.'), {
+        status: 401,
+        statusText: 'Unauthorized',
+      });
+
+    // Con la cadena real de interceptores el mensaje genérico del
+    // backend sobrevive a la doble normalización: nunca aparece la
+    // "falla de conexión".
+    expect(failure?.status).toBe(401);
+    expect(failure?.message).toBe('Credenciales institucionales inválidas.');
+    expect(failure?.userMessage).not.toContain('conectar con el servidor');
+  });
+
+  it('una URL relativa de la API sale al backend con slash absoluto (regresión TSK-26)', () => {
+    client.post('api/auth/refresh/', {}).subscribe({ error: () => undefined });
+
+    // El interceptor más externo la normaliza ANTES de que el navegador
+    // la resuelva contra la ruta del documento (`/catalog` ->
+    // `/catalogapi/auth/refresh`).
+    const request = httpMock.expectOne('/api/auth/refresh/');
+    expect(request.request.headers.get('X-Request-ID')).toMatch(/^[A-Za-z0-9@._~-]{1,64}$/);
+    request.flush(envelope('AUTH_INVALID', 'Credenciales inválidas.'), {
+      status: 401,
+      statusText: 'Unauthorized',
+    });
   });
 });

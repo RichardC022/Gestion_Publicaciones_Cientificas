@@ -67,6 +67,14 @@ const MESSAGES_BY_STATUS: Readonly<Record<number, string>> = {
 
 /** Convierte cualquier fallo HTTP o de red en un `ApiError` normalizado. */
 export function toApiError(error: unknown): ApiError {
+  // Idempotente: el interceptor de errores ya normalizó el fallo; si una
+  // capa superior vuelve a normalizar, el envelope del backend (con el
+  // mensaje genérico "Credenciales institucionales inválidas.") debe
+  // sobrevivir y no degradarse al mensaje de conexión.
+  if (isApiError(error)) {
+    return error;
+  }
+
   if (!(error instanceof HttpErrorResponse)) {
     return {
       status: 0,
@@ -105,6 +113,17 @@ export function toApiError(error: unknown): ApiError {
     requestId: typeof envelope.request_id === 'string' ? envelope.request_id : null,
     retryAfterSeconds,
   };
+}
+
+/** Comprueba que el valor ya es un error normalizado. */
+export function isApiError(error: unknown): error is ApiError {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    typeof (error as ApiError).code === 'string' &&
+    typeof (error as ApiError).userMessage === 'string' &&
+    typeof (error as ApiError).status === 'number'
+  );
 }
 
 /** Lee `Retry-After` en segundos; cualquier otro formato se ignora. */

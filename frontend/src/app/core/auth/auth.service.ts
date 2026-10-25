@@ -44,7 +44,17 @@ export class AuthService {
   private readonly injector = inject(Injector);
   private readonly store = inject(AuthStore);
   private readonly router = inject(Router);
-  private readonly baseUrl = inject(API_BASE_URL);
+
+  /**
+   * Base de la API con slash absoluto garantizado: si el entorno
+   * entregara `api/` (sin slash inicial), cada petición se volvería
+   * relativa al documento y el navegador generaría URLs malformadas
+   * como `/catalogapi/auth/refresh`.
+   */
+  private readonly baseUrl = (() => {
+    const raw = inject(API_BASE_URL);
+    return raw.startsWith('/') ? raw : `/${raw}`;
+  })();
 
   private get http(): HttpClient {
     return this.injector.get(HttpClient);
