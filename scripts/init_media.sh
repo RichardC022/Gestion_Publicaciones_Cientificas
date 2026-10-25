@@ -37,6 +37,13 @@ for directory in "${directories[@]}"; do
   chmod 0750 "${directory}"
 done
 
+# Limpieza al iniciar (plan sección 4.1): `tmp/uploads` solo contiene
+# temporales de cargas que no llegaron a confirmarse; cualquier remanente
+# de una ejecución anterior se descarta aquí. Los PDF reales de
+# `private/` y `public/` nunca se tocan: la limpieza está acotada al
+# subárbol de temporales con `-mindepth 1`.
+find "${MEDIA_ROOT}/tmp/uploads" -mindepth 1 -delete
+
 find "${MEDIA_ROOT}" -type d -exec chmod 0750 {} +
 find "${MEDIA_ROOT}" -type f -exec chmod 0640 {} +
 

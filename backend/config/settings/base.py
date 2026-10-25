@@ -163,6 +163,17 @@ STATIC_ROOT = Path(os.environ.get("STATIC_ROOT", BASE_DIR / "staticfiles"))
 
 MEDIA_ROOT = Path(os.environ.get("MEDIA_ROOT", "/data/media"))
 
+# Carga de PDF (plan sección 4.2 paso 3): Nginx acepta cuerpos de hasta
+# 60 MB y los deriva a disco; Django también envía el archivo a disco en
+# lugar de mantenerlo completo en memoria. El límite real de 50 MB por
+# PDF lo aplica el dominio (PdfService, TSK-33/34) leyendo
+# MAX_PDF_SIZE_BYTES; el margen de 60 MB absorbe el multipart y las
+# cabeceras de la petición.
+FILE_UPLOAD_MAX_MEMORY_SIZE = 2_621_440  # 2.5 MB: por encima se envía a disco.
+DATA_UPLOAD_MAX_MEMORY_SIZE = 62_914_560  # 60 MB: techo del cuerpo completo.
+MAX_PDF_SIZE_MB = int(os.environ.get("MAX_PDF_SIZE_MB", "50"))
+MAX_PDF_SIZE_BYTES = MAX_PDF_SIZE_MB * 1024 * 1024
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 REST_FRAMEWORK = {
