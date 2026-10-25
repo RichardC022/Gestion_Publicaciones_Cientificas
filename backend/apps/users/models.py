@@ -15,6 +15,10 @@ The account registry follows the implementation plan (sections 1.3-1.7):
   assignment capacity of a reviewer.
 * ``LoginAttempt`` records failed/successful login attempts without ever
   storing passwords (consumed by the rate limit of TSK-20).
+* ``RefreshToken`` is the server-side registry of refresh tokens (plan
+  section 6.1): single-use rotation, logout revocation and idle-window
+  enforcement. SimpleJWT only signs the tokens; this table decides whether
+  a refresh is still valid.
 """
 
 from __future__ import annotations
@@ -27,6 +31,7 @@ from django.contrib.postgres.indexes import GinIndex
 from django.db import models
 from django.db.models import Q
 from django.db.models.functions import Lower
+from django.utils import timezone
 
 
 class User(AbstractUser):
@@ -187,3 +192,92 @@ class LoginAttempt(models.Model):
     def __str__(self) -> str:
         result = "éxito" if self.successful else "fallo"
         return f"{self.identifier} ({result})"
+
+
+class RevocationReason(models.TextChoices):
+    """Why a refresh token stopped being valid."""
+
+    LOGOUT = "LOGOUT", "Cierre de sesión"
+    ROTATED = "ROTATED", "Rotado por un refresh nuevo"
+    REUSE = "REUSE", "Reutilización de un token ya consumido"
+    IDLE_TIMEOUT = "IDLE_TIMEOUT", "Inactividad institucional"
+    ACCOUNT_DISABLED = "ACCOUNT_DISABLED", "Cuenta deshabilitada"
+
+
+class RefreshToken(models.Model):
+    """Server-side registry of refresh tokens (plan section 6.1).
+
+    Every issued refresh token is a row here; the signed JWT is only the
+    transport. The token is single-use: when it rotates, the row is revoked
+    with ``replaced_by_jti`` pointing to its replacement, so reusing a
+    consumed token is detected and the replacement chain dies with it.
+    ``last_used_at`` feeds the institutional idle window.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4)
+    user = models.ForeignKey(
+        User,
+        on_delete=models.PROTECT,
+        related_name="refresh_tokens",
+    )
+    # `jti` del JWT firmado: une el token transportado con esta fila.
+    jti = models.CharField(max_length=64, unique=True)
+    issued_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    last_used_at = models.DateTimeField(null=True, blank=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    revoked_reason = models.CharField(
+        max_length=20,
+        choices=RevocationReason.choices,
+        null=True,
+        blank=True,
+    )
+    replaced_by_jti = models.CharField(max_length=64, null=True, blank=True)
+
+    class Meta:
+        db_table = "users_refresh_token"
+        ordering = ("-issued_at",)
+        indexes = [
+            models.Index(
+                fields=("user", "-issued_at"),
+                name="idx_refresh_user_issued",
+            ),
+            models.Index(
+                fields=("expires_at",),
+                name="idx_refresh_expires",
+            ),
+        ]
+
+    @property
+    def is_revoked(self) -> bool:
+        return self.revoked_at is not None
+
+    def revoke(
+        self,
+        *,
+        reason: str,
+        replaced_by_jti: str | None = None,
+        last_used_at=None,
+    ) -> "RefreshToken":
+        """Revoke this token; idempotent (the first reason is preserved)."""
+        if self.revoked_at is not None:
+            return self
+        self.revoked_at = timezone.now()
+        self.revoked_reason = reason
+        if replaced_by_jti is not None:
+            self.replaced_by_jti = replaced_by_jti
+        if last_used_at is not None:
+            self.last_used_at = last_used_at
+        self.save(
+            update_fields=(
+                "revoked_at",
+                "revoked_reason",
+                "replaced_by_jti",
+                "last_used_at",
+            )
+        )
+        return self
+
+    def __str__(self) -> str:
+        state = "revocado" if self.revoked_at else "vigente"
+        return f"{self.jti} · {self.user_id} ({state})"
