@@ -88,6 +88,46 @@ class AppendOnlyModel(models.Model):
         raise ValueError(f"{type(self).__name__} es inmutable: no admite eliminación.")
 
 
+class ManuscriptQuerySet(models.QuerySet):
+    """Scopes that decide which manuscripts an actor may reach at all.
+
+    A manuscript outside the scope answers ``404`` upstream, so the
+    response never reveals that it exists (plan sections 2.9 and 6.2).
+    """
+
+    def owned_by(self, user) -> "ManuscriptQuerySet":
+        """Manuscripts the user registered."""
+        return self.filter(created_by=user)
+
+    def for_editor(self, user) -> "ManuscriptQuerySet":
+        """Editor scope: formally submitted manuscripts without conflict.
+
+        Drafts belong to their author until the formal submission. An
+        editor who registered the manuscript or figures as author or
+        coauthor has a conflict of interest and never reaches it through
+        the editor role.
+        """
+        return (
+            self.exclude(status=Manuscript.Status.DRAFT)
+            .exclude(created_by=user)
+            .exclude(authors__user=user)
+        )
+
+    def visible_to(self, user, *, as_author: bool, as_editor: bool) -> "ManuscriptQuerySet":
+        """Union of the scopes of the roles the actor holds."""
+        scopes = []
+        if as_author:
+            scopes.append(self.owned_by(user))
+        if as_editor:
+            scopes.append(self.for_editor(user))
+        if not scopes:
+            return self.none()
+        result = scopes[0]
+        for scope in scopes[1:]:
+            result = result | scope
+        return result
+
+
 class Manuscript(models.Model):
     """Manuscript and its current editorial state."""
 
@@ -141,6 +181,8 @@ class Manuscript(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    objects = ManuscriptQuerySet.as_manager()
 
     class Meta:
         db_table = "publications_manuscript"
