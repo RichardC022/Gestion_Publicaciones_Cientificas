@@ -19,6 +19,7 @@ import re
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.generics import GenericAPIView
+from rest_framework.parsers import MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -28,8 +29,10 @@ from apps.publications.models import Manuscript
 from apps.publications.permissions import IsManuscriptOwner
 from apps.publications.serializers import (
     AuthorManuscriptSerializer,
+    draft_file_summary,
     manuscript_serializer_class,
 )
+from apps.publications.services.drafts import attach_draft_file, ensure_draft
 from apps.publications.services.manuscripts import (
     create_manuscript,
     ensure_editable,
@@ -73,6 +76,12 @@ class ManuscriptBaseView(GenericAPIView):
             .select_related("created_by")
             .prefetch_related("authors", "versions")
         )
+
+    def get_manuscript(self, pk) -> Manuscript:
+        """The manuscript in scope; anything else answers ``404``."""
+        manuscript = get_object_or_404(self.get_queryset(), pk=pk)
+        self.check_object_permissions(self.request, manuscript)
+        return manuscript
 
     def represent(self, manuscript: Manuscript) -> dict:
         serializer_class = manuscript_serializer_class(manuscript, self.request.user)
@@ -118,11 +127,6 @@ class ManuscriptDetailView(ManuscriptBaseView):
             return [IsAuthenticated(), IsAuthor(), IsManuscriptOwner()]
         return [IsAuthenticated(), (IsAuthor | IsEditor)()]
 
-    def get_manuscript(self, pk) -> Manuscript:
-        manuscript = get_object_or_404(self.get_queryset(), pk=pk)
-        self.check_object_permissions(self.request, manuscript)
-        return manuscript
-
     def get(self, request: Request, pk) -> Response:
         return self.respond(self.get_manuscript(pk))
 
@@ -145,3 +149,40 @@ class ManuscriptDetailView(ManuscriptBaseView):
             context=audit_request_context(request),
         )
         return self.respond(updated)
+
+
+class ManuscriptDraftFileView(ManuscriptBaseView):
+    """``POST /api/manuscripts/{id}/draft-file/``: attach or replace the draft PDF.
+
+    Only the owner, only while the manuscript is a ``DRAFT``. It creates
+    no version, round or snapshot. Anything but ``multipart/form-data``
+    answers ``415``; the file travels in the ``file`` field.
+    """
+
+    parser_classes = [MultiPartParser]
+
+    def get_permissions(self):
+        return [IsAuthenticated(), IsAuthor(), IsManuscriptOwner()]
+
+    def post(self, request: Request, pk) -> Response:
+        manuscript = self.get_manuscript(pk)
+        # El estado se revisa antes de leer el cuerpo (409 antes que 415/400).
+        ensure_draft(manuscript)
+
+        uploaded = request.data.get("file")
+        if uploaded is None or not hasattr(uploaded, "chunks"):
+            raise DomainError(
+                "Adjunte el archivo PDF en el campo 'file' de la solicitud multipart.",
+                code=ErrorCode.VALIDATION_ERROR,
+            )
+
+        result = attach_draft_file(
+            manuscript_id=manuscript.pk,
+            user=request.user,
+            uploaded=uploaded,
+            context=audit_request_context(request),
+        )
+        return Response(
+            draft_file_summary(result.manuscript),
+            status=status.HTTP_200_OK if result.replaced else status.HTTP_201_CREATED,
+        )

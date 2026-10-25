@@ -403,8 +403,8 @@ class TestScopeAndPrivacy:
         assert set(body) == {
             "id", "code", "title", "abstract", "keywords", "area", "language",
             "status", "current_round", "current_version", "is_active",
-            "withdrawn_at", "withdrawal_reason", "authors", "created_at",
-            "updated_at",
+            "withdrawn_at", "withdrawal_reason", "authors", "draft_file",
+            "created_at", "updated_at",
         }
         serialized = str(body).lower()
         for forbidden in ("reviewer", "confidential", "score", "created_by"):

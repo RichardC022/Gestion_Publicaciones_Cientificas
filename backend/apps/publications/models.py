@@ -173,6 +173,13 @@ class Manuscript(models.Model):
         related_name="withdrawn_manuscripts",
     )
     withdrawal_reason = models.TextField(null=True, blank=True)
+    # PDF de borrador reemplazable (plan 4.1): no es una versión. La ruta es
+    # relativa a MEDIA_ROOT; el nombre original solo se muestra, nunca
+    # construye rutas.
+    draft_file_path = models.CharField(max_length=500, null=True, blank=True)
+    draft_filename = models.CharField(max_length=255, null=True, blank=True)
+    draft_size_bytes = models.BigIntegerField(null=True, blank=True)
+    draft_uploaded_at = models.DateTimeField(null=True, blank=True)
     # Columna generada y almacenada por PostgreSQL: siempre sincronizada.
     search_vector = models.GeneratedField(
         expression=search_vector_expression(),
@@ -220,6 +227,24 @@ class Manuscript(models.Model):
                     | Q(is_active=False, withdrawn_at__isnull=False)
                 ),
                 name="ck_manuscript_withdrawal",
+            ),
+            # El borrador está adjunto por completo o no lo está.
+            models.CheckConstraint(
+                condition=(
+                    Q(
+                        draft_file_path__isnull=True,
+                        draft_filename__isnull=True,
+                        draft_size_bytes__isnull=True,
+                        draft_uploaded_at__isnull=True,
+                    )
+                    | Q(
+                        draft_file_path__isnull=False,
+                        draft_filename__isnull=False,
+                        draft_size_bytes__gt=0,
+                        draft_uploaded_at__isnull=False,
+                    )
+                ),
+                name="ck_manuscript_draft_file",
             ),
             # `GPC-AAAA-######`; el contador admite hasta dos dígitos más.
             models.CheckConstraint(
