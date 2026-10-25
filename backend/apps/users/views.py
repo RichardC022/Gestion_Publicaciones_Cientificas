@@ -9,8 +9,6 @@ is returned in the JSON body and lives in client memory only.
 from __future__ import annotations
 
 from django.conf import settings
-from django.core.exceptions import ValidationError as DjangoValidationError
-from django.core.validators import validate_ipv46_address
 from django.db import transaction
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -38,28 +36,7 @@ from apps.users.services.auth import (
 from apps.users.services.dashboard import build_dashboard
 from config.exceptions import DomainError, ErrorCode
 from config.middleware import get_request_id
-
-
-def _client_ip(request: Request) -> str | None:
-    """Best-effort client IP for the attempt registry and the audit trail.
-
-    Nginx (TSK-04) forwards ``X-Forwarded-For`` and ``X-Real-IP``; the
-    first forwarded entry wins. Anything that is not a valid address is
-    dropped instead of breaking the login.
-    """
-    forwarded = (request.META.get("HTTP_X_FORWARDED_FOR") or "")
-    candidate = forwarded.split(",")[0].strip()
-    if not candidate:
-        candidate = (request.META.get("HTTP_X_REAL_IP") or "").strip()
-    if not candidate:
-        candidate = (request.META.get("REMOTE_ADDR") or "").strip()
-    if not candidate:
-        return None
-    try:
-        validate_ipv46_address(candidate)
-    except DjangoValidationError:
-        return None
-    return candidate
+from config.request_context import client_ip
 
 
 def _set_refresh_cookie(response: Response, raw_refresh: str) -> None:
@@ -103,7 +80,7 @@ class LoginView(APIView):
         session = login(
             serializer.validated_data["identifier"],
             serializer.validated_data["password"],
-            ip_address=_client_ip(request),
+            ip_address=client_ip(request),
             user_agent=(request.META.get("HTTP_USER_AGENT") or "")[:300] or None,
             request_id=get_request_id(request),
         )
@@ -166,7 +143,7 @@ class LogoutView(APIView):
                     result=AuditLog.Result.SUCCESS,
                     actor=request.user,
                     request_id=get_request_id(request),
-                    ip_address=_client_ip(request),
+                    ip_address=client_ip(request),
                     user_agent=(request.META.get("HTTP_USER_AGENT") or "")[:300]
                     or None,
                 )

@@ -22,4 +22,5 @@ urlpatterns = [
     path("health/", HealthView.as_view(), name="health"),
     path("auth/", include("apps.users.urls")),
     path("dashboard/", DashboardView.as_view(), name="dashboard"),
+    path("manuscripts/", include("apps.publications.urls")),
 ]
