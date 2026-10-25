@@ -1,5 +1,6 @@
 """Tests for project-level settings and app registration."""
 
+import pytest
 from django.conf import settings
 
 DOMAIN_APPS = (
@@ -35,8 +36,33 @@ def test_refresh_cookie_is_always_httponly_with_strict_samesite() -> None:
     assert settings.REFRESH_COOKIE_SAMESITE == "Strict"
 
 
-def test_production_forces_secure_cookies() -> None:
-    """Production serves cookies with the Secure attribute (COOKIE_SECURE=1)."""
+def test_production_forces_secure_cookies(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Production serves cookies with the Secure attribute (COOKIE_SECURE=1).
+
+    Importing ``config.settings.production`` validates the required
+    environment variables (TSK-10). CI has no production secrets, so the
+    test injects dummy values — including ``DJANGO_SECRET_KEY=dummy-key`` —
+    just to import the module and verify the cookie contract.
+    """
+    for name, value in (
+        ("DJANGO_SECRET_KEY", "dummy-key"),
+        ("POSTGRES_DB", "gpc_ci"),
+        ("POSTGRES_USER", "gpc_ci"),
+        ("POSTGRES_PASSWORD", "gpc_ci_password"),
+        ("POSTGRES_HOST", "127.0.0.1"),
+        ("POSTGRES_PORT", "5432"),
+        ("ALLOWED_HOSTS", "localhost"),
+        ("CSRF_TRUSTED_ORIGINS", "http://localhost"),
+        ("EMAIL_HOST", "smtp.example.com"),
+        ("EMAIL_PORT", "587"),
+        ("EMAIL_USE_TLS", "1"),
+        ("EMAIL_HOST_USER", "ci@example.com"),
+        ("EMAIL_HOST_PASSWORD", "ci-password"),
+        ("DEFAULT_FROM_EMAIL", "ci@example.com"),
+        ("COOKIE_SECURE", "1"),
+    ):
+        monkeypatch.setenv(name, value)
+
     from config.settings import production
 
     assert production.COOKIE_SECURE is True

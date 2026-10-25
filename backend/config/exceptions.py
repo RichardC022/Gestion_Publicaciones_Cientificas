@@ -33,8 +33,6 @@ from django.core.exceptions import PermissionDenied as DjangoPermissionDenied
 from django.http import Http404
 from rest_framework import exceptions
 from rest_framework.response import Response
-from rest_framework.views import exception_handler as drf_exception_handler
-from rest_framework.views import set_rollback
 
 from config.middleware import get_request_id, new_request_id
 
@@ -232,6 +230,13 @@ def exception_handler(exc: BaseException, context: dict[str, Any]) -> Any:
     and, outside DEBUG mode, answered with a generic ``500`` envelope
     that never leaks internal details.
     """
+    # Importación perezosa: rest_framework.views importa api_settings al
+    # inicializarse y esta función se referencia desde REST_FRAMEWORK, así
+    # que una importación de módulo crearía un ciclo con las clases de
+    # autenticación resueltas por settings.
+    from rest_framework.views import exception_handler as drf_exception_handler
+    from rest_framework.views import set_rollback
+
     request = context.get("request")
     request_id = get_request_id(request) or new_request_id()
 

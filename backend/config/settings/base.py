@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from datetime import timedelta
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -128,6 +129,30 @@ COOKIE_SECURE = env_bool("COOKIE_SECURE", False)
 REFRESH_COOKIE_HTTPONLY = True
 REFRESH_COOKIE_SAMESITE = "Strict"
 
+# Cookie que transporta el refresh token (TSK-19). El path se limita a los
+# endpoints de autenticación para que el navegador nunca la envíe al resto
+# de la API.
+REFRESH_COOKIE_NAME = "gpc_refresh"
+REFRESH_COOKIE_PATH = "/api/auth/"
+
+# Política de firma de los JWT emitidos con SimpleJWT (plan §6.1). El access
+# token vive solo en memoria del cliente; el refresh token es de uso único:
+# la rotación y la revocación se gobiernan desde la tabla
+# ``users_refresh_token``, no desde la librería.
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=JWT_ACCESS_MINUTES),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=JWT_REFRESH_DAYS),
+    # La rotación/revocación de TSK-19 usa una tabla propia del dominio.
+    "ROTATE_REFRESH_TOKENS": False,
+    "BLACKLIST_AFTER_ROTATION": False,
+    "UPDATE_LAST_LOGIN": False,
+    "ALGORITHM": "HS256",
+    "SIGNING_KEY": SECRET_KEY,
+    "AUTH_HEADER_TYPES": ("Bearer",),
+    "USER_ID_FIELD": "id",
+    "USER_ID_CLAIM": "user_id",
+}
+
 LANGUAGE_CODE = "es"
 TIME_ZONE = os.environ.get("TZ", "America/Guayaquil")
 USE_I18N = True
@@ -141,7 +166,11 @@ MEDIA_ROOT = Path(os.environ.get("MEDIA_ROOT", "/data/media"))
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 REST_FRAMEWORK = {
-    "DEFAULT_AUTHENTICATION_CLASSES": [],
+    # Autenticación institucional JWT (TSK-19): toda denegación responde con
+    # el mismo error genérico AUTH_INVALID (sin revelar la causa exacta).
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "apps.users.authentication.InstitutionalJWTAuthentication",
+    ],
     "DEFAULT_PERMISSION_CLASSES": [],
     "DEFAULT_PAGINATION_CLASS": "config.pagination.StandardPagination",
     "EXCEPTION_HANDLER": "config.exceptions.exception_handler",
