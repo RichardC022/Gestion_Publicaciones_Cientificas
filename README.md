@@ -107,6 +107,22 @@ Edita `.env` y cambia al menos:
 
 No uses los valores de ejemplo `change-me` en producción.
 
+> **Seguridad de sesión (TSK-16).** El refresh token viaja siempre en una
+> cookie `HttpOnly` con `SameSite=Strict` (JavaScript no puede leerla) y el
+> access token vive solo en memoria del navegador: nunca se guarda en
+> `localStorage` ni en cookies. `COOKIE_SECURE=1` mantiene el atributo
+> `Secure` en producción, de modo que la cookie solo circula por HTTPS tras
+> el TLS de Nginx. Los tiempos de vida llegan de `JWT_ACCESS_MINUTES=15`,
+> `JWT_REFRESH_DAYS=7` y `SESSION_IDLE_MINUTES=30`.
+
+**Los valores de producción son distintos de los de desarrollo.** El archivo
+`.env` describe un entorno de producción (`DJANGO_SETTINGS_MODULE=config.settings.production`,
+`DEBUG=0`, hosts y orígenes CSRF reales, SMTP institucional y `COOKIE_SECURE=1`).
+Para un entorno de desarrollo local usa `DJANGO_SETTINGS_MODULE=config.settings.development`,
+`DEBUG=1`, `ALLOWED_HOSTS=localhost,127.0.0.1`, `CSRF_TRUSTED_ORIGINS=http://localhost`,
+correo por consola (ya configurado en `config.settings.development`) y, si no hay
+TLS local, `COOKIE_SECURE=0`. Nunca reutilices secretos de producción en desarrollo.
+
 ### 3.3 Validar la configuración
 
 ```bash

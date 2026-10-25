@@ -62,6 +62,9 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = "config.urls"
 
+# Usuario institucional del dominio (plan §1.3).
+AUTH_USER_MODEL = "users.User"
+
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
@@ -104,6 +107,26 @@ AUTH_PASSWORD_VALIDATORS = [
         "NAME": "django.contrib.auth.password_validation.NumericPasswordValidator",
     },
 ]
+
+# ---------------------------------------------------------------------------
+# JWT, sesión y cookies del refresh token (plan §2.1 y §6.1).
+#
+# Invariantes del sistema:
+#   - El refresh token viaja SIEMPRE en cookie `HttpOnly` con
+#     `SameSite=Strict`; JavaScript nunca puede leerlo.
+#   - El access token vive solo en memoria del cliente y NUNCA se persiste
+#     en `localStorage` ni en cookies.
+# `COOKIE_SECURE` controla el atributo `Secure` de las cookies: obligatorio
+# (valor 1) en producción, donde el tráfico solo circula por HTTPS tras el
+# TLS de Nginx. La autenticación de TSK-19 consume esta configuración.
+# ---------------------------------------------------------------------------
+JWT_ACCESS_MINUTES = int(os.environ.get("JWT_ACCESS_MINUTES", "15"))
+JWT_REFRESH_DAYS = int(os.environ.get("JWT_REFRESH_DAYS", "7"))
+SESSION_IDLE_MINUTES = int(os.environ.get("SESSION_IDLE_MINUTES", "30"))
+
+COOKIE_SECURE = env_bool("COOKIE_SECURE", False)
+REFRESH_COOKIE_HTTPONLY = True
+REFRESH_COOKIE_SAMESITE = "Strict"
 
 LANGUAGE_CODE = "es"
 TIME_ZONE = os.environ.get("TZ", "America/Guayaquil")

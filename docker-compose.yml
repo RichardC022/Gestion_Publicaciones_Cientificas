@@ -21,6 +21,8 @@ services:
     build:
       context: ./backend
     restart: unless-stopped
+    # `.env` (creado con permisos 0600 y nunca versionado) porta los
+    # secretos de PostgreSQL, Django, JWT, cookies y SMTP del backend.
     env_file: .env
     command: >
       sh -c "umask 0027 &&
