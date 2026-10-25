@@ -29,6 +29,7 @@ from apps.publications.models import Manuscript
 from apps.publications.permissions import IsManuscriptOwner
 from apps.publications.serializers import (
     AuthorManuscriptSerializer,
+    SubmissionSerializer,
     draft_file_summary,
     manuscript_serializer_class,
 )
@@ -38,6 +39,7 @@ from apps.publications.services.manuscripts import (
     ensure_editable,
     update_manuscript,
 )
+from apps.publications.services.submission import ALREADY_SUBMITTED_MESSAGE, submit_manuscript
 from apps.users.models import Role
 from apps.users.permissions import IsAuthor, IsEditor, request_active_roles
 from config.exceptions import DomainError, ErrorCode
@@ -186,3 +188,29 @@ class ManuscriptDraftFileView(ManuscriptBaseView):
             draft_file_summary(result.manuscript),
             status=status.HTTP_200_OK if result.replaced else status.HTTP_201_CREATED,
         )
+
+
+class ManuscriptSubmitView(ManuscriptBaseView):
+    """``POST /api/manuscripts/{id}/submit/``: the formal submission.
+
+    Only the owner, only from ``DRAFT``. It creates exactly ``v1`` and
+    round 0, freezes the metadata and answers ``201`` with the tracking
+    code and the integrity seal. A repeated request answers ``409`` and
+    creates nothing: the submission was already registered.
+    """
+
+    def get_permissions(self):
+        return [IsAuthenticated(), IsAuthor(), IsManuscriptOwner()]
+
+    def post(self, request: Request, pk) -> Response:
+        manuscript = self.get_manuscript(pk)
+        ensure_draft(manuscript, ALREADY_SUBMITTED_MESSAGE)
+
+        submission = submit_manuscript(
+            manuscript_id=manuscript.pk,
+            user=request.user,
+            context=audit_request_context(request),
+        )
+        response = Response(SubmissionSerializer(submission).data, status=status.HTTP_201_CREATED)
+        response["ETag"] = etag_for(submission.manuscript)
+        return response

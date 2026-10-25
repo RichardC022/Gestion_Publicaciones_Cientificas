@@ -10,7 +10,7 @@ Order of work, so a failure never leaves a half-done upload:
 1. The upload is staged in ``tmp/uploads`` and validated there with
    :class:`~apps.publications.services.pdf.PdfService`.
 2. The valid file is moved, without overwriting, to
-   ``private/drafts/<user_uuid>/<draft_uuid>.pdf``.
+   ``drafts/<user_uuid>/<draft_uuid>.pdf`` of the private volume.
 3. One transaction locks the manuscript, re-checks its state, points it
    to the new file and audits. Any failure removes the new file and the
    previous draft stays intact.
@@ -33,9 +33,9 @@ from apps.publications.models import Manuscript
 from apps.publications.services.pdf import PdfInvalid, PdfService, PdfTooLarge
 from apps.publications.services.storage import (
     draft_relative_path,
-    media_path,
     move_exclusive,
     open_exclusive,
+    private_path,
     remove_quietly,
     upload_tmp_path,
 )
@@ -57,11 +57,16 @@ class DraftUpload:
     replaced: bool
 
 
-def ensure_draft(manuscript: Manuscript) -> None:
-    """The draft file can only be attached while the manuscript is a ``DRAFT``."""
+NOT_A_DRAFT_MESSAGE = (
+    "Solo se puede adjuntar el PDF de borrador mientras el manuscrito es un borrador."
+)
+
+
+def ensure_draft(manuscript: Manuscript, message: str = NOT_A_DRAFT_MESSAGE) -> None:
+    """The manuscript must still be an active ``DRAFT`` (otherwise ``409``)."""
     if not manuscript.is_active or manuscript.status != Manuscript.Status.DRAFT:
         raise DomainError(
-            "Solo se puede adjuntar el PDF de borrador mientras el manuscrito es un borrador.",
+            message,
             code=ErrorCode.STATE_CONFLICT,
             details={"status": manuscript.status, "is_active": manuscript.is_active},
         )
@@ -103,7 +108,7 @@ def attach_draft_file(
     try:
         service.validate(staged)
         relative = draft_relative_path(user.pk, uuid4())
-        final = media_path(relative)
+        final = private_path(relative)
         move_exclusive(staged, final)
     except BaseException:
         remove_quietly(staged)
@@ -151,5 +156,5 @@ def attach_draft_file(
         raise
 
     if previous:
-        remove_quietly(media_path(previous))
+        remove_quietly(private_path(previous))
     return DraftUpload(manuscript=manuscript, replaced=previous is not None)

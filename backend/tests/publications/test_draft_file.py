@@ -123,7 +123,9 @@ class TestUpload:
         upload(owner, draft)
 
         draft.refresh_from_db()
-        assert draft.draft_file_path == str(drafts_on_disk(media_root)[0].relative_to(media_root))
+        assert draft.draft_file_path == str(
+            drafts_on_disk(media_root)[0].relative_to(media_root / "private")
+        )
         body = client_for(owner).get(detail_url(draft)).json()
         assert set(body["draft_file"]) == {"filename", "size_bytes", "uploaded_at"}
         assert "private" not in str(body)

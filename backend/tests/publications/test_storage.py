@@ -115,3 +115,52 @@ class TestExclusiveWrite:
 
         assert len(chunks) > 1 and b"".join(chunks) == payload
         assert hashlib.sha256(b"".join(chunks)).digest() == hashlib.sha256(payload).digest()
+
+
+class TestCopyExclusive:
+    def test_copy_is_byte_exact_and_reports_size_and_digest(self, tmp_path) -> None:
+        source = tmp_path / "draft.pdf"
+        payload = b"%PDF-1.7 contenido " * 200_000
+        source.write_bytes(payload)
+
+        result = storage.copy_exclusive(source, tmp_path / "original.pdf")
+
+        assert (tmp_path / "original.pdf").read_bytes() == payload
+        assert result.size_bytes == len(payload)
+        assert result.sha256 == hashlib.sha256(payload).hexdigest()
+
+    def test_copy_is_an_independent_file_with_mode_0640(self, tmp_path) -> None:
+        source = tmp_path / "draft.pdf"
+        source.write_bytes(b"datos")
+
+        storage.copy_exclusive(source, tmp_path / "original.pdf")
+
+        copy = tmp_path / "original.pdf"
+        assert copy.stat().st_ino != source.stat().st_ino
+        assert copy.stat().st_nlink == 1 and mode_of(copy) == 0o640
+
+    def test_copy_never_overwrites_an_existing_file(self, tmp_path) -> None:
+        source = tmp_path / "draft.pdf"
+        source.write_bytes(b"nuevo")
+        destination = tmp_path / "original.pdf"
+        destination.write_bytes(b"previo")
+
+        with pytest.raises(FileExistsError):
+            storage.copy_exclusive(source, destination)
+
+        assert destination.read_bytes() == b"previo"
+
+
+class TestPrivateLayout:
+    def test_stored_paths_are_relative_to_the_private_volume(self, media_root) -> None:
+        user_id, draft_id = uuid4(), uuid4()
+
+        relative = storage.draft_relative_path(user_id, draft_id)
+
+        assert str(relative) == f"drafts/{user_id}/{draft_id}.pdf"
+        assert storage.private_path(relative) == media_root / "private" / relative
+
+    def test_version_relative_dir_matches_the_nginx_internal_location(self) -> None:
+        manuscript_id = uuid4()
+
+        assert str(storage.version_relative_dir(manuscript_id, 2)) == f"manuscripts/{manuscript_id}/v0002"
