@@ -6,6 +6,7 @@ from apps.publications.views import (
     ManuscriptDetailView,
     ManuscriptDraftFileView,
     ManuscriptListCreateView,
+    ManuscriptSubmitView,
 )
 
 urlpatterns = [
@@ -15,5 +16,10 @@ urlpatterns = [
         "<uuid:pk>/draft-file/",
         ManuscriptDraftFileView.as_view(),
         name="manuscript-draft-file",
+    ),
+    path(
+        "<uuid:pk>/submit/",
+        ManuscriptSubmitView.as_view(),
+        name="manuscript-submit",
     ),
 ]

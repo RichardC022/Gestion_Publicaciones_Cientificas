@@ -12,6 +12,7 @@ The audit details carry field NAMES only, never manuscript content.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import Any
 
 from django.db import transaction
@@ -29,6 +30,10 @@ EDITABLE_STATUSES = (
     Manuscript.Status.DRAFT,
     Manuscript.Status.REQUIRES_CORRECTIONS,
 )
+
+#: Metadata the formal submission requires (CA-HU-04-02). A draft may
+#: leave them empty; a manuscript under correction may not blank them.
+REQUIRED_METADATA = ("title", "abstract", "keywords", "area", "language")
 
 #: Metadata edited with ``PATCH``; the authors are compared separately.
 METADATA_FIELDS = ("title", "abstract", "keywords", "area", "language")
@@ -50,6 +55,29 @@ def ensure_editable(manuscript: Manuscript) -> None:
             "El manuscrito no admite edición en su estado actual.",
             code=ErrorCode.STATE_CONFLICT,
             details={"status": manuscript.status, "is_active": manuscript.is_active},
+        )
+
+
+def validate_author_roster(
+    authors: Iterable[tuple[str, bool]], registrant_email: str
+) -> None:
+    """Rules of the author list; raises ``ValueError`` with the reason.
+
+    At least one author, no repeated email, exactly one corresponding
+    author, and the registrant must figure in the list (CA-HU-04-03).
+    ``authors`` are ``(email, is_corresponding)`` pairs.
+    """
+    roster = [(email.lower(), bool(corresponding)) for email, corresponding in authors]
+    if not roster:
+        raise ValueError("Debe indicar al menos un autor.")
+    emails = [email for email, _ in roster]
+    if len(set(emails)) != len(emails):
+        raise ValueError("Un mismo correo no puede repetirse entre los autores.")
+    if sum(1 for _, corresponding in roster if corresponding) != 1:
+        raise ValueError("Debe indicar exactamente un autor responsable.")
+    if registrant_email.lower() not in emails:
+        raise ValueError(
+            "El autor que registra el manuscrito debe figurar en la lista de autores."
         )
 
 

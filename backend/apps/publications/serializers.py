@@ -20,14 +20,14 @@ import re
 from rest_framework import serializers
 
 from apps.publications.models import Manuscript, ManuscriptAuthor, ManuscriptVersion
+from apps.publications.services.manuscripts import (
+    REQUIRED_METADATA,
+    validate_author_roster,
+)
 from apps.users.serializers import SessionUserSerializer
 
 #: ISO 639-1 language code (plan section 1.8).
 LANGUAGE_PATTERN = re.compile(r"^[a-z]{2}$")
-
-#: Metadata the formal submission requires (CA-HU-04-02). A draft may
-#: leave them empty; a manuscript under correction may not blank them.
-REQUIRED_METADATA = ("title", "abstract", "keywords", "area", "language")
 
 
 class ManuscriptAuthorSerializer(serializers.ModelSerializer):
@@ -146,19 +146,11 @@ class AuthorManuscriptSerializer(serializers.ModelSerializer):
 
     def validate_authors(self, value: list[dict]) -> list[dict]:
         """At least one author, exactly one corresponding, the registrant listed."""
-        emails = [author["email"].lower() for author in value]
-        if len(set(emails)) != len(emails):
-            raise serializers.ValidationError("Un mismo correo no puede repetirse entre los autores.")
-
-        corresponding = sum(1 for author in value if author.get("is_corresponding"))
-        if corresponding != 1:
-            raise serializers.ValidationError("Debe indicar exactamente un autor responsable.")
-
-        user = self.context["request"].user
-        if user.email.lower() not in emails:
-            raise serializers.ValidationError(
-                "El autor que registra el manuscrito debe figurar en la lista de autores."
-            )
+        roster = [(author["email"], author.get("is_corresponding", False)) for author in value]
+        try:
+            validate_author_roster(roster, self.context["request"].user.email)
+        except ValueError as exc:
+            raise serializers.ValidationError(str(exc)) from None
         return value
 
     def validate(self, attrs: dict) -> dict:
@@ -212,3 +204,18 @@ def manuscript_serializer_class(manuscript: Manuscript, user) -> type[serializer
     if manuscript.created_by_id == user.id:
         return AuthorManuscriptSerializer
     return EditorManuscriptSerializer
+
+
+class SubmissionSerializer(serializers.Serializer):
+    """Answer of the formal submission: code, version, round, date and seal."""
+
+    code = serializers.CharField(source="manuscript.code")
+    status = serializers.CharField(source="manuscript.status")
+    version_number = serializers.IntegerField(source="version.version_number")
+    round_number = serializers.IntegerField(source="version.round_number")
+    submitted_at = serializers.DateTimeField(source="version.submitted_at")
+    integrity_seal = serializers.SerializerMethodField()
+
+    def get_integrity_seal(self, obj) -> str:
+        """``sha256:<hex>`` of the original PDF (plan section 4.5)."""
+        return f"sha256:{obj.version.original_sha256}"

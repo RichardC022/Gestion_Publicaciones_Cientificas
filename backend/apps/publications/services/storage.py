@@ -14,9 +14,11 @@ file this very call created, never one that existed before.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 from collections.abc import Iterable, Iterator
+from dataclasses import dataclass
 from contextlib import contextmanager
 from pathlib import Path, PurePosixPath
 from typing import BinaryIO
@@ -34,15 +36,27 @@ logger = logging.getLogger(__name__)
 CHUNK_SIZE = 1024 * 1024
 
 
+def private_root() -> Path:
+    """``<MEDIA_ROOT>/private``: the root every stored private path is relative to.
+
+    It is the directory Nginx exposes as ``/_protected/`` (plan section 4.6).
+    """
+    return Path(settings.MEDIA_ROOT) / "private"
+
+
+def private_path(relative: str | PurePosixPath) -> Path:
+    """Absolute path of a path stored relative to the private volume."""
+    return private_root() / relative
+
+
+def version_relative_dir(manuscript_id: UUID, version_number: int) -> PurePosixPath:
+    """``manuscripts/<manuscript_uuid>/v0001``."""
+    return PurePosixPath("manuscripts", str(manuscript_id), f"v{version_number:04d}")
+
+
 def version_dir(manuscript_id: UUID, version_number: int) -> Path:
-    """``private/manuscripts/<manuscript_uuid>/v0001``."""
-    return (
-        Path(settings.MEDIA_ROOT)
-        / "private"
-        / "manuscripts"
-        / str(manuscript_id)
-        / f"v{version_number:04d}"
-    )
+    """Absolute directory of a version."""
+    return private_path(version_relative_dir(manuscript_id, version_number))
 
 
 def allocate_version_dir(manuscript_id: UUID, version_number: int) -> Path:
@@ -82,6 +96,30 @@ def write_exclusive(path: Path, data: bytes | Iterable[bytes]) -> None:
             handle.write(chunk)
 
 
+@dataclass(frozen=True)
+class CopyResult:
+    """Size and SHA-256 of a copied file, computed while copying."""
+
+    size_bytes: int
+    sha256: str
+
+
+def copy_exclusive(source: Path, destination: Path) -> CopyResult:
+    """Copy ``source`` to a NEW file, hashing it in the same pass.
+
+    The copy is byte for byte; ``FileExistsError`` if ``destination``
+    exists. It is an independent file, never a link to ``source``.
+    """
+    digest = hashlib.sha256()
+    size = 0
+    with open_exclusive(destination) as handle:
+        for chunk in iter_file_chunks(source):
+            digest.update(chunk)
+            size += len(chunk)
+            handle.write(chunk)
+    return CopyResult(size_bytes=size, sha256=digest.hexdigest())
+
+
 def iter_file_chunks(path: Path, chunk_size: int = CHUNK_SIZE) -> Iterator[bytes]:
     """Read a file in chunks."""
     with open(path, "rb") as handle:
@@ -89,14 +127,9 @@ def iter_file_chunks(path: Path, chunk_size: int = CHUNK_SIZE) -> Iterator[bytes
             yield chunk
 
 
-def media_path(relative: str | PurePosixPath) -> Path:
-    """Absolute path of a path stored relative to ``MEDIA_ROOT``."""
-    return Path(settings.MEDIA_ROOT) / relative
-
-
 def draft_relative_path(user_id: UUID, draft_id: UUID) -> PurePosixPath:
-    """``private/drafts/<user_uuid>/<draft_uuid>.pdf`` (plan section 4.1)."""
-    return PurePosixPath("private", "drafts", str(user_id), f"{draft_id}.pdf")
+    """``drafts/<user_uuid>/<draft_uuid>.pdf`` (plan section 4.1)."""
+    return PurePosixPath("drafts", str(user_id), f"{draft_id}.pdf")
 
 
 def upload_tmp_path(upload_id: UUID) -> Path:
