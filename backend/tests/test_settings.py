@@ -36,6 +36,20 @@ def test_refresh_cookie_is_always_httponly_with_strict_samesite() -> None:
     assert settings.REFRESH_COOKIE_SAMESITE == "Strict"
 
 
+def test_pdf_upload_limits_match_the_nginx_boundary() -> None:
+    """Upload tuning coexists with the Nginx edge (plan §4.2 paso 3).
+
+    Nginx accepts request bodies up to 60 MB (``client_max_body_size``)
+    while Django streams anything above 2.5 MB straight to disk instead
+    of holding it in memory. The real 50 MB per-PDF limit is enforced by
+    the domain (PdfService, TSK-33/34) reading ``MAX_PDF_SIZE_BYTES``.
+    """
+    assert settings.FILE_UPLOAD_MAX_MEMORY_SIZE == 2_621_440
+    assert settings.DATA_UPLOAD_MAX_MEMORY_SIZE == 62_914_560
+    assert settings.MAX_PDF_SIZE_MB == 50
+    assert settings.MAX_PDF_SIZE_BYTES == 50 * 1024 * 1024
+
+
 def test_production_forces_secure_cookies(monkeypatch: pytest.MonkeyPatch) -> None:
     """Production serves cookies with the Secure attribute (COOKIE_SECURE=1).
 
