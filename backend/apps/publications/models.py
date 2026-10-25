@@ -11,9 +11,10 @@ They follow the implementation plan (sections 1.8-1.11 and 1.16):
 * ``CorrectionRound`` tracks rounds 0, 1, 2, ...
 * ``StatusEvent`` is the append-only history of status transitions.
 
-The remaining integrity layer (secondary indexes, the generated
-``search_vector`` column, the partial unique index of the corresponding
-author and the database triggers) belongs to the migrations of TSK-31.
+The integrity layer lives in the database (TSK-31): B-tree and GIN
+indexes, the generated ``search_vector`` column, the partial unique index
+of the corresponding author and the triggers that reject ``DELETE`` over
+manuscripts and any mutation of versions and status events.
 """
 
 from __future__ import annotations
@@ -22,9 +23,10 @@ import uuid
 
 from django.conf import settings
 from django.contrib.postgres.fields import ArrayField
+from django.contrib.postgres.indexes import GinIndex
 from django.contrib.postgres.search import SearchVectorField
 from django.db import connection, models
-from django.db.models import Q
+from django.db.models import F, Func, Q
 from django.db.models.functions import Length
 from django.db.models.lookups import Exact
 from django.utils import timezone
@@ -33,6 +35,26 @@ CODE_SEQUENCE = "publications_manuscript_code_seq"
 
 #: Length of a SHA-256 digest in hexadecimal.
 SHA256_HEX_LENGTH = 64
+
+
+def search_vector_expression() -> Func:
+    """Full-text document of a manuscript: title, abstract and keywords.
+
+    ``publications_search_text`` is the immutable SQL wrapper created by
+    the migration; PostgreSQL only accepts immutable expressions in a
+    generated column and ``array_to_string`` is not marked as such.
+    """
+    return Func(
+        F("title"),
+        F("abstract"),
+        F("keywords"),
+        function="to_tsvector",
+        template=(
+            "to_tsvector('spanish'::regconfig, "
+            "publications_search_text(%(expressions)s))"
+        ),
+        output_field=SearchVectorField(),
+    )
 
 
 def generate_manuscript_code() -> str:
@@ -111,14 +133,30 @@ class Manuscript(models.Model):
         related_name="withdrawn_manuscripts",
     )
     withdrawal_reason = models.TextField(null=True, blank=True)
-    # TSK-31 lo convierte en columna generada con su índice GIN.
-    search_vector = SearchVectorField(null=True, editable=False)
+    # Columna generada y almacenada por PostgreSQL: siempre sincronizada.
+    search_vector = models.GeneratedField(
+        expression=search_vector_expression(),
+        output_field=SearchVectorField(),
+        db_persist=True,
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = "publications_manuscript"
         ordering = ("-created_at",)
+        indexes = [
+            models.Index(
+                fields=("status", "is_active"),
+                name="idx_manuscript_status_active",
+            ),
+            models.Index(
+                fields=("created_by", "is_active"),
+                name="idx_manuscript_owner_active",
+            ),
+            models.Index(fields=("area",), name="idx_manuscript_area"),
+            GinIndex(fields=("search_vector",), name="idx_manuscript_search"),
+        ]
         constraints = [
             models.CheckConstraint(
                 condition=Q(
@@ -198,6 +236,12 @@ class ManuscriptAuthor(models.Model):
                 condition=Q(author_order__gt=0),
                 name="ck_author_order_positive",
             ),
+            # Exactamente un autor responsable como máximo por manuscrito.
+            models.UniqueConstraint(
+                fields=("manuscript",),
+                condition=Q(is_corresponding=True),
+                name="uq_manuscript_corresponding",
+            ),
         ]
 
     def __str__(self) -> str:
@@ -237,6 +281,12 @@ class ManuscriptVersion(AppendOnlyModel):
     class Meta:
         db_table = "publications_manuscript_version"
         ordering = ("version_number",)
+        indexes = [
+            models.Index(
+                fields=("manuscript", "submitted_at"),
+                name="idx_version_manuscript_date",
+            ),
+        ]
         constraints = [
             models.UniqueConstraint(
                 fields=("manuscript", "version_number"),
@@ -334,6 +384,12 @@ class StatusEvent(AppendOnlyModel):
     class Meta:
         db_table = "publications_status_event"
         ordering = ("created_at", "id")
+        indexes = [
+            models.Index(
+                fields=("manuscript", "created_at"),
+                name="idx_status_event_manuscript",
+            ),
+        ]
 
     def __str__(self) -> str:
         return f"{self.manuscript_id}: {self.from_status} → {self.to_status}"
