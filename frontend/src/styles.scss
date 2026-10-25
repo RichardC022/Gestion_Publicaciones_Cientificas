@@ -1,0 +1,194 @@
+/*
+ * Paleta institucional y estilos globales de la SPA.
+ *
+ * Semántica visual (plan §3.10):
+ *   - Azul/gris: navegación y acciones primarias.
+ *   - Verde: éxito y guardado.
+ *   - Amarillo: advertencias.
+ *   - Rojo: acciones destructivas y errores.
+ *
+ * Todos los pares texto/fondo cumplen el contraste WCAG AA (>= 4.5:1).
+ */
+
+:root {
+  /* Azul institucional: navegación y acciones primarias */
+  --gpc-primary-900: #172a4a;
+  --gpc-primary-700: #1d4e89;
+  --gpc-primary-100: #e4edf7;
+  --gpc-primary-50: #f2f6fb;
+
+  /* Verde: éxito y guardado */
+  --gpc-success-700: #146c33;
+  --gpc-success-100: #e2f4e7;
+
+  /* Amarillo: advertencias */
+  --gpc-warning-800: #8a4b0b;
+  --gpc-warning-100: #fdeed3;
+
+  /* Rojo: acciones destructivas y errores */
+  --gpc-danger-700: #b3261e;
+  --gpc-danger-100: #fce8e6;
+
+  /* Neutrales */
+  --gpc-text: #1f2937;
+  --gpc-text-muted: #4b5563;
+  --gpc-border: #d1d5db;
+  --gpc-surface: #f7f8fa;
+  --gpc-surface-alt: #ffffff;
+
+  /* Métricas comunes */
+  --gpc-radius: 6px;
+  --gpc-shadow: 0 1px 3px rgba(23, 42, 74, 0.18);
+  --gpc-focus-ring: 3px solid var(--gpc-primary-700);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: system-ui, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  line-height: 1.5;
+  color: var(--gpc-text);
+  background: var(--gpc-surface);
+}
+
+a {
+  color: var(--gpc-primary-700);
+}
+
+/* Foco visible para navegación por teclado (WCAG 2.4.7) */
+:focus-visible {
+  outline: var(--gpc-focus-ring);
+  outline-offset: 2px;
+}
+
+/* Texto solo para lectores de pantalla */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Enlace de salto al contenido (accesibilidad) */
+.skip-link {
+  position: absolute;
+  left: -999px;
+  top: 0;
+  z-index: 100;
+  padding: 0.75rem 1rem;
+  background: var(--gpc-primary-900);
+  color: #ffffff;
+  border-radius: 0 0 var(--gpc-radius) 0;
+}
+
+.skip-link:focus {
+  left: 0;
+}
+
+/* Botones compartidos */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border: 1px solid transparent;
+  border-radius: var(--gpc-radius);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+
+.btn--primary {
+  background: var(--gpc-primary-700);
+  color: #ffffff;
+}
+
+.btn--primary:hover {
+  background: var(--gpc-primary-900);
+}
+
+.btn--success {
+  background: var(--gpc-success-700);
+  color: #ffffff;
+}
+
+.btn--success:hover {
+  background: #0f5132;
+}
+
+.btn--danger {
+  background: var(--gpc-danger-700);
+  color: #ffffff;
+}
+
+.btn--danger:hover {
+  background: #9b1c1c;
+}
+
+.btn--ghost {
+  background: var(--gpc-surface-alt);
+  color: var(--gpc-primary-700);
+  border-color: var(--gpc-border);
+}
+
+.btn--ghost:hover {
+  background: var(--gpc-primary-50);
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* Insignias semánticas (estados, roles, contadores) */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.125rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.badge--neutral {
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.badge--info {
+  background: var(--gpc-primary-100);
+  color: var(--gpc-primary-900);
+}
+
+.badge--success {
+  background: var(--gpc-success-100);
+  color: #0f5132;
+}
+
+.badge--warning {
+  background: var(--gpc-warning-100);
+  color: var(--gpc-warning-800);
+}
+
+.badge--danger {
+  background: var(--gpc-danger-100);
+  color: #9b1c1c;
+}
