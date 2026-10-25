@@ -1,0 +1,28 @@
+# Exclusiones del contexto de build de la imagen del frontend.
+#
+# El build oficial usa la RAÍZ del repositorio como contexto
+# (`docker compose build web`, ver docker-compose.yml), por lo que estas
+# exclusiones también aplican a través de `frontend/Dockerfile.dockerignore`
+# (mecanismo per-Dockerfile de BuildKit). Los patrones con `**/` funcionan
+# igual si el contexto es `./frontend`.
+#
+# La imagen no incluye node_modules, secretos ni archivos .env.
+**/node_modules
+**/dist
+**/.angular
+**/coverage
+.git
+**/.git
+.env
+.env.*
+**/.env
+**/.env.*
+**/__pycache__
+**/*.pyc
+
+# Directorios que el Dockerfile del frontend no necesita copiar.
+backend/
+scripts/
+.spec-kit/
+.github/
+nginx/certs/
