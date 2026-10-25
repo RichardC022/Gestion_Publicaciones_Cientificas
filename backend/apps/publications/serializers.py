@@ -68,6 +68,19 @@ class AuthorEvaluationFeedbackSerializer(serializers.Serializer):
     observations = serializers.CharField(read_only=True, allow_null=True)
 
 
+def draft_file_summary(manuscript: Manuscript) -> dict | None:
+    """Name, size and date of the attached draft PDF; never its path."""
+    if not manuscript.draft_file_path:
+        return None
+    return {
+        "filename": manuscript.draft_filename,
+        "size_bytes": manuscript.draft_size_bytes,
+        "uploaded_at": serializers.DateTimeField().to_representation(
+            manuscript.draft_uploaded_at
+        ),
+    }
+
+
 class AuthorManuscriptSerializer(serializers.ModelSerializer):
     """The author's own manuscript; also validates the writable metadata."""
 
@@ -77,6 +90,7 @@ class AuthorManuscriptSerializer(serializers.ModelSerializer):
         required=False,
         allow_empty=True,
     )
+    draft_file = serializers.SerializerMethodField()
 
     class Meta:
         model = Manuscript
@@ -95,6 +109,7 @@ class AuthorManuscriptSerializer(serializers.ModelSerializer):
             "withdrawn_at",
             "withdrawal_reason",
             "authors",
+            "draft_file",
             "created_at",
             "updated_at",
         )
@@ -117,6 +132,9 @@ class AuthorManuscriptSerializer(serializers.ModelSerializer):
             "area": {"required": False, "allow_blank": True},
             "language": {"required": False, "allow_blank": True},
         }
+
+    def get_draft_file(self, obj: Manuscript) -> dict | None:
+        return draft_file_summary(obj)
 
     def validate_language(self, value: str) -> str:
         value = value.strip().lower()
