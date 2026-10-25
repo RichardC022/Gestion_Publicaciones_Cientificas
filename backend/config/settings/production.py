@@ -46,10 +46,14 @@ if not CSRF_TRUSTED_ORIGINS:
     )
 
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
-SECURE_SSL_REDIRECT = True
+# La redirección de HTTP a HTTPS es responsabilidad del borde Nginx (plan
+# §5.3: «redirección 80 -> 443»), que la aplica en su bloque TLS. Django
+# confía en `X-Forwarded-Proto` para distinguir conexiones seguras y no
+# debe forzar una segunda redirección: durante el piloto sin TLS el
+# tráfico llega por HTTP y un 301 aquí rompería el flujo de la SPA.
 # El healthcheck de Docker Compose sondea a Gunicorn directamente por HTTP
-# plano (el TLS termina en Nginx), por lo que el endpoint público de salud
-# queda exento de la redirección a HTTPS.
+# plano, por lo que el endpoint público de salud queda además exento de
+# cualquier redirección futura.
 SECURE_REDIRECT_EXEMPT = [r"^api/health/$"]
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
