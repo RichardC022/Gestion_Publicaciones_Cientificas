@@ -8,6 +8,7 @@ from apps.publications.views import (
     ManuscriptListCreateView,
     ManuscriptSubmitView,
     ManuscriptVersionsView,
+    ManuscriptWithdrawView,
 )
 
 urlpatterns = [
@@ -27,5 +28,10 @@ urlpatterns = [
         "<uuid:pk>/versions/",
         ManuscriptVersionsView.as_view(),
         name="manuscript-versions",
+    ),
+    path(
+        "<uuid:pk>/withdraw/",
+        ManuscriptWithdrawView.as_view(),
+        name="manuscript-withdraw",
     ),
 ]
