@@ -12,3 +12,7 @@ from django.dispatch import Signal
 #: A formal submission created a version. Args: ``manuscript_id``,
 #: ``version_id``, ``submitted_by_id``.
 manuscript_submitted = Signal()
+
+#: The author answered a correction request with a new version. Args:
+#: ``manuscript_id``, ``version_id``, ``submitted_by_id``.
+new_version_submitted = Signal()

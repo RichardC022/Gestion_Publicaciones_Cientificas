@@ -30,23 +30,17 @@ from django.utils import timezone
 from apps.audit.models import AuditLog
 from apps.audit.services import AuditService, AuditUnavailable
 from apps.publications.models import Manuscript
-from apps.publications.services.pdf import PdfInvalid, PdfService, PdfTooLarge
+from apps.publications.services.pdf import PdfService
 from apps.publications.services.storage import (
     draft_relative_path,
     move_exclusive,
-    open_exclusive,
     private_path,
     remove_quietly,
-    upload_tmp_path,
 )
+from apps.publications.services.uploads import check_declared_file, stage_upload
 from apps.users.models import Role, User
 from apps.users.services.auth import AUDIT_UNAVAILABLE_MESSAGE
 from config.exceptions import DomainError, ErrorCode
-
-#: Declared types of the file part that can carry a PDF. Browsers send
-#: ``application/octet-stream`` or nothing for some systems; the real
-#: barrier is the content check, this only rejects an obviously wrong type.
-ACCEPTED_CONTENT_TYPES = ("application/pdf", "application/x-pdf", "application/octet-stream", "")
 
 
 @dataclass(frozen=True)
@@ -72,38 +66,14 @@ def ensure_draft(manuscript: Manuscript, message: str = NOT_A_DRAFT_MESSAGE) -> 
         )
 
 
-def _check_declared_file(uploaded: Any) -> None:
-    """Extension and declared type: a cheap, early and strict filter."""
-    if Path(uploaded.name or "").suffix.lower() != ".pdf":
-        raise PdfInvalid("Solo se admiten archivos PDF (extensión .pdf).")
-    declared = (uploaded.content_type or "").split(";")[0].strip().lower()
-    if declared not in ACCEPTED_CONTENT_TYPES:
-        raise DomainError(
-            "El tipo de contenido del archivo no es PDF.",
-            code=ErrorCode.PDF_UNSUPPORTED,
-            details={"content_type": declared},
-        )
-
-
-def _stage(uploaded: Any, service: PdfService) -> Path:
-    """Copy the upload to ``tmp/uploads``; the caller owns the staged file."""
-    if uploaded.size > service.max_bytes:
-        raise PdfTooLarge(service.max_bytes)
-    staged = upload_tmp_path(uuid4())
-    with open_exclusive(staged) as handle:
-        for chunk in uploaded.chunks():
-            handle.write(chunk)
-    return staged
-
-
 def attach_draft_file(
     *, manuscript_id, user: User, uploaded: Any, context: dict
 ) -> DraftUpload:
     """Validate and store the draft PDF, replacing the previous one."""
-    _check_declared_file(uploaded)
+    check_declared_file(uploaded)
     service = PdfService()
 
-    staged = _stage(uploaded, service)
+    staged = stage_upload(uploaded, service)
     final: Path | None = None
     try:
         service.validate(staged)
