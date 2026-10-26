@@ -6,5 +6,6 @@
  */
 export const environment = {
   production: false,
-  apiBaseUrl: '/api/',
+  apiUrl: '/api/',
+  apiBaseUrl: '/api/'
 };
