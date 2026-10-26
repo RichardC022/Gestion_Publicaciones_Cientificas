@@ -35,7 +35,8 @@ const MESSAGES_BY_CODE: Readonly<Record<string, string>> = {
   AUTH_LOCKED: 'Credenciales bloqueadas temporalmente. Espere unos instantes e intente de nuevo.',
   FORBIDDEN: 'Acceso denegado: su rol no habilita esta sección.',
   NOT_FOUND: 'El recurso solicitado no existe o no está disponible.',
-  STATE_CONFLICT: 'La acción no es válida en el estado actual. Vuelva a cargar los datos e intente de nuevo.',
+  STATE_CONFLICT:
+    'La acción no es válida en el estado actual. Vuelva a cargar los datos e intente de nuevo.',
   VERSION_CONFLICT: 'Los datos cambiaron mientras los editaba. Vuelva a cargar e intente de nuevo.',
   ASSIGNMENT_CONFLICT: 'Ya existe una asignación activa. Vuelva a cargar los datos.',
   VERDICT_CONFLICT: 'Ya existe un veredicto registrado para esta versión.',
@@ -75,7 +76,9 @@ export function toApiError(error: unknown): ApiError {
     return error;
   }
 
-  if (!(error instanceof HttpErrorResponse)) {
+  // En el navegador una caída de red no es una respuesta del servidor: llega
+  // como `HttpErrorResponse` con `status` 0, sin envelope.
+  if (!(error instanceof HttpErrorResponse) || error.status === 0) {
     return {
       status: 0,
       code: 'NETWORK_ERROR',

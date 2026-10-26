@@ -71,6 +71,16 @@ export interface Manuscript {
   updated_at: string;
 }
 
+/**
+ * Eventos de la carga del PDF de borrador: el avance (`percent` es
+ * `null` si el navegador no conoce el total) y el resultado final.
+ * `replaced` es verdadero cuando sustituyó a un borrador anterior (`200`)
+ * y falso en la primera carga (`201`).
+ */
+export type DraftUploadEvent =
+  | { kind: 'progress'; percent: number | null }
+  | { kind: 'done'; draft: DraftFileSummary; replaced: boolean };
+
 /** Un manuscrito junto con su `ETag` vigente (bloqueo optimista). */
 export interface ManuscriptSnapshot {
   manuscript: Manuscript;

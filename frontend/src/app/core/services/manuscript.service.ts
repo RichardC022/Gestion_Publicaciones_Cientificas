@@ -1,10 +1,18 @@
-import { HttpClient, HttpParams, HttpResponse } from '@angular/common/http';
+import {
+  HttpClient,
+  HttpEvent,
+  HttpEventType,
+  HttpParams,
+  HttpResponse,
+} from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { Observable, catchError, map, throwError } from 'rxjs';
+import { Observable, catchError, filter, map, throwError } from 'rxjs';
 
 import { API_BASE_URL } from '../http/api-base-url.token';
 import { toApiError } from '../models/api-error.model';
 import {
+  DraftFileSummary,
+  DraftUploadEvent,
   Manuscript,
   ManuscriptListParams,
   ManuscriptPayload,
@@ -67,6 +75,45 @@ export class ManuscriptService {
         catchError((error) => throwError(() => toApiError(error))),
       );
   }
+
+  /**
+   * Adjunta o reemplaza el PDF de borrador (`POST .../draft-file/`).
+   *
+   * Emite el avance de la carga y, al terminar, el resumen del archivo
+   * (`201` primera carga, `200` reemplazo). Cancelar la suscripción
+   * aborta la solicitud. No crea versión, ronda ni instantánea.
+   *
+   * No se fija `Content-Type`: el navegador lo completa con el límite
+   * (`boundary`) del `multipart/form-data`.
+   */
+  uploadDraft(id: string, file: File): Observable<DraftUploadEvent> {
+    const body = new FormData();
+    body.append('file', file, file.name);
+    return this.http
+      .post<DraftFileSummary>(`${this.url}${id}/draft-file/`, body, {
+        observe: 'events',
+        reportProgress: true,
+      })
+      .pipe(
+        map(toUploadEvent),
+        filter((event): event is DraftUploadEvent => event !== null),
+        catchError((error) => throwError(() => toApiError(error))),
+      );
+  }
+}
+
+/** Solo interesan el avance y la respuesta final; el resto de eventos se descarta. */
+function toUploadEvent(event: HttpEvent<DraftFileSummary>): DraftUploadEvent | null {
+  if (event.type === HttpEventType.UploadProgress) {
+    const percent = event.total
+      ? Math.min(100, Math.round((event.loaded / event.total) * 100))
+      : null;
+    return { kind: 'progress', percent };
+  }
+  if (event.type === HttpEventType.Response) {
+    return { kind: 'done', draft: event.body as DraftFileSummary, replaced: event.status === 200 };
+  }
+  return null;
 }
 
 function toSnapshot(response: HttpResponse<Manuscript>): ManuscriptSnapshot {
