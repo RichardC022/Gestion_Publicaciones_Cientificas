@@ -24,44 +24,22 @@ from apps.publications.models import (
     ManuscriptVersion,
     StatusEvent,
 )
-from tests.factories import UserFactory
+from tests.factories import ManuscriptFactory, ManuscriptVersionFactory, UserFactory
 
 CODE_FORMAT = re.compile(r"^GPC-\d{4}-\d{6}$")
 SHA = "a" * 64
 
 
 def make_manuscript(owner, **overrides) -> Manuscript:
-    """Create a draft manuscript with defaults."""
-    payload = {
-        "title": "Efecto del clima en cultivos andinos",
-        "abstract": "Resumen del estudio.",
-        "keywords": ["clima", "cultivos"],
-        "area": "Agronomía",
-        "language": "es",
-        "created_by": owner,
-    }
-    payload.update(overrides)
-    return Manuscript.objects.create(**payload)
+    """Create a draft manuscript with the factory defaults."""
+    return ManuscriptFactory(created_by=owner, **overrides)
 
 
 def make_version(manuscript, submitted_by, **overrides) -> ManuscriptVersion:
     """Create a formal version with valid hashes and snapshot."""
-    payload = {
-        "manuscript": manuscript,
-        "version_number": 1,
-        "round_number": 0,
-        "original_file_path": "private/manuscripts/m/v1/original.pdf",
-        "original_filename": "articulo.pdf",
-        "original_size_bytes": 1024,
-        "original_sha256": SHA,
-        "sanitized_file_path": "private/manuscripts/m/v1/sanitized.pdf",
-        "sanitized_sha256": SHA,
-        "metadata_snapshot": {"title": manuscript.title},
-        "metadata_sha256": SHA,
-        "submitted_by": submitted_by,
-    }
-    payload.update(overrides)
-    return ManuscriptVersion.objects.create(**payload)
+    return ManuscriptVersionFactory(
+        manuscript=manuscript, submitted_by=submitted_by, **overrides
+    )
 
 
 @pytest.fixture

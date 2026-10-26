@@ -36,7 +36,7 @@ from apps.publications.models import (
     StatusEvent,
 )
 from apps.publications.serializers import AuthorEvaluationFeedbackSerializer
-from tests.factories import UserFactory, UserRoleFactory
+from tests.factories import ManuscriptAuthorFactory, UserFactory, UserRoleFactory
 from tests.publications.test_models import make_manuscript
 
 pytestmark = pytest.mark.django_db
@@ -107,7 +107,7 @@ def post_draft(user, **overrides):
 def owned_manuscript(owner, **overrides) -> Manuscript:
     """Manuscript registered by ``owner`` with the owner as author."""
     manuscript = make_manuscript(owner, **overrides)
-    ManuscriptAuthor.objects.create(
+    ManuscriptAuthorFactory(
         manuscript=manuscript,
         user=owner,
         full_name=owner.get_full_name(),
