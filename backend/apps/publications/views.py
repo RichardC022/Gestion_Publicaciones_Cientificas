@@ -14,6 +14,7 @@ A manuscript outside the actor's scope answers ``404``, never ``403``.
 
 from __future__ import annotations
 
+import json
 import re
 
 from django.http import HttpResponse
@@ -22,6 +23,7 @@ from rest_framework import status
 from rest_framework.generics import GenericAPIView
 from rest_framework.parsers import MultiPartParser
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.renderers import JSONRenderer
 from rest_framework.request import Request
 from rest_framework.response import Response
 
@@ -40,11 +42,18 @@ from apps.publications.serializers import (
 from apps.publications.services.downloads import authorize_original_download, xaccel_response
 from apps.publications.services.drafts import attach_draft_file, ensure_draft
 from apps.publications.services.history import build_history
+from apps.publications.services.idempotency import (
+    IdempotencyScope,
+    IdempotentReplay,
+    StoredResponse,
+    request_hash,
+)
 from apps.publications.services.manuscripts import (
     create_manuscript,
     ensure_editable,
     update_manuscript,
 )
+from apps.publications.services.pdf import sha256_of_chunks
 from apps.publications.services.submission import ALREADY_SUBMITTED_MESSAGE, submit_manuscript
 from apps.publications.services.versions import ensure_requires_corrections, submit_new_version
 from apps.publications.services.withdraw import ensure_active, withdraw_manuscript
@@ -84,6 +93,19 @@ def parse_idempotency_key(request: Request) -> str:
     return key
 
 
+def render_submission(submission) -> tuple[int, dict]:
+    """``(status, body)`` of a created submission; the body is what gets stored."""
+    data = SubmissionSerializer(submission).data
+    return status.HTTP_201_CREATED, json.loads(JSONRenderer().render(data))
+
+
+def replayed(stored: StoredResponse) -> Response:
+    """The answer given the first time, flagged as a replay."""
+    response = Response(stored.body, status=stored.status)
+    response["Idempotent-Replayed"] = "true"
+    return response
+
+
 def uploaded_pdf(request: Request):
     """The file of the ``file`` field of a multipart request (``415`` otherwise)."""
     uploaded = request.data.get("file")
@@ -108,6 +130,22 @@ class ManuscriptBaseView(GenericAPIView):
             )
             .select_related("created_by")
             .prefetch_related("authors", "versions")
+        )
+
+    def idempotency_scope(self, request: Request, request_hash_of) -> IdempotencyScope | None:
+        """The scope of the request's ``Idempotency-Key``; ``None`` if it sent none.
+
+        A malformed key is a ``400`` right away. An absent key is left for
+        the caller to reject once the state is known (``409`` before ``400``).
+        """
+        if not (request.headers.get("Idempotency-Key") or "").strip():
+            return None
+        return IdempotencyScope(
+            user=request.user,
+            endpoint=f"{request.method} {request.path}",
+            key=parse_idempotency_key(request),
+            request_hash=request_hash_of,
+            render=render_submission,
         )
 
     def get_manuscript(self, pk) -> Manuscript:
@@ -221,8 +259,9 @@ class ManuscriptSubmitView(ManuscriptBaseView):
 
     Only the owner, only from ``DRAFT``. It creates exactly ``v1`` and
     round 0, freezes the metadata and answers ``201`` with the tracking
-    code and the integrity seal. A repeated request answers ``409`` and
-    creates nothing: the submission was already registered.
+    code and the integrity seal. ``Idempotency-Key`` is mandatory: the
+    same key repeats the stored answer, a new key on an already
+    submitted manuscript answers ``409``; nothing is ever created twice.
     """
 
     def get_permissions(self):
@@ -230,14 +269,26 @@ class ManuscriptSubmitView(ManuscriptBaseView):
 
     def post(self, request: Request, pk) -> Response:
         manuscript = self.get_manuscript(pk)
-        ensure_draft(manuscript, ALREADY_SUBMITTED_MESSAGE)
+        # Un reintento de un envío ya registrado devuelve su respuesta, no un 409.
+        scope = self.idempotency_scope(request, lambda: request_hash(str(manuscript.pk)))
+        if scope is not None and (stored := scope.find()) is not None:
+            return replayed(stored)
 
-        submission = submit_manuscript(
-            manuscript_id=manuscript.pk,
-            user=request.user,
-            context=audit_request_context(request),
-        )
-        response = Response(SubmissionSerializer(submission).data, status=status.HTTP_201_CREATED)
+        ensure_draft(manuscript, ALREADY_SUBMITTED_MESSAGE)
+        idempotency_key = parse_idempotency_key(request)
+
+        try:
+            submission = submit_manuscript(
+                manuscript_id=manuscript.pk,
+                user=request.user,
+                idempotency_key=idempotency_key,
+                context=audit_request_context(request),
+                idempotency=scope,
+            )
+        except IdempotentReplay as replay:
+            return replayed(replay.stored)
+        status_code, body = render_submission(submission)
+        response = Response(body, status=status_code)
         response["ETag"] = etag_for(submission.manuscript)
         return response
 
@@ -252,7 +303,9 @@ class ManuscriptVersionsView(ManuscriptBaseView):
     in the multipart ``file`` field and the metadata is the manuscript's
     current one (edited with ``PATCH``). It creates the next consecutive
     version, ties it to the current round and keeps every previous
-    version intact. ``Idempotency-Key`` is mandatory.
+    version intact. ``Idempotency-Key`` is mandatory and idempotent: the same
+    key with the same PDF repeats the stored answer; with another PDF it is
+    a ``409``.
     """
 
     parser_classes = [MultiPartParser]
@@ -272,19 +325,35 @@ class ManuscriptVersionsView(ManuscriptBaseView):
 
     def post(self, request: Request, pk) -> Response:
         manuscript = self.get_manuscript(pk)
+        # Un reintento de una versión ya registrada devuelve su respuesta; el
+        # hash identifica la solicitud por el manuscrito y el PDF enviado.
+        scope = self.idempotency_scope(
+            request,
+            lambda: request_hash(
+                str(manuscript.pk), sha256_of_chunks(uploaded_pdf(request).chunks())
+            ),
+        )
+        if scope is not None and (stored := scope.find()) is not None:
+            return replayed(stored)
+
         # Estado y cabecera antes de leer el cuerpo (409/400 antes que 415).
         ensure_requires_corrections(manuscript)
         idempotency_key = parse_idempotency_key(request)
         uploaded = uploaded_pdf(request)
 
-        submission = submit_new_version(
-            manuscript_id=manuscript.pk,
-            user=request.user,
-            uploaded=uploaded,
-            idempotency_key=idempotency_key,
-            context=audit_request_context(request),
-        )
-        response = Response(SubmissionSerializer(submission).data, status=status.HTTP_201_CREATED)
+        try:
+            submission = submit_new_version(
+                manuscript_id=manuscript.pk,
+                user=request.user,
+                uploaded=uploaded,
+                idempotency_key=idempotency_key,
+                context=audit_request_context(request),
+                idempotency=scope,
+            )
+        except IdempotentReplay as replay:
+            return replayed(replay.stored)
+        status_code, body = render_submission(submission)
+        response = Response(body, status=status_code)
         response["ETag"] = etag_for(submission.manuscript)
         return response
 

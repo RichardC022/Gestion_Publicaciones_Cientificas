@@ -42,6 +42,7 @@ from apps.publications.models import (
     ManuscriptVersion,
     StatusEvent,
 )
+from apps.publications.services.idempotency import IdempotencyScope, IdempotentReplay
 from apps.publications.services.manuscripts import missing_metadata
 from apps.publications.services.pdf import PdfService, sha256_of_file
 from apps.publications.services.snapshot import (
@@ -143,12 +144,26 @@ def run_formal_write(
     user: User,
     context: dict,
     work: Callable[[Rollback], T],
+    idempotency: IdempotencyScope | None = None,
 ) -> T:
-    """Run ``work`` in one transaction with the all-or-nothing guarantee."""
+    """Run ``work`` in one transaction with the all-or-nothing guarantee.
+
+    With an ``idempotency`` scope, the key is checked first (under its
+    advisory lock) and stored last, in the same transaction: a repeated
+    request leaves it by raising :class:`IdempotentReplay`, and the key
+    exists only if the whole operation committed.
+    """
     rollback = Rollback()
     try:
         with transaction.atomic():
-            return work(rollback)
+            if idempotency is not None:
+                stored = idempotency.lock_and_find()
+                if stored is not None:
+                    raise IdempotentReplay(stored)
+            result = work(rollback)
+            if idempotency is not None:
+                idempotency.store_result(result)
+            return result
     except AuditUnavailable as exc:
         rollback.discard()
         raise DomainError(AUDIT_UNAVAILABLE_MESSAGE, code=ErrorCode.AUDIT_UNAVAILABLE) from exc
@@ -239,6 +254,7 @@ def submit_new_version(
     uploaded: Any,
     idempotency_key: str,
     context: dict,
+    idempotency: IdempotencyScope | None = None,
 ) -> Submission:
     """Create the next version from the uploaded PDF and the current metadata."""
     check_declared_file(uploaded)
@@ -352,6 +368,7 @@ def submit_new_version(
             user=user,
             context=context,
             work=work,
+            idempotency=idempotency,
         )
     finally:
         remove_quietly(staged)

@@ -31,6 +31,7 @@ from apps.publications.models import (
     StatusEvent,
 )
 from apps.publications.services.drafts import ensure_draft
+from apps.publications.services.idempotency import IdempotencyScope
 from apps.publications.services.manuscripts import missing_metadata
 from apps.publications.services.pdf import PdfService
 from apps.publications.services.snapshot import build_metadata_snapshot, canonical_json
@@ -77,7 +78,14 @@ def _after_commit(manuscript_id: UUID, version_id: UUID, user_id: UUID, draft: P
             logger.error("Un receptor del envío falló (%s): %s", receiver, error)
 
 
-def submit_manuscript(*, manuscript_id: UUID, user: User, context: dict) -> Submission:
+def submit_manuscript(
+    *,
+    manuscript_id: UUID,
+    user: User,
+    idempotency_key: str,
+    context: dict,
+    idempotency: IdempotencyScope | None = None,
+) -> Submission:
     """Create ``v1`` and round 0 from the draft and move to ``SUBMITTED``."""
 
     def work(rollback: Rollback) -> Submission:
@@ -166,6 +174,7 @@ def submit_manuscript(*, manuscript_id: UUID, user: User, context: dict) -> Subm
                 "original_sha256": version.original_sha256,
                 "sanitized_sha256": version.sanitized_sha256,
                 "metadata_sha256": version.metadata_sha256,
+                "idempotency_key": idempotency_key,
             },
         )
 
@@ -180,4 +189,5 @@ def submit_manuscript(*, manuscript_id: UUID, user: User, context: dict) -> Subm
         user=user,
         context=context,
         work=work,
+        idempotency=idempotency,
     )
