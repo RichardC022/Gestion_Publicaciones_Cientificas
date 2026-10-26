@@ -81,6 +81,54 @@ export type DraftUploadEvent =
   | { kind: 'progress'; percent: number | null }
   | { kind: 'done'; draft: DraftFileSummary; replaced: boolean };
 
+/** Entradas del historial inmutable (`GET .../history/`, HU-23). */
+export interface StatusHistoryEntry {
+  type: 'CREATED' | 'STATUS_CHANGED' | 'WITHDRAWN';
+  occurred_at: string;
+  from_status: string | null;
+  to_status: string;
+  reason: string | null;
+  version_number: number | null;
+  round_number: number | null;
+}
+
+/** Una iteración formal: el PDF exacto y los sellos de integridad. */
+export interface VersionHistoryEntry {
+  type: 'VERSION_SUBMITTED';
+  occurred_at: string;
+  version_id: string;
+  version_number: number;
+  round_number: number;
+  original_filename: string;
+  original_size_bytes: number;
+  /** `sha256:<hex>` del PDF original. */
+  integrity_seal: string;
+  metadata_sha256: string;
+}
+
+export interface RoundHistoryEntry {
+  type: 'ROUND_OPENED';
+  occurred_at: string;
+  round_number: number;
+  closed_at: string | null;
+  closed_by_version_number: number | null;
+}
+
+export type HistoryEntry = StatusHistoryEntry | VersionHistoryEntry | RoundHistoryEntry;
+
+/** PDF descargado: el contenido y el nombre sugerido por el servidor. */
+export interface VersionDownload {
+  blob: Blob;
+  filename: string;
+}
+
+/** Estados en los que la baja lógica exige un motivo (CA-HU-08-02). */
+export const WITHDRAWAL_REASON_REQUIRED: readonly ManuscriptStatus[] = ['UNDER_REVIEW', 'ACCEPTED'];
+
+export function requiresWithdrawalReason(status: ManuscriptStatus): boolean {
+  return WITHDRAWAL_REASON_REQUIRED.includes(status);
+}
+
 /** Un manuscrito junto con su `ETag` vigente (bloqueo optimista). */
 export interface ManuscriptSnapshot {
   manuscript: Manuscript;

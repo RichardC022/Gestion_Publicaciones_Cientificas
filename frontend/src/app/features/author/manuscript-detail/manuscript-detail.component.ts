@@ -16,6 +16,7 @@ import { RoundCounterComponent } from '../../../shared/components/round-counter.
 import { StatusBadgeComponent } from '../../../shared/components/status-badge.component';
 import { FileSizePipe } from '../../../shared/pipes/file-size.pipe';
 import { PdfUploaderComponent } from '../pdf-uploader/pdf-uploader.component';
+import { WithdrawDialogComponent } from '../withdraw-dialog/withdraw-dialog.component';
 
 /** Fechas y horas se muestran en la zona institucional (UTC-5, sin horario de verano). */
 const INSTITUTIONAL_OFFSET = '-0500';
@@ -47,6 +48,7 @@ const INSTITUTIONAL_OFFSET = '-0500';
     RoundCounterComponent,
     FileSizePipe,
     PdfUploaderComponent,
+    WithdrawDialogComponent,
   ],
   template: `
     <section aria-labelledby="manuscript-detail-title">
@@ -111,6 +113,10 @@ const INSTITUTIONAL_OFFSET = '-0500';
           </section>
         }
 
+        @if (notice(); as message) {
+          <p class="callout callout--success" role="status">{{ message }}</p>
+        }
+
         <div class="actions">
           @if (editable()) {
             <a class="btn btn--primary" [routerLink]="['/app/author/manuscripts', m.id, 'edit']">
@@ -120,7 +126,22 @@ const INSTITUTIONAL_OFFSET = '-0500';
           <a class="btn btn--ghost" [routerLink]="['/app/author/manuscripts', m.id, 'history']">
             Historial de versiones
           </a>
+          @if (m.is_active) {
+            <button type="button" class="btn btn--danger" (click)="openWithdraw()">
+              Dar de baja
+            </button>
+          }
         </div>
+
+        <app-withdraw-dialog
+          [open]="withdrawOpen()"
+          [status]="m.status"
+          [manuscriptCode]="m.code"
+          [busy]="withdrawing()"
+          [error]="withdrawError()"
+          (confirmed)="confirmWithdraw($event)"
+          (cancelled)="cancelWithdraw()"
+        />
 
         <section class="card" aria-labelledby="metadata-title">
           <h2 id="metadata-title">Datos generales</h2>
@@ -230,6 +251,11 @@ const INSTITUTIONAL_OFFSET = '-0500';
       background: var(--gpc-primary-50);
       border-color: var(--gpc-primary-700);
     }
+    .callout--success {
+      background: var(--gpc-success-100);
+      border-color: var(--gpc-success-700);
+      color: var(--gpc-success-700);
+    }
     .callout--neutral {
       background: var(--gpc-surface);
       border-color: var(--gpc-border);
@@ -293,6 +319,11 @@ export class ManuscriptDetailComponent {
   protected readonly error = signal<ApiError | null>(null);
   protected readonly manuscript = signal<Manuscript | null>(null);
 
+  protected readonly withdrawOpen = signal(false);
+  protected readonly withdrawing = signal(false);
+  protected readonly withdrawError = signal('');
+  protected readonly notice = signal('');
+
   protected readonly editable = computed(() => {
     const manuscript = this.manuscript();
     return manuscript !== null && isEditable(manuscript);
@@ -317,6 +348,46 @@ export class ManuscriptDetailComponent {
     this.load();
   }
 
+  protected openWithdraw(): void {
+    this.withdrawError.set('');
+    this.notice.set('');
+    this.withdrawOpen.set(true);
+  }
+
+  protected cancelWithdraw(): void {
+    this.withdrawOpen.set(false);
+    this.withdrawError.set('');
+  }
+
+  /** Baja lógica: el servidor marca el manuscrito y conserva todo su historial. */
+  protected confirmWithdraw(reason: string | null): void {
+    if (this.withdrawing()) {
+      return;
+    }
+    this.withdrawing.set(true);
+    this.withdrawError.set('');
+    this.service.withdraw(this.id, reason).subscribe({
+      next: ({ manuscript }) => {
+        this.manuscript.set(manuscript);
+        this.withdrawing.set(false);
+        this.withdrawOpen.set(false);
+        this.notice.set(
+          'El manuscrito fue dado de baja. Su historial, sus versiones y su auditoría se conservan, y puede consultarlo en la vista de archivados.',
+        );
+      },
+      error: (error: ApiError) => {
+        this.withdrawing.set(false);
+        if (error.status === 409) {
+          // Ya estaba dado de baja o su estado cambió: se muestra el estado real.
+          this.withdrawOpen.set(false);
+          this.load();
+          return;
+        }
+        this.withdrawError.set(withdrawalMessage(error));
+      },
+    });
+  }
+
   /** El servidor ya guardó el PDF: se refleja sin recargar el manuscrito. */
   protected onDraftUploaded(draft: DraftFileSummary): void {
     this.manuscript.update((manuscript) =>
@@ -338,4 +409,11 @@ export class ManuscriptDetailComponent {
       },
     });
   }
+}
+
+/** El motivo faltante lo explica el servidor; el resto usa el mensaje accionable. */
+function withdrawalMessage(error: ApiError): string {
+  const details = error.details as { reason?: unknown } | null;
+  const reason = Array.isArray(details?.reason) ? details?.reason[0] : details?.reason;
+  return typeof reason === 'string' && reason ? reason : error.userMessage;
 }

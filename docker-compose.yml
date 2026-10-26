@@ -63,6 +63,13 @@ services:
         condition: service_healthy
     networks:
       - frontend_net
+  adminer:
+    image: adminer
+    restart: always
+    ports:
+      - "8080:8080"
+    networks:
+      - backend_net
 
 volumes:
   postgres_data:
