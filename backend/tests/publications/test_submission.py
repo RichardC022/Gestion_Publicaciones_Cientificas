@@ -34,7 +34,7 @@ from apps.publications.models import (
     ManuscriptVersion,
     StatusEvent,
 )
-from apps.publications.services import submission as submission_module
+from apps.publications.services import versions as versions_module
 from apps.publications.services.pdf import PdfInvalid, PdfService
 from apps.publications.services.snapshot import canonical_json, metadata_sha256
 from apps.publications.signals import manuscript_submitted
@@ -436,7 +436,7 @@ class TestRollback:
             destination.write_bytes(b"parcial")  # el directorio ya contiene un archivo
             raise OSError("No space left on device")
 
-        monkeypatch.setattr(submission_module, "copy_exclusive", disk_full)
+        monkeypatch.setattr(versions_module, "copy_exclusive", disk_full)
 
         response = submit(owner, manuscript)
 
@@ -449,14 +449,14 @@ class TestRollback:
 
     def test_a_retry_after_a_storage_failure_succeeds(self, owner, submit, media_root, monkeypatch) -> None:
         manuscript = ready_draft(owner)
-        real_copy = submission_module.copy_exclusive
+        real_copy = versions_module.copy_exclusive
 
         def disk_full(source, destination):
             raise OSError("No space left on device")
 
-        monkeypatch.setattr(submission_module, "copy_exclusive", disk_full)
+        monkeypatch.setattr(versions_module, "copy_exclusive", disk_full)
         assert submit(owner, manuscript).status_code == 503
-        monkeypatch.setattr(submission_module, "copy_exclusive", real_copy)
+        monkeypatch.setattr(versions_module, "copy_exclusive", real_copy)
 
         assert submit(owner, manuscript).status_code == 201
 

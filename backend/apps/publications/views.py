@@ -40,12 +40,14 @@ from apps.publications.services.manuscripts import (
     update_manuscript,
 )
 from apps.publications.services.submission import ALREADY_SUBMITTED_MESSAGE, submit_manuscript
+from apps.publications.services.versions import ensure_requires_corrections, submit_new_version
 from apps.users.models import Role
 from apps.users.permissions import IsAuthor, IsEditor, request_active_roles
 from config.exceptions import DomainError, ErrorCode
 from config.request_context import audit_request_context
 
 _IF_MATCH_PATTERN = re.compile(r'^(?:W/)?"?(\d+)"?$')
+_IDEMPOTENCY_KEY_PATTERN = re.compile(r"^[A-Za-z0-9._:\-]{1,100}$")
 
 
 def etag_for(manuscript: Manuscript) -> str:
@@ -62,6 +64,28 @@ def parse_if_match(request: Request) -> int:
             code=ErrorCode.VALIDATION_ERROR,
         )
     return int(match.group(1))
+
+
+def parse_idempotency_key(request: Request) -> str:
+    """The client-chosen key that makes a retried POST safe; mandatory."""
+    key = (request.headers.get("Idempotency-Key") or "").strip()
+    if not _IDEMPOTENCY_KEY_PATTERN.match(key):
+        raise DomainError(
+            "Envíe la cabecera Idempotency-Key (1 a 100 caracteres: letras, números, . _ : -).",
+            code=ErrorCode.VALIDATION_ERROR,
+        )
+    return key
+
+
+def uploaded_pdf(request: Request):
+    """The file of the ``file`` field of a multipart request (``415`` otherwise)."""
+    uploaded = request.data.get("file")
+    if uploaded is None or not hasattr(uploaded, "chunks"):
+        raise DomainError(
+            "Adjunte el archivo PDF en el campo 'file' de la solicitud multipart.",
+            code=ErrorCode.VALIDATION_ERROR,
+        )
+    return uploaded
 
 
 class ManuscriptBaseView(GenericAPIView):
@@ -171,12 +195,7 @@ class ManuscriptDraftFileView(ManuscriptBaseView):
         # El estado se revisa antes de leer el cuerpo (409 antes que 415/400).
         ensure_draft(manuscript)
 
-        uploaded = request.data.get("file")
-        if uploaded is None or not hasattr(uploaded, "chunks"):
-            raise DomainError(
-                "Adjunte el archivo PDF en el campo 'file' de la solicitud multipart.",
-                code=ErrorCode.VALIDATION_ERROR,
-            )
+        uploaded = uploaded_pdf(request)
 
         result = attach_draft_file(
             manuscript_id=manuscript.pk,
@@ -209,6 +228,40 @@ class ManuscriptSubmitView(ManuscriptBaseView):
         submission = submit_manuscript(
             manuscript_id=manuscript.pk,
             user=request.user,
+            context=audit_request_context(request),
+        )
+        response = Response(SubmissionSerializer(submission).data, status=status.HTTP_201_CREATED)
+        response["ETag"] = etag_for(submission.manuscript)
+        return response
+
+
+class ManuscriptVersionsView(ManuscriptBaseView):
+    """``POST /api/manuscripts/{id}/versions/``: answer a correction request.
+
+    Only the owner, only from ``REQUIRES_CORRECTIONS``. The PDF travels
+    in the multipart ``file`` field and the metadata is the manuscript's
+    current one (edited with ``PATCH``). It creates the next consecutive
+    version, ties it to the current round and keeps every previous
+    version intact. ``Idempotency-Key`` is mandatory.
+    """
+
+    parser_classes = [MultiPartParser]
+
+    def get_permissions(self):
+        return [IsAuthenticated(), IsAuthor(), IsManuscriptOwner()]
+
+    def post(self, request: Request, pk) -> Response:
+        manuscript = self.get_manuscript(pk)
+        # Estado y cabecera antes de leer el cuerpo (409/400 antes que 415).
+        ensure_requires_corrections(manuscript)
+        idempotency_key = parse_idempotency_key(request)
+        uploaded = uploaded_pdf(request)
+
+        submission = submit_new_version(
+            manuscript_id=manuscript.pk,
+            user=request.user,
+            uploaded=uploaded,
+            idempotency_key=idempotency_key,
             context=audit_request_context(request),
         )
         response = Response(SubmissionSerializer(submission).data, status=status.HTTP_201_CREATED)

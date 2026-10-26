@@ -81,6 +81,29 @@ def validate_author_roster(
         )
 
 
+REQUIRED_MESSAGE = "Este campo es obligatorio."
+
+
+def missing_metadata(manuscript: Manuscript) -> dict[str, list[str]]:
+    """Every metadata field that blocks a formal submission, keyed by field.
+
+    Required metadata must not be blank, and the author list must keep
+    its rules (CA-HU-04-02 and CA-HU-04-05).
+    """
+    errors: dict[str, list[str]] = {}
+    for field in REQUIRED_METADATA:
+        value = getattr(manuscript, field)
+        if not (value.strip() if isinstance(value, str) else value):
+            errors[field] = [REQUIRED_MESSAGE]
+
+    roster = list(manuscript.authors.values_list("email", "is_corresponding"))
+    try:
+        validate_author_roster(roster, manuscript.created_by.email)
+    except ValueError as exc:
+        errors["authors"] = [str(exc)]
+    return errors
+
+
 def _accounts_by_email(emails: list[str]) -> dict[str, User]:
     """Institutional accounts that match the authors' emails (case-insensitive).
 
