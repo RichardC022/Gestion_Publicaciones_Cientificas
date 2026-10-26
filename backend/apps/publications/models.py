@@ -460,3 +460,50 @@ class StatusEvent(AppendOnlyModel):
 
     def __str__(self) -> str:
         return f"{self.manuscript_id}: {self.from_status} → {self.to_status}"
+
+
+class IdempotencyKey(models.Model):
+    """Stored answer of an idempotent ``POST`` (plan section 2.11).
+
+    A client-chosen ``Idempotency-Key`` makes a retried request safe: the
+    same key with the same request returns the stored answer without
+    repeating its effects, and the same key with a different request is a
+    conflict. A key belongs to one user and one endpoint, and expires 24
+    hours after it was stored. Only successful answers are stored, so a
+    failed attempt never consumes its key.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="idempotency_keys",
+    )
+    # Método y ruta de la solicitud: "POST /api/manuscripts/<uuid>/submit/".
+    endpoint = models.CharField(max_length=120)
+    key = models.CharField(max_length=100)
+    request_hash = models.CharField(max_length=SHA256_HEX_LENGTH)
+    response_status = models.SmallIntegerField()
+    response_body = models.JSONField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+
+    class Meta:
+        db_table = "publications_idempotency_key"
+        constraints = [
+            models.UniqueConstraint(
+                fields=("user", "endpoint", "key"),
+                name="uq_idempotency_user_endpoint_key",
+            ),
+            models.CheckConstraint(
+                condition=Q(Exact(Length("request_hash"), SHA256_HEX_LENGTH)),
+                name="ck_idempotency_request_hash",
+            ),
+        ]
+        indexes = [
+            # La limpieza diaria borra por vencimiento.
+            models.Index(fields=("expires_at",), name="idx_idempotency_expires"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.endpoint} · {self.key}"

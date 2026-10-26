@@ -19,6 +19,7 @@ from __future__ import annotations
 import hashlib
 import json
 import stat
+from uuid import uuid4
 
 import pikepdf
 import pytest
@@ -68,9 +69,14 @@ def media_root(settings, tmp_path):
 def submit(django_capture_on_commit_callbacks):
     """Submit through the API, running the after-commit callbacks."""
 
-    def run(user, manuscript):
+    def run(user, manuscript, key: str | None = None):
+        # Cada intento usa una clave nueva salvo que la prueba fije una.
         with django_capture_on_commit_callbacks(execute=True):
-            return client_for(user).post(submit_url(manuscript), format="json")
+            return client_for(user).post(
+                submit_url(manuscript),
+                format="json",
+                HTTP_IDEMPOTENCY_KEY=key or uuid4().hex,
+            )
 
     return run
 
@@ -221,7 +227,9 @@ class TestStoredFiles:
         draft_path = media_root / "private" / manuscript.draft_file_path
 
         with django_capture_on_commit_callbacks(execute=False):
-            client_for(owner).post(submit_url(manuscript), format="json")
+            client_for(owner).post(
+                submit_url(manuscript), format="json", HTTP_IDEMPOTENCY_KEY="clave-copia"
+            )
 
         original = version_dir_of(media_root, manuscript) / "original.pdf"
         assert original.stat().st_ino != draft_path.stat().st_ino
@@ -287,7 +295,7 @@ class TestAudit:
     def test_submission_is_audited_with_hashes_and_no_file_name(self, owner, submit) -> None:
         manuscript = ready_draft(owner, name="Ana Lopez - confidencial.pdf")
 
-        submit(owner, manuscript)
+        submit(owner, manuscript, key="clave-auditada")
 
         audit = AuditLog.objects.get(action="MANUSCRIPT_SUBMITTED")
         version = ManuscriptVersion.objects.get(manuscript=manuscript)
@@ -300,6 +308,7 @@ class TestAudit:
             "original_sha256": version.original_sha256,
             "sanitized_sha256": version.sanitized_sha256,
             "metadata_sha256": version.metadata_sha256,
+            "idempotency_key": "clave-auditada",
         }
         assert "Ana" not in str(audit.details) and "confidencial" not in str(audit.details)
 
@@ -338,7 +347,10 @@ class TestAfterCommit:
         manuscript_submitted.connect(listener, dispatch_uid="early")
         try:
             with django_capture_on_commit_callbacks(execute=False) as callbacks:
-                assert client_for(owner).post(submit_url(manuscript), format="json").status_code == 201
+                response = client_for(owner).post(
+                    submit_url(manuscript), format="json", HTTP_IDEMPOTENCY_KEY="clave-commit"
+                )
+                assert response.status_code == 201
 
             assert len(callbacks) == 1 and received == [] and draft_path.exists()
             callbacks[0]()

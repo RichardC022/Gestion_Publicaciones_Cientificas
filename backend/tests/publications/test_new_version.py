@@ -279,11 +279,11 @@ class TestIdempotencyKey:
     def test_usual_keys_are_accepted(self, owner, corrected, send, key) -> None:
         assert send(owner, corrected, key=key).status_code == 201
 
-    def test_repeating_the_same_key_never_duplicates_the_version(self, owner, corrected, send, media_root) -> None:
-        first = send(owner, corrected, key="misma-clave")
+    def test_a_new_attempt_with_another_key_after_success_answers_409(self, owner, corrected, send, media_root) -> None:
+        first = send(owner, corrected, key="primera-clave")
         digest = tree_digest(version_dir_of(media_root, corrected, 2))
 
-        second = send(owner, corrected, key="misma-clave")
+        second = send(owner, corrected, key="otra-clave")
 
         assert first.status_code == 201
         assert second.status_code == 409 and error_code(second) == "STATE_CONFLICT"
