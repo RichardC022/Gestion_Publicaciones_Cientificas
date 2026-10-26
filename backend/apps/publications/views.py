@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import re
 
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.generics import GenericAPIView
@@ -25,16 +26,20 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 
 from apps.publications.filters import apply_filters
-from apps.publications.models import Manuscript
+from apps.publications.models import Manuscript, ManuscriptVersion
 from apps.publications.permissions import IsManuscriptOwner
 from apps.publications.serializers import (
     AuthorManuscriptSerializer,
+    HistoryEntrySerializer,
+    ManuscriptVersionSummarySerializer,
     SubmissionSerializer,
     WithdrawalSerializer,
     draft_file_summary,
     manuscript_serializer_class,
 )
+from apps.publications.services.downloads import authorize_original_download, xaccel_response
 from apps.publications.services.drafts import attach_draft_file, ensure_draft
+from apps.publications.services.history import build_history
 from apps.publications.services.manuscripts import (
     create_manuscript,
     ensure_editable,
@@ -238,7 +243,10 @@ class ManuscriptSubmitView(ManuscriptBaseView):
 
 
 class ManuscriptVersionsView(ManuscriptBaseView):
-    """``POST /api/manuscripts/{id}/versions/``: answer a correction request.
+    """``/api/manuscripts/{id}/versions/``: list the iterations or answer a correction request.
+
+    ``GET`` lists the versions for the author (own) and the editor
+    (scope). ``POST`` is the answer to a correction request:
 
     Only the owner, only from ``REQUIRES_CORRECTIONS``. The PDF travels
     in the multipart ``file`` field and the metadata is the manuscript's
@@ -250,7 +258,17 @@ class ManuscriptVersionsView(ManuscriptBaseView):
     parser_classes = [MultiPartParser]
 
     def get_permissions(self):
+        if self.request.method == "GET":
+            return [IsAuthenticated(), (IsAuthor | IsEditor)()]
         return [IsAuthenticated(), IsAuthor(), IsManuscriptOwner()]
+
+    def get(self, request: Request, pk) -> Response:
+        """``GET``: the iterations of a manuscript in scope, oldest first."""
+        manuscript = self.get_manuscript(pk)
+        page = self.paginate_queryset(list(manuscript.versions.all()))
+        return self.get_paginated_response(
+            ManuscriptVersionSummarySerializer(page, many=True).data
+        )
 
     def post(self, request: Request, pk) -> Response:
         manuscript = self.get_manuscript(pk)
@@ -297,3 +315,46 @@ class ManuscriptWithdrawView(ManuscriptBaseView):
             context=audit_request_context(request),
         )
         return self.respond(withdrawn)
+
+
+class ManuscriptVersionFileView(ManuscriptBaseView):
+    """``GET /api/manuscripts/{id}/versions/{version_id}/file/``: the exact original PDF.
+
+    For the owning author and the editor in scope. A manuscript or
+    version outside the scope answers ``404``. The download is audited
+    first; if the audit fails the answer is ``503`` without redirect.
+    The reviewer never reaches this endpoint: they have their own, which
+    serves the sanitized copy.
+    """
+
+    def get_permissions(self):
+        return [IsAuthenticated(), (IsAuthor | IsEditor)()]
+
+    def get(self, request: Request, pk, version_id) -> HttpResponse:
+        manuscript = self.get_manuscript(pk)
+        version = get_object_or_404(ManuscriptVersion, pk=version_id, manuscript=manuscript)
+
+        internal_uri = authorize_original_download(
+            manuscript=manuscript,
+            version=version,
+            user=request.user,
+            context=audit_request_context(request),
+        )
+        return xaccel_response(internal_uri, f"{manuscript.code}-v{version.version_number}.pdf")
+
+
+class ManuscriptHistoryView(ManuscriptBaseView):
+    """``GET /api/manuscripts/{id}/history/``: the immutable chronological history.
+
+    Available to the owning author and the editor in scope, also after a
+    logical withdrawal (HU-23). It carries no actor, path or file hash
+    of the sanitized copy.
+    """
+
+    def get_permissions(self):
+        return [IsAuthenticated(), (IsAuthor | IsEditor)()]
+
+    def get(self, request: Request, pk) -> Response:
+        manuscript = self.get_manuscript(pk)
+        page = self.paginate_queryset(build_history(manuscript))
+        return self.get_paginated_response(HistoryEntrySerializer(page, many=True).data)

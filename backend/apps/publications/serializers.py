@@ -16,6 +16,7 @@ serializers, never on one serializer with conditional ``exclude``:
 from __future__ import annotations
 
 import re
+from datetime import datetime
 
 from rest_framework import serializers
 
@@ -231,3 +232,14 @@ class WithdrawalSerializer(serializers.Serializer):
     reason = serializers.CharField(
         required=False, allow_blank=True, allow_null=True, max_length=2000
     )
+
+
+class HistoryEntrySerializer(serializers.BaseSerializer):
+    """One entry of the history; timestamps use the API's datetime format."""
+
+    def to_representation(self, entry: dict) -> dict:
+        formatter = serializers.DateTimeField()
+        return {
+            key: formatter.to_representation(value) if isinstance(value, datetime) else value
+            for key, value in entry.items()
+        }

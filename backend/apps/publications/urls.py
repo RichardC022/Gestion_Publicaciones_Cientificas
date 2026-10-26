@@ -5,8 +5,10 @@ from django.urls import path
 from apps.publications.views import (
     ManuscriptDetailView,
     ManuscriptDraftFileView,
+    ManuscriptHistoryView,
     ManuscriptListCreateView,
     ManuscriptSubmitView,
+    ManuscriptVersionFileView,
     ManuscriptVersionsView,
     ManuscriptWithdrawView,
 )
@@ -28,6 +30,16 @@ urlpatterns = [
         "<uuid:pk>/versions/",
         ManuscriptVersionsView.as_view(),
         name="manuscript-versions",
+    ),
+    path(
+        "<uuid:pk>/versions/<uuid:version_id>/file/",
+        ManuscriptVersionFileView.as_view(),
+        name="manuscript-version-file",
+    ),
+    path(
+        "<uuid:pk>/history/",
+        ManuscriptHistoryView.as_view(),
+        name="manuscript-history",
     ),
     path(
         "<uuid:pk>/withdraw/",
