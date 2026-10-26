@@ -13,3 +13,4 @@ nginx/certs/*.crt
 *.dump
 media.tar.gz
 SHA256SUMS
+/.claude/
