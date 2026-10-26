@@ -45,6 +45,20 @@ describe('toApiError', () => {
     expect(isApiError(original)).toBe(true);
   });
 
+  it('una caída de conexión del navegador (HttpErrorResponse con status 0) es un fallo de red, no del servidor', () => {
+    const apiError = toApiError(
+      new HttpErrorResponse({
+        status: 0,
+        statusText: 'Unknown Error',
+        error: new ProgressEvent('error'),
+      }),
+    );
+
+    expect(apiError.status).toBe(0);
+    expect(apiError.code).toBe('NETWORK_ERROR');
+    expect(apiError.userMessage).toContain('No fue posible conectar');
+  });
+
   it('la falla de red sigue siendo el mensaje de conexión', () => {
     const apiError = toApiError(new Error('simulated network failure'));
 

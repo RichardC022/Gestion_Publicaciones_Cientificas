@@ -1,4 +1,4 @@
-import { provideHttpClient } from '@angular/common/http';
+import { HttpEventType, provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 
@@ -9,6 +9,7 @@ import {
 } from '../../features/author/testing/manuscript.fixtures';
 import { API_BASE_URL } from '../http/api-base-url.token';
 import { ApiError } from '../models/api-error.model';
+import { DraftUploadEvent } from '../models/manuscript.model';
 import { ManuscriptPayload } from '../models/manuscript.model';
 import { ManuscriptService } from './manuscript.service';
 
@@ -188,6 +189,105 @@ describe('ManuscriptService', () => {
         });
 
       expect(error?.code).toBe('VERSION_CONFLICT');
+    });
+  });
+
+  describe('uploadDraft', () => {
+    const FILE = new File(['%PDF-1.7 contenido'], 'articulo.pdf', { type: 'application/pdf' });
+    const SUMMARY = {
+      filename: 'articulo.pdf',
+      size_bytes: 18,
+      uploaded_at: '2026-10-25T12:00:00Z',
+    };
+
+    it('envía el archivo en el campo «file» de un multipart sin fijar Content-Type', () => {
+      service.uploadDraft('m-1', FILE).subscribe();
+
+      const request = http.expectOne('/api/manuscripts/m-1/draft-file/');
+      expect(request.request.method).toBe('POST');
+      expect(request.request.reportProgress).toBe(true);
+      const body = request.request.body as FormData;
+      expect(body).toBeInstanceOf(FormData);
+      expect((body.get('file') as File).name).toBe('articulo.pdf');
+      // El navegador añade el boundary; fijarlo a mano rompería el multipart.
+      expect(request.request.headers.has('Content-Type')).toBe(false);
+      request.flush(SUMMARY, { status: 201, statusText: 'Created' });
+    });
+
+    it('emite el avance en porcentaje y luego el resultado', () => {
+      const events: DraftUploadEvent[] = [];
+      service.uploadDraft('m-1', FILE).subscribe((event) => events.push(event));
+
+      const request = http.expectOne('/api/manuscripts/m-1/draft-file/');
+      request.event({ type: HttpEventType.Sent });
+      request.event({ type: HttpEventType.UploadProgress, loaded: 50, total: 200 });
+      request.event({ type: HttpEventType.UploadProgress, loaded: 200, total: 200 });
+      request.flush(SUMMARY, { status: 201, statusText: 'Created' });
+
+      expect(events).toEqual([
+        { kind: 'progress', percent: 25 },
+        { kind: 'progress', percent: 100 },
+        { kind: 'done', draft: SUMMARY, replaced: false },
+      ]);
+    });
+
+    it('si el navegador no conoce el total, el avance es nulo', () => {
+      const events: DraftUploadEvent[] = [];
+      service.uploadDraft('m-1', FILE).subscribe((event) => events.push(event));
+
+      const request = http.expectOne('/api/manuscripts/m-1/draft-file/');
+      request.event({ type: HttpEventType.UploadProgress, loaded: 50 });
+      request.flush(SUMMARY, { status: 201, statusText: 'Created' });
+
+      expect(events[0]).toEqual({ kind: 'progress', percent: null });
+    });
+
+    it('el avance nunca supera el 100 %', () => {
+      const events: DraftUploadEvent[] = [];
+      service.uploadDraft('m-1', FILE).subscribe((event) => events.push(event));
+
+      const request = http.expectOne('/api/manuscripts/m-1/draft-file/');
+      request.event({ type: HttpEventType.UploadProgress, loaded: 300, total: 200 });
+      request.flush(SUMMARY, { status: 201, statusText: 'Created' });
+
+      expect(events[0]).toEqual({ kind: 'progress', percent: 100 });
+    });
+
+    it('un 200 indica que reemplazó un borrador anterior', () => {
+      let done: DraftUploadEvent | undefined;
+      service.uploadDraft('m-1', FILE).subscribe((event) => (done = event));
+
+      http
+        .expectOne('/api/manuscripts/m-1/draft-file/')
+        .flush(SUMMARY, { status: 200, statusText: 'OK' });
+
+      expect(done).toEqual({ kind: 'done', draft: SUMMARY, replaced: true });
+    });
+
+    it('cancelar la suscripción aborta la solicitud', () => {
+      const subscription = service.uploadDraft('m-1', FILE).subscribe();
+      const request = http.expectOne('/api/manuscripts/m-1/draft-file/');
+
+      subscription.unsubscribe();
+
+      expect(request.cancelled).toBe(true);
+    });
+
+    it.each([
+      [413, 'PDF_TOO_LARGE'],
+      [415, 'PDF_UNSUPPORTED'],
+      [400, 'PDF_INVALID'],
+      [409, 'STATE_CONFLICT'],
+    ])('normaliza un %s a ApiError con el código %s', (status, code) => {
+      let error: ApiError | undefined;
+      service.uploadDraft('m-1', FILE).subscribe({ error: (e: ApiError) => (error = e) });
+
+      http
+        .expectOne('/api/manuscripts/m-1/draft-file/')
+        .flush(errorEnvelope(code, 'Mensaje del servidor.'), { status, statusText: 'Error' });
+
+      expect(error?.status).toBe(status);
+      expect(error?.code).toBe(code);
     });
   });
 });

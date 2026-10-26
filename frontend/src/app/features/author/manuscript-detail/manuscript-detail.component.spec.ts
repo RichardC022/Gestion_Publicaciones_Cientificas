@@ -110,24 +110,75 @@ describe('ManuscriptDetailComponent', () => {
       expect(text(element)).toContain('20/10/2026 20:45');
     });
 
-    it('muestra el PDF de borrador con su nombre y tamaño legible', async () => {
+    const DRAFT_FILE = {
+      filename: 'articulo.pdf',
+      size_bytes: 2_621_440,
+      uploaded_at: '2026-10-20T15:30:00Z',
+    };
+
+    it('un borrador muestra el cargador con el PDF actual, su nombre y tamaño legible', async () => {
+      const { element } = await open({ status: 'DRAFT', draft_file: DRAFT_FILE });
+
+      const uploader = element.querySelector('app-pdf-uploader') as HTMLElement;
+      expect(text(uploader)).toContain('articulo.pdf');
+      expect(text(uploader)).toContain('2,5 MB');
+      expect(text(uploader)).toContain('Reemplazar el PDF');
+    });
+
+    it('un borrador sin PDF invita a adjuntarlo', async () => {
+      const { element } = await open({ status: 'DRAFT', draft_file: null });
+
+      const uploader = element.querySelector('app-pdf-uploader') as HTMLElement;
+      expect(text(uploader)).toContain('Aún no hay un PDF adjunto.');
+      expect(text(uploader)).toContain('Adjuntar el PDF');
+    });
+
+    it.each(MANUSCRIPT_STATUSES.filter((status) => status !== 'DRAFT'))(
+      'en %s no se ofrece el cargador del borrador',
+      async (status) => {
+        const { element } = await open({ status });
+
+        expect(element.querySelector('app-pdf-uploader')).toBeNull();
+      },
+    );
+
+    it('un borrador dado de baja muestra el PDF en solo lectura, sin cargador', async () => {
       const { element } = await open({
-        draft_file: {
-          filename: 'articulo.pdf',
-          size_bytes: 2_621_440,
-          uploaded_at: '2026-10-20T15:30:00Z',
-        },
+        status: 'DRAFT',
+        is_active: false,
+        withdrawn_at: '2026-10-22T17:00:00Z',
+        draft_file: DRAFT_FILE,
       });
 
+      expect(element.querySelector('app-pdf-uploader')).toBeNull();
       const section = text(element.querySelector('[aria-labelledby="draft-title"]') as HTMLElement);
       expect(section).toContain('articulo.pdf');
       expect(section).toContain('2,5 MB');
     });
 
-    it('sin PDF adjunto no hay sección de borrador', async () => {
-      const { element } = await open({ draft_file: null });
+    it('al subir el PDF el detalle refleja el nuevo borrador sin recargar', async () => {
+      const { element, settle } = await open({ status: 'DRAFT', draft_file: null });
+      const input = element.querySelector('#pdf-file') as HTMLInputElement;
+      const file = new File(['%PDF-1.7'], 'nuevo.pdf', { type: 'application/pdf' });
+      Object.defineProperty(input, 'files', { value: [file], configurable: true });
+      input.dispatchEvent(new Event('change'));
+      await settle();
 
-      expect(element.querySelector('[aria-labelledby="draft-title"]')).toBeNull();
+      (element.querySelector('.uploader__actions .btn--success') as HTMLButtonElement).click();
+      http
+        .expectOne('/api/manuscripts/m-1/draft-file/')
+        .flush(
+          { filename: 'nuevo.pdf', size_bytes: 8, uploaded_at: '2026-10-25T12:00:00Z' },
+          { status: 201, statusText: 'Created' },
+        );
+      await settle();
+
+      expect(text(element.querySelector('app-pdf-uploader') as HTMLElement)).toContain(
+        'Borrador actual: nuevo.pdf',
+      );
+      expect(element.querySelector('app-pdf-uploader .uploader__success')?.textContent).toContain(
+        'PDF adjuntado: nuevo.pdf.',
+      );
     });
 
     it('enlaza siempre con el historial de versiones y el listado', async () => {
@@ -312,12 +363,10 @@ describe('ManuscriptDetailComponent', () => {
         harness.detectChanges();
       };
 
-      http
-        .expectOne('/api/manuscripts/m-1/')
-        .flush(errorEnvelope('NOT_FOUND', 'No encontrado.'), {
-          status: 404,
-          statusText: 'Not Found',
-        });
+      http.expectOne('/api/manuscripts/m-1/').flush(errorEnvelope('NOT_FOUND', 'No encontrado.'), {
+        status: 404,
+        statusText: 'Not Found',
+      });
       await settle();
 
       expect(element.querySelector('app-error-state')?.textContent).toContain(

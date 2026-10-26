@@ -3,13 +3,19 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 
 import { ApiError } from '../../../core/models/api-error.model';
-import { Manuscript, isEditable, nextAction } from '../../../core/models/manuscript.model';
+import {
+  DraftFileSummary,
+  Manuscript,
+  isEditable,
+  nextAction,
+} from '../../../core/models/manuscript.model';
 import { ManuscriptService } from '../../../core/services/manuscript.service';
 import { ErrorStateComponent } from '../../../shared/components/error-state.component';
 import { LoadingSpinnerComponent } from '../../../shared/components/loading-spinner.component';
 import { RoundCounterComponent } from '../../../shared/components/round-counter.component';
 import { StatusBadgeComponent } from '../../../shared/components/status-badge.component';
 import { FileSizePipe } from '../../../shared/pipes/file-size.pipe';
+import { PdfUploaderComponent } from '../pdf-uploader/pdf-uploader.component';
 
 /** Fechas y horas se muestran en la zona institucional (UTC-5, sin horario de verano). */
 const INSTITUTIONAL_OFFSET = '-0500';
@@ -27,8 +33,8 @@ const INSTITUTIONAL_OFFSET = '-0500';
  *   y si el manuscrito no está dado de baja.
  * * Un manuscrito dado de baja se muestra archivado y en solo lectura.
  *
- * Carga de PDF, envío, nueva versión y baja se agregan en las
- * TSK-42 a TSK-44 sobre esta misma vista.
+ * El PDF de borrador se adjunta con el cargador (TSK-42); envío, nueva
+ * versión y baja se agregan en las TSK-43 y TSK-44 sobre esta misma vista.
  */
 @Component({
   selector: 'app-manuscript-detail',
@@ -40,6 +46,7 @@ const INSTITUTIONAL_OFFSET = '-0500';
     StatusBadgeComponent,
     RoundCounterComponent,
     FileSizePipe,
+    PdfUploaderComponent,
   ],
   template: `
     <section aria-labelledby="manuscript-detail-title">
@@ -165,7 +172,13 @@ const INSTITUTIONAL_OFFSET = '-0500';
           </table>
         </section>
 
-        @if (m.draft_file; as draft) {
+        @if (canUpload()) {
+          <app-pdf-uploader
+            [manuscriptId]="m.id"
+            [current]="m.draft_file"
+            (uploaded)="onDraftUploaded($event)"
+          />
+        } @else if (m.draft_file; as draft) {
           <section class="card" aria-labelledby="draft-title">
             <h2 id="draft-title">PDF de borrador</h2>
             <p>
@@ -285,6 +298,16 @@ export class ManuscriptDetailComponent {
     return manuscript !== null && isEditable(manuscript);
   });
 
+  /**
+   * El PDF de borrador solo se adjunta o reemplaza mientras el manuscrito
+   * es un borrador activo; en correcciones la carga es la de una nueva
+   * versión (TSK-44).
+   */
+  protected readonly canUpload = computed(() => {
+    const manuscript = this.manuscript();
+    return manuscript !== null && manuscript.is_active && manuscript.status === 'DRAFT';
+  });
+
   protected readonly action = computed(() => {
     const manuscript = this.manuscript();
     return manuscript ? nextAction(manuscript) : { short: '', detail: '' };
@@ -292,6 +315,13 @@ export class ManuscriptDetailComponent {
 
   constructor() {
     this.load();
+  }
+
+  /** El servidor ya guardó el PDF: se refleja sin recargar el manuscrito. */
+  protected onDraftUploaded(draft: DraftFileSummary): void {
+    this.manuscript.update((manuscript) =>
+      manuscript ? { ...manuscript, draft_file: draft } : manuscript,
+    );
   }
 
   protected load(): void {
