@@ -11,7 +11,7 @@ import { API_BASE_URL } from '../http/api-base-url.token';
 import { ApiError } from '../models/api-error.model';
 import { DraftUploadEvent } from '../models/manuscript.model';
 import { ManuscriptPayload } from '../models/manuscript.model';
-import { ManuscriptService } from './manuscript.service';
+import { ManuscriptService, filenameFrom } from './manuscript.service';
 
 const PAYLOAD: ManuscriptPayload = {
   title: 'Título',
@@ -290,4 +290,194 @@ describe('ManuscriptService', () => {
       expect(error?.code).toBe(code);
     });
   });
+
+  describe('getHistory', () => {
+    it('pide la primera página con 100 eventos y sin parámetro page', () => {
+      service.getHistory('m-1').subscribe();
+
+      const request = http.expectOne((r) => r.url === '/api/manuscripts/m-1/history/');
+      expect(request.request.method).toBe('GET');
+      expect(request.request.params.get('page_size')).toBe('100');
+      expect(request.request.params.has('page')).toBe(false);
+      request.flush({ count: 0, next: null, previous: null, results: [] });
+    });
+
+    it('pide páginas posteriores con page', () => {
+      service.getHistory('m-1', 3, 50).subscribe();
+
+      const request = http.expectOne((r) => r.url === '/api/manuscripts/m-1/history/');
+      expect(request.request.params.get('page')).toBe('3');
+      expect(request.request.params.get('page_size')).toBe('50');
+      request.flush({ count: 0, next: null, previous: null, results: [] });
+    });
+
+    it('normaliza el error de un manuscrito ajeno', () => {
+      let error: ApiError | undefined;
+      service.getHistory('ajeno').subscribe({ error: (e: ApiError) => (error = e) });
+
+      http
+        .expectOne((r) => r.url === '/api/manuscripts/ajeno/history/')
+        .flush(errorEnvelope('NOT_FOUND', 'No encontrado.'), {
+          status: 404,
+          statusText: 'Not Found',
+        });
+
+      expect(error?.code).toBe('NOT_FOUND');
+    });
+  });
+
+  describe('downloadVersion', () => {
+    const PDF = new Blob(['%PDF-1.7'], { type: 'application/pdf' });
+
+    it('pide el archivo como Blob y toma el nombre de Content-Disposition', () => {
+      let result: { blob: Blob; filename: string } | undefined;
+      service.downloadVersion('m-1', 'v-9', 'respaldo.pdf').subscribe((value) => (result = value));
+
+      const request = http.expectOne('/api/manuscripts/m-1/versions/v-9/file/');
+      expect(request.request.method).toBe('GET');
+      expect(request.request.responseType).toBe('blob');
+      request.flush(PDF, {
+        headers: { 'Content-Disposition': 'attachment; filename="GPC-2026-000001-v1.pdf"' },
+      });
+
+      expect(result?.filename).toBe('GPC-2026-000001-v1.pdf');
+      expect(result?.blob).toBe(PDF);
+    });
+
+    it('sin Content-Disposition usa el nombre de respaldo', () => {
+      let filename = '';
+      service
+        .downloadVersion('m-1', 'v-9', 'respaldo.pdf')
+        .subscribe((value) => (filename = value.filename));
+
+      http.expectOne('/api/manuscripts/m-1/versions/v-9/file/').flush(PDF);
+
+      expect(filename).toBe('respaldo.pdf');
+    });
+
+    it('un error con cuerpo Blob se lee para conservar el envelope del backend', async () => {
+      let error: ApiError | undefined;
+      service
+        .downloadVersion('m-1', 'v-9', 'x.pdf')
+        .subscribe({ error: (e: ApiError) => (error = e) });
+
+      const body = new Blob(
+        [JSON.stringify(errorEnvelope('AUDIT_UNAVAILABLE', 'Sin auditoría.'))],
+        {
+          type: 'application/json',
+        },
+      );
+      http
+        .expectOne('/api/manuscripts/m-1/versions/v-9/file/')
+        .flush(body, { status: 503, statusText: 'Service Unavailable' });
+      await vi.waitFor(() => expect(error).toBeDefined());
+
+      expect(error?.status).toBe(503);
+      expect(error?.code).toBe('AUDIT_UNAVAILABLE');
+      expect(error?.requestId).toBe('rid-1');
+    });
+
+    it('un 404 con Blob no revela nada más que el mensaje genérico', async () => {
+      let error: ApiError | undefined;
+      service
+        .downloadVersion('m-1', 'v-9', 'x.pdf')
+        .subscribe({ error: (e: ApiError) => (error = e) });
+
+      http
+        .expectOne('/api/manuscripts/m-1/versions/v-9/file/')
+        .flush(new Blob([JSON.stringify(errorEnvelope('NOT_FOUND', 'No encontrado.'))]), {
+          status: 404,
+          statusText: 'Not Found',
+        });
+      await vi.waitFor(() => expect(error).toBeDefined());
+
+      expect(error?.code).toBe('NOT_FOUND');
+      expect(error?.userMessage).toContain('no existe o no está disponible');
+    });
+
+    it('un error cuyo cuerpo no es JSON se normaliza sin fallar', async () => {
+      let error: ApiError | undefined;
+      service
+        .downloadVersion('m-1', 'v-9', 'x.pdf')
+        .subscribe({ error: (e: ApiError) => (error = e) });
+
+      http
+        .expectOne('/api/manuscripts/m-1/versions/v-9/file/')
+        .flush(new Blob(['<html>Bad Gateway</html>']), { status: 502, statusText: 'Bad Gateway' });
+      await vi.waitFor(() => expect(error).toBeDefined());
+
+      expect(error?.status).toBe(502);
+      expect(error?.userMessage.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('withdraw', () => {
+    it('envía el motivo por POST y devuelve el manuscrito dado de baja con su ETag', () => {
+      let snapshot: { manuscript: { is_active: boolean }; etag: string | null } | undefined;
+      service.withdraw('m-1', 'Ya no deseo continuar.').subscribe((value) => (snapshot = value));
+
+      const request = http.expectOne('/api/manuscripts/m-1/withdraw/');
+      expect(request.request.method).toBe('POST');
+      expect(request.request.body).toEqual({ reason: 'Ya no deseo continuar.' });
+      request.flush(buildManuscript({ is_active: false }), { headers: { ETag: '"5"' } });
+
+      expect(snapshot?.manuscript.is_active).toBe(false);
+      expect(snapshot?.etag).toBe('"5"');
+    });
+
+    it('sin motivo envía un cuerpo vacío', () => {
+      service.withdraw('m-1', null).subscribe();
+
+      const request = http.expectOne('/api/manuscripts/m-1/withdraw/');
+      expect(request.request.body).toEqual({});
+      request.flush(buildManuscript({ is_active: false }));
+    });
+
+    it('conserva el detalle de validación cuando falta el motivo', () => {
+      let error: ApiError | undefined;
+      service.withdraw('m-1', null).subscribe({ error: (e: ApiError) => (error = e) });
+
+      http.expectOne('/api/manuscripts/m-1/withdraw/').flush(
+        errorEnvelope('VALIDATION_ERROR', 'Indique el motivo.', {
+          reason: ['Indique el motivo de la baja.'],
+        }),
+        { status: 400, statusText: 'Bad Request' },
+      );
+
+      expect(error?.details).toEqual({ reason: ['Indique el motivo de la baja.'] });
+    });
+
+    it('una baja repetida llega como 409', () => {
+      let error: ApiError | undefined;
+      service.withdraw('m-1', null).subscribe({ error: (e: ApiError) => (error = e) });
+
+      http
+        .expectOne('/api/manuscripts/m-1/withdraw/')
+        .flush(errorEnvelope('STATE_CONFLICT', 'Ya dado de baja.'), {
+          status: 409,
+          statusText: 'Conflict',
+        });
+
+      expect(error?.status).toBe(409);
+    });
+  });
+});
+
+describe('filenameFrom', () => {
+  it.each([
+    ['attachment; filename="GPC-2026-000001-v1.pdf"', 'GPC-2026-000001-v1.pdf'],
+    ['attachment; filename=articulo.pdf', 'articulo.pdf'],
+    ["attachment; filename*=UTF-8''art%C3%ADculo.pdf", 'artículo.pdf'],
+    ['attachment; filename="../../etc/passwd.pdf"', 'passwd.pdf'],
+    ['attachment; filename="C:\\Users\\x\\a.pdf"', 'a.pdf'],
+  ])('lee %s', (header, expected) => {
+    expect(filenameFrom(header)).toBe(expected);
+  });
+
+  it.each([[null], [''], ['attachment'], ['inline']])(
+    'sin nombre en %j devuelve nulo',
+    (header) => {
+      expect(filenameFrom(header)).toBeNull();
+    },
+  );
 });
