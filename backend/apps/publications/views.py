@@ -30,6 +30,7 @@ from apps.publications.permissions import IsManuscriptOwner
 from apps.publications.serializers import (
     AuthorManuscriptSerializer,
     SubmissionSerializer,
+    WithdrawalSerializer,
     draft_file_summary,
     manuscript_serializer_class,
 )
@@ -41,6 +42,7 @@ from apps.publications.services.manuscripts import (
 )
 from apps.publications.services.submission import ALREADY_SUBMITTED_MESSAGE, submit_manuscript
 from apps.publications.services.versions import ensure_requires_corrections, submit_new_version
+from apps.publications.services.withdraw import ensure_active, withdraw_manuscript
 from apps.users.models import Role
 from apps.users.permissions import IsAuthor, IsEditor, request_active_roles
 from config.exceptions import DomainError, ErrorCode
@@ -267,3 +269,31 @@ class ManuscriptVersionsView(ManuscriptBaseView):
         response = Response(SubmissionSerializer(submission).data, status=status.HTTP_201_CREATED)
         response["ETag"] = etag_for(submission.manuscript)
         return response
+
+
+class ManuscriptWithdrawView(ManuscriptBaseView):
+    """``POST /api/manuscripts/{id}/withdraw/``: logical withdrawal.
+
+    Only the owner, from any state. The manuscript is marked as
+    withdrawn (``is_active=false``) and nothing is deleted. The reason is
+    mandatory while the manuscript is under review or accepted. A second
+    request answers ``409`` and repeats nothing.
+    """
+
+    def get_permissions(self):
+        return [IsAuthenticated(), IsAuthor(), IsManuscriptOwner()]
+
+    def post(self, request: Request, pk) -> Response:
+        manuscript = self.get_manuscript(pk)
+        ensure_active(manuscript)
+
+        body = WithdrawalSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+
+        withdrawn = withdraw_manuscript(
+            manuscript_id=manuscript.pk,
+            user=request.user,
+            reason=body.validated_data.get("reason"),
+            context=audit_request_context(request),
+        )
+        return self.respond(withdrawn)

@@ -219,3 +219,15 @@ class SubmissionSerializer(serializers.Serializer):
     def get_integrity_seal(self, obj) -> str:
         """``sha256:<hex>`` of the original PDF (plan section 4.5)."""
         return f"sha256:{obj.version.original_sha256}"
+
+
+class WithdrawalSerializer(serializers.Serializer):
+    """Body of ``POST /api/manuscripts/{id}/withdraw/``.
+
+    The reason is optional here: whether it is mandatory depends on the
+    manuscript status, which the service checks under the row lock.
+    """
+
+    reason = serializers.CharField(
+        required=False, allow_blank=True, allow_null=True, max_length=2000
+    )
