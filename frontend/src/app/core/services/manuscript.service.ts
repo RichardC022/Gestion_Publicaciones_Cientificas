@@ -19,16 +19,20 @@ import {
   ManuscriptListParams,
   ManuscriptPayload,
   ManuscriptSnapshot,
+  SubmissionResult,
   VersionDownload,
+  VersionSummary,
+  VersionUploadEvent,
 } from '../models/manuscript.model';
 import { Paginated } from '../models/paginated.model';
 
 /**
  * Manuscritos del Autor (plan secciones 2.3 y 3.6).
  *
- * Cubre el listado, el detalle y el alta/edición de metadatos. La carga
- * de PDF, el envío formal, las versiones, la baja y las descargas se
- * agregan en la TSK-44 sobre este mismo servicio.
+ * Cubre todo el módulo Autor: listado, detalle, alta y edición, carga del
+ * PDF de borrador, envío formal, nuevas versiones, historial, descarga y
+ * baja lógica. Los `POST` que no deben repetirse (envío y nueva versión)
+ * llevan `Idempotency-Key`.
  *
  * Las lecturas y escrituras de un manuscrito devuelven su `ETag`: el
  * `PATCH` lo reenvía en `If-Match` (bloqueo optimista, plan 2.11).
@@ -75,6 +79,51 @@ export class ManuscriptService {
       })
       .pipe(
         map(toSnapshot),
+        catchError((error) => throwError(() => toApiError(error))),
+      );
+  }
+
+  /**
+   * Envío formal (`POST .../submit/`): crea la versión v1 y la ronda 0 con
+   * el PDF de borrador y los metadatos actuales. `idempotencyKey`
+   * identifica esta intención de envío; reintentarla con la misma clave
+   * devuelve el resultado ya registrado en lugar de duplicarlo.
+   */
+  submit(id: string, idempotencyKey: string): Observable<SubmissionResult> {
+    return this.http
+      .post<SubmissionResult>(`${this.url}${id}/submit/`, null, {
+        headers: { 'Idempotency-Key': idempotencyKey },
+      })
+      .pipe(catchError((error) => throwError(() => toApiError(error))));
+  }
+
+  /** Versiones formales del manuscrito, de la más antigua a la más reciente. */
+  listVersions(id: string, page = 1, pageSize = 100): Observable<Paginated<VersionSummary>> {
+    return this.http
+      .get<Paginated<VersionSummary>>(`${this.url}${id}/versions/`, {
+        params: toHttpParams({ page: page > 1 ? page : undefined, page_size: pageSize }),
+      })
+      .pipe(catchError((error) => throwError(() => toApiError(error))));
+  }
+
+  /**
+   * Nueva versión en `REQUIRES_CORRECTIONS` (`POST .../versions/`): sube el
+   * PDF corregido; los metadatos son los vigentes del manuscrito. Emite el
+   * avance y, al terminar, el resultado. Cancelar la suscripción aborta la
+   * solicitud. Se reintenta con la MISMA `idempotencyKey`.
+   */
+  uploadVersion(id: string, file: File, idempotencyKey: string): Observable<VersionUploadEvent> {
+    const body = new FormData();
+    body.append('file', file, file.name);
+    return this.http
+      .post<SubmissionResult>(`${this.url}${id}/versions/`, body, {
+        headers: { 'Idempotency-Key': idempotencyKey },
+        observe: 'events',
+        reportProgress: true,
+      })
+      .pipe(
+        map(toVersionUploadEvent),
+        filter((event): event is VersionUploadEvent => event !== null),
         catchError((error) => throwError(() => toApiError(error))),
       );
   }
@@ -217,6 +266,21 @@ function blobErrorToApiError(error: unknown): Observable<never> {
     );
   }
   return throwError(() => toApiError(error));
+}
+
+/** Igual que `toUploadEvent`, para la respuesta de una nueva versión. */
+function toVersionUploadEvent(event: HttpEvent<SubmissionResult>): VersionUploadEvent | null {
+  if (event.type === HttpEventType.UploadProgress) {
+    return { kind: 'progress', percent: progressPercent(event.loaded, event.total) };
+  }
+  if (event.type === HttpEventType.Response) {
+    return { kind: 'done', submission: event.body as SubmissionResult };
+  }
+  return null;
+}
+
+function progressPercent(loaded: number, total: number | undefined): number | null {
+  return total ? Math.min(100, Math.round((loaded / total) * 100)) : null;
 }
 
 /** Solo interesan el avance y la respuesta final; el resto de eventos se descarta. */

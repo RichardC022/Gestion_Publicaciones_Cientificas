@@ -9,7 +9,7 @@ import {
 } from '../../features/author/testing/manuscript.fixtures';
 import { API_BASE_URL } from '../http/api-base-url.token';
 import { ApiError } from '../models/api-error.model';
-import { DraftUploadEvent } from '../models/manuscript.model';
+import { DraftUploadEvent, SubmissionResult, VersionUploadEvent } from '../models/manuscript.model';
 import { ManuscriptPayload } from '../models/manuscript.model';
 import { ManuscriptService, filenameFrom } from './manuscript.service';
 
@@ -459,6 +459,173 @@ describe('ManuscriptService', () => {
         });
 
       expect(error?.status).toBe(409);
+    });
+  });
+
+  describe('submit', () => {
+    const RESULT: SubmissionResult = {
+      code: 'GPC-2026-000001',
+      status: 'SUBMITTED',
+      version_number: 1,
+      round_number: 0,
+      submitted_at: '2026-10-25T20:30:00Z',
+      integrity_seal: `sha256:${'a'.repeat(64)}`,
+    };
+
+    it('envía POST sin cuerpo con la Idempotency-Key y devuelve el comprobante', () => {
+      let result: SubmissionResult | undefined;
+      service.submit('m-1', 'clave-unica-1').subscribe((value) => (result = value));
+
+      const request = http.expectOne('/api/manuscripts/m-1/submit/');
+      expect(request.request.method).toBe('POST');
+      expect(request.request.body).toBeNull();
+      expect(request.request.headers.get('Idempotency-Key')).toBe('clave-unica-1');
+      request.flush(RESULT, { status: 201, statusText: 'Created' });
+
+      expect(result).toEqual(RESULT);
+    });
+
+    it('reintentar con la misma clave envía la misma cabecera', () => {
+      service.submit('m-1', 'misma-clave').subscribe();
+      service.submit('m-1', 'misma-clave').subscribe();
+
+      const requests = http.match('/api/manuscripts/m-1/submit/');
+      expect(requests.map((r) => r.request.headers.get('Idempotency-Key'))).toEqual([
+        'misma-clave',
+        'misma-clave',
+      ]);
+      requests.forEach((r) => r.flush(RESULT, { status: 201, statusText: 'Created' }));
+    });
+
+    it('conserva los campos faltantes de un 400', () => {
+      let error: ApiError | undefined;
+      service.submit('m-1', 'k').subscribe({ error: (e: ApiError) => (error = e) });
+
+      http.expectOne('/api/manuscripts/m-1/submit/').flush(
+        errorEnvelope('VALIDATION_ERROR', 'Complete los campos obligatorios.', {
+          title: ['Este campo es obligatorio.'],
+        }),
+        { status: 400, statusText: 'Bad Request' },
+      );
+
+      expect(error?.details).toEqual({ title: ['Este campo es obligatorio.'] });
+    });
+
+    it('un envío repetido con otra clave llega como 409', () => {
+      let error: ApiError | undefined;
+      service.submit('m-1', 'otra').subscribe({ error: (e: ApiError) => (error = e) });
+
+      http
+        .expectOne('/api/manuscripts/m-1/submit/')
+        .flush(errorEnvelope('STATE_CONFLICT', 'Ya enviado.'), {
+          status: 409,
+          statusText: 'Conflict',
+        });
+
+      expect(error?.status).toBe(409);
+    });
+  });
+
+  describe('listVersions', () => {
+    it('pide las versiones con 100 por página y sin parámetro page', () => {
+      service.listVersions('m-1').subscribe();
+
+      const request = http.expectOne((r) => r.url === '/api/manuscripts/m-1/versions/');
+      expect(request.request.method).toBe('GET');
+      expect(request.request.params.get('page_size')).toBe('100');
+      expect(request.request.params.has('page')).toBe(false);
+      request.flush({ count: 0, next: null, previous: null, results: [] });
+    });
+
+    it('pide una página posterior con page', () => {
+      service.listVersions('m-1', 2, 20).subscribe();
+
+      const request = http.expectOne((r) => r.url === '/api/manuscripts/m-1/versions/');
+      expect(request.request.params.get('page')).toBe('2');
+      expect(request.request.params.get('page_size')).toBe('20');
+      request.flush({ count: 0, next: null, previous: null, results: [] });
+    });
+
+    it('normaliza un manuscrito ajeno a ApiError', () => {
+      let error: ApiError | undefined;
+      service.listVersions('ajeno').subscribe({ error: (e: ApiError) => (error = e) });
+
+      http
+        .expectOne((r) => r.url === '/api/manuscripts/ajeno/versions/')
+        .flush(errorEnvelope('NOT_FOUND', 'No encontrado.'), {
+          status: 404,
+          statusText: 'Not Found',
+        });
+
+      expect(error?.code).toBe('NOT_FOUND');
+    });
+  });
+
+  describe('uploadVersion', () => {
+    const FILE = new File(['%PDF-1.7 corregido'], 'corregido.pdf', { type: 'application/pdf' });
+    const RESULT: SubmissionResult = {
+      code: 'GPC-2026-000001',
+      status: 'SUBMITTED',
+      version_number: 2,
+      round_number: 1,
+      submitted_at: '2026-10-25T20:30:00Z',
+      integrity_seal: `sha256:${'c'.repeat(64)}`,
+    };
+
+    it('envía el archivo en «file» con la Idempotency-Key y sin fijar Content-Type', () => {
+      service.uploadVersion('m-1', FILE, 'clave-version-1').subscribe();
+
+      const request = http.expectOne('/api/manuscripts/m-1/versions/');
+      expect(request.request.method).toBe('POST');
+      expect(request.request.reportProgress).toBe(true);
+      expect(((request.request.body as FormData).get('file') as File).name).toBe('corregido.pdf');
+      expect(request.request.headers.get('Idempotency-Key')).toBe('clave-version-1');
+      expect(request.request.headers.has('Content-Type')).toBe(false);
+      request.flush(RESULT, { status: 201, statusText: 'Created' });
+    });
+
+    it('emite el avance y luego el resultado', () => {
+      const events: VersionUploadEvent[] = [];
+      service.uploadVersion('m-1', FILE, 'k').subscribe((event) => events.push(event));
+
+      const request = http.expectOne('/api/manuscripts/m-1/versions/');
+      request.event({ type: HttpEventType.Sent });
+      request.event({ type: HttpEventType.UploadProgress, loaded: 25, total: 100 });
+      request.event({ type: HttpEventType.UploadProgress, loaded: 40 });
+      request.flush(RESULT, { status: 201, statusText: 'Created' });
+
+      expect(events).toEqual([
+        { kind: 'progress', percent: 25 },
+        { kind: 'progress', percent: null },
+        { kind: 'done', submission: RESULT },
+      ]);
+    });
+
+    it('cancelar la suscripción aborta la solicitud', () => {
+      const subscription = service.uploadVersion('m-1', FILE, 'k').subscribe();
+      const request = http.expectOne('/api/manuscripts/m-1/versions/');
+
+      subscription.unsubscribe();
+
+      expect(request.cancelled).toBe(true);
+    });
+
+    it.each([
+      [400, 'VALIDATION_ERROR'],
+      [413, 'PDF_TOO_LARGE'],
+      [415, 'PDF_UNSUPPORTED'],
+      [409, 'STATE_CONFLICT'],
+      [503, 'AUDIT_UNAVAILABLE'],
+    ])('normaliza un %s (%s) a ApiError', (status, code) => {
+      let error: ApiError | undefined;
+      service.uploadVersion('m-1', FILE, 'k').subscribe({ error: (e: ApiError) => (error = e) });
+
+      http
+        .expectOne('/api/manuscripts/m-1/versions/')
+        .flush(errorEnvelope(code, 'Mensaje.'), { status, statusText: 'Error' });
+
+      expect(error?.status).toBe(status);
+      expect(error?.code).toBe(code);
     });
   });
 });

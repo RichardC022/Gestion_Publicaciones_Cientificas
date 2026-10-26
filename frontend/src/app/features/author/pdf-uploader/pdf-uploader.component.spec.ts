@@ -7,7 +7,7 @@ import {
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { API_BASE_URL } from '../../../core/http/api-base-url.token';
-import { DraftFileSummary } from '../../../core/models/manuscript.model';
+import { DraftFileSummary, SubmissionResult } from '../../../core/models/manuscript.model';
 import { errorEnvelope } from '../testing/manuscript.fixtures';
 import { MAX_PDF_BYTES } from './pdf-file.validation';
 import { PdfUploaderComponent } from './pdf-uploader.component';
@@ -459,6 +459,283 @@ describe('PdfUploaderComponent', () => {
       await settle();
 
       expect(element.querySelector('.uploader__success')?.getAttribute('role')).toBe('status');
+    });
+  });
+
+  describe('nueva versión (target="version")', () => {
+    const VERSION_URL = '/api/manuscripts/m-1/versions/';
+    const RESULT: SubmissionResult = {
+      code: 'GPC-2026-000001',
+      status: 'SUBMITTED',
+      version_number: 2,
+      round_number: 1,
+      submitted_at: '2026-10-25T20:30:00Z',
+      integrity_seal: `sha256:${'c'.repeat(64)}`,
+    };
+    const submissions: SubmissionResult[] = [];
+    let conflicts = 0;
+    const KEY_FORMAT = /^[A-Za-z0-9._:-]{1,100}$/;
+
+    const renderVersion = async () => {
+      submissions.length = 0;
+      conflicts = 0;
+      fixture = TestBed.createComponent(PdfUploaderComponent);
+      fixture.componentRef.setInput('manuscriptId', 'm-1');
+      fixture.componentRef.setInput('target', 'version');
+      fixture.componentRef.setInput('nextVersion', 2);
+      fixture.componentInstance.uploaded.subscribe((draft) => emitted.push(draft));
+      fixture.componentInstance.versionSubmitted.subscribe((result) => submissions.push(result));
+      fixture.componentInstance.stateConflict.subscribe(() => (conflicts += 1));
+      element = fixture.nativeElement as HTMLElement;
+      await fixture.whenStable();
+    };
+
+    const send = async (file = pdf('corregido.pdf')): Promise<TestRequest> => {
+      await choose(file);
+      button('Enviar nueva versión')?.click();
+      await settle();
+      return http.expectOne(VERSION_URL);
+    };
+
+    beforeEach(() => renderVersion());
+
+    it('explica que registrará la versión siguiente y que la anterior se conserva', async () => {
+      expect(element.querySelector('h2')?.textContent).toBe('Enviar nueva versión');
+      expect(text()).toContain('registrar la versión v2');
+      expect(text()).not.toContain('Borrador actual');
+      expect(text()).not.toContain('Aún no hay un PDF adjunto');
+      expect(element.querySelector('label[for="pdf-file"]')?.textContent).toBe('PDF corregido');
+
+      await choose(pdf('corregido.pdf'));
+
+      const warning = element.querySelector('.uploader__warning')?.textContent ?? '';
+      expect(warning).toContain('la versión v2');
+      expect(warning).toContain('La versión anterior se conserva intacta');
+    });
+
+    it('envía el PDF a versions con una Idempotency-Key válida y notifica el resultado', async () => {
+      const request = await send();
+
+      expect(request.request.method).toBe('POST');
+      expect(request.request.headers.get('Idempotency-Key')).toMatch(KEY_FORMAT);
+      expect(((request.request.body as FormData).get('file') as File).name).toBe('corregido.pdf');
+      request.flush(RESULT, { status: 201, statusText: 'Created' });
+      await settle();
+
+      expect(submissions).toEqual([RESULT]);
+      expect(emitted).toEqual([]);
+      expect(element.querySelector('.uploader__success')?.textContent).toContain(
+        'Nueva versión registrada: v2 · Ronda 1.',
+      );
+      expect(element.querySelector('.uploader__selected')).toBeNull();
+    });
+
+    it('muestra el progreso con el texto de envío y permite cancelar el envío', async () => {
+      const request = await send();
+
+      request.event({ type: HttpEventType.UploadProgress, loaded: 30, total: 100 });
+      await settle();
+      expect(text()).toContain('30 %');
+      expect(button('Enviando…')?.disabled).toBe(true);
+
+      button('Cancelar envío')?.click();
+      await settle();
+
+      expect(request.cancelled).toBe(true);
+      expect(alerts().join(' ')).toContain('Envío cancelado antes de terminar');
+      expect(submissions).toEqual([]);
+    });
+
+    describe('clave de idempotencia', () => {
+      it('un reintento del mismo archivo tras un corte usa la MISMA clave', async () => {
+        const first = await send();
+        const key = first.request.headers.get('Idempotency-Key');
+        first.flush(errorEnvelope('STORAGE_UNAVAILABLE', 'Sin almacenamiento.'), {
+          status: 503,
+          statusText: 'Service Unavailable',
+        });
+        await settle();
+        expect(text()).toContain('Archivo elegido: corregido.pdf');
+
+        button('Enviar nueva versión')?.click();
+        await settle();
+
+        const retry = http.expectOne(VERSION_URL);
+        expect(retry.request.headers.get('Idempotency-Key')).toBe(key);
+        retry.flush(RESULT, { status: 201, statusText: 'Created' });
+      });
+
+      it('tras cancelar y volver a enviar el mismo archivo conserva la clave', async () => {
+        const first = await send();
+        const key = first.request.headers.get('Idempotency-Key');
+        button('Cancelar envío')?.click();
+        await settle();
+
+        button('Enviar nueva versión')?.click();
+        await settle();
+
+        const retry = http.expectOne(VERSION_URL);
+        expect(retry.request.headers.get('Idempotency-Key')).toBe(key);
+        retry.flush(RESULT, { status: 201, statusText: 'Created' });
+      });
+
+      it('elegir otro archivo es una intención nueva: clave nueva', async () => {
+        const first = await send(pdf('uno.pdf'));
+        const key = first.request.headers.get('Idempotency-Key');
+        first.flush(errorEnvelope('AUDIT_UNAVAILABLE', 'Sin auditoría.'), {
+          status: 503,
+          statusText: 'Service Unavailable',
+        });
+        await settle();
+
+        const second = await send(pdf('dos.pdf'));
+
+        expect(second.request.headers.get('Idempotency-Key')).not.toBe(key);
+        second.flush(RESULT, { status: 201, statusText: 'Created' });
+      });
+
+      it('quitar la selección descarta la clave', async () => {
+        const first = await send();
+        const key = first.request.headers.get('Idempotency-Key');
+        button('Cancelar envío')?.click();
+        await settle();
+        button('Quitar selección')?.click();
+        await settle();
+
+        const second = await send();
+
+        expect(second.request.headers.get('Idempotency-Key')).not.toBe(key);
+        second.flush(RESULT, { status: 201, statusText: 'Created' });
+      });
+
+      it('tras un envío exitoso la siguiente versión usa otra clave', async () => {
+        const first = await send(pdf('uno.pdf'));
+        const key = first.request.headers.get('Idempotency-Key');
+        first.flush(RESULT, { status: 201, statusText: 'Created' });
+        await settle();
+
+        const second = await send(pdf('dos.pdf'));
+
+        expect(second.request.headers.get('Idempotency-Key')).not.toBe(key);
+        second.flush(RESULT, { status: 201, statusText: 'Created' });
+      });
+
+      it.each([400, 413, 415])('un %s descarta el archivo y la clave', async (status) => {
+        const first = await send();
+        const key = first.request.headers.get('Idempotency-Key');
+        first.flush(errorEnvelope('PDF_INVALID', 'Rechazado.'), { status, statusText: 'Error' });
+        await settle();
+        expect(element.querySelector('.uploader__selected')).toBeNull();
+
+        const second = await send(pdf('otro.pdf'));
+
+        expect(second.request.headers.get('Idempotency-Key')).not.toBe(key);
+        second.flush(RESULT, { status: 201, statusText: 'Created' });
+      });
+    });
+
+    describe('rechazos del servidor', () => {
+      it('«sin cambios» muestra el mensaje específico del servidor', async () => {
+        const request = await send();
+
+        request.flush(
+          errorEnvelope(
+            'VALIDATION_ERROR',
+            'La nueva versión no cambia ni el PDF ni los metadatos; debe existir al menos una corrección.',
+            { changes: ['La nueva versión no cambia ni el PDF ni los metadatos.'] },
+          ),
+          { status: 400, statusText: 'Bad Request' },
+        );
+        await settle();
+
+        expect(alerts()).toEqual([
+          'La nueva versión no cambia ni el PDF ni los metadatos; debe existir al menos una corrección.',
+        ]);
+      });
+
+      it('metadatos incompletos: indica qué campos faltan', async () => {
+        const request = await send();
+
+        request.flush(
+          errorEnvelope(
+            'VALIDATION_ERROR',
+            'Complete los campos obligatorios antes de enviar la nueva versión.',
+            { title: ['Este campo es obligatorio.'], keywords: ['Este campo es obligatorio.'] },
+          ),
+          { status: 400, statusText: 'Bad Request' },
+        );
+        await settle();
+
+        expect(alerts().join(' ')).toContain('Falta: Título, Palabras clave.');
+      });
+
+      it('un PDF inválido muestra el motivo exacto del servidor', async () => {
+        const request = await send();
+
+        request.flush(errorEnvelope('PDF_INVALID', 'El PDF está protegido o cifrado.'), {
+          status: 400,
+          statusText: 'Bad Request',
+        });
+        await settle();
+
+        expect(alerts()).toEqual(['El PDF está protegido o cifrado.']);
+      });
+
+      it('413 y 415 usan sus mensajes accionables', async () => {
+        const first = await send();
+        first.flush(errorEnvelope('PDF_TOO_LARGE', 'Grande.'), {
+          status: 413,
+          statusText: 'Too Large',
+        });
+        await settle();
+        expect(alerts()).toEqual(['El archivo supera el límite de 50 MB.']);
+
+        const second = await send(pdf('otro.pdf'));
+        second.flush(errorEnvelope('PDF_UNSUPPORTED', 'Tipo.'), {
+          status: 415,
+          statusText: 'Unsupported',
+        });
+        await settle();
+        expect(alerts()).toEqual(['El tipo de contenido enviado no está soportado.']);
+      });
+
+      it('409: avisa al contenedor para que muestre el estado real', async () => {
+        const request = await send();
+
+        request.flush(errorEnvelope('STATE_CONFLICT', 'Cambió.'), {
+          status: 409,
+          statusText: 'Conflict',
+        });
+        await settle();
+
+        expect(conflicts).toBe(1);
+        expect(submissions).toEqual([]);
+      });
+    });
+
+    it('aplica la misma validación previa del cliente', async () => {
+      await choose(pdf('corregido.docx'));
+
+      expect(alerts().join(' ')).toContain('Solo se admiten archivos PDF');
+      expect(button('Enviar nueva versión')).toBeUndefined();
+      http.expectNone(VERSION_URL);
+    });
+  });
+
+  describe('conflicto de estado en el borrador', () => {
+    it('un 409 al subir el borrador también avisa al contenedor', async () => {
+      await render(null);
+      let conflicts = 0;
+      fixture.componentInstance.stateConflict.subscribe(() => (conflicts += 1));
+
+      const request = await startUpload();
+      request.flush(errorEnvelope('STATE_CONFLICT', 'No es un borrador.'), {
+        status: 409,
+        statusText: 'Conflict',
+      });
+      await settle();
+
+      expect(conflicts).toBe(1);
     });
   });
 });

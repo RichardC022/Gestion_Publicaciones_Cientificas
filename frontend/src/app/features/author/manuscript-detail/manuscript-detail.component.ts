@@ -2,20 +2,24 @@ import { DatePipe } from '@angular/common';
 import { Component, computed, inject, signal } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 
+import { newIdempotencyKey } from '../../../core/http/idempotency-key';
 import { ApiError } from '../../../core/models/api-error.model';
 import {
   DraftFileSummary,
   Manuscript,
+  SubmissionResult,
   isEditable,
   nextAction,
 } from '../../../core/models/manuscript.model';
 import { ManuscriptService } from '../../../core/services/manuscript.service';
+import { ConfirmDialogComponent } from '../../../shared/components/confirm-dialog.component';
 import { ErrorStateComponent } from '../../../shared/components/error-state.component';
 import { LoadingSpinnerComponent } from '../../../shared/components/loading-spinner.component';
 import { RoundCounterComponent } from '../../../shared/components/round-counter.component';
 import { StatusBadgeComponent } from '../../../shared/components/status-badge.component';
 import { FileSizePipe } from '../../../shared/pipes/file-size.pipe';
 import { PdfUploaderComponent } from '../pdf-uploader/pdf-uploader.component';
+import { SUBMISSION_FIELD_LABELS, submissionErrorMessage } from '../submission-messages';
 import { WithdrawDialogComponent } from '../withdraw-dialog/withdraw-dialog.component';
 
 /** Fechas y horas se muestran en la zona institucional (UTC-5, sin horario de verano). */
@@ -34,8 +38,10 @@ const INSTITUTIONAL_OFFSET = '-0500';
  *   y si el manuscrito no está dado de baja.
  * * Un manuscrito dado de baja se muestra archivado y en solo lectura.
  *
- * El PDF de borrador se adjunta con el cargador (TSK-42); envío, nueva
- * versión y baja se agregan en las TSK-43 y TSK-44 sobre esta misma vista.
+ * El PDF de borrador se adjunta con el cargador (TSK-42); el envío formal
+ * pide confirmación y entrega un comprobante con el código de seguimiento;
+ * en correcciones el mismo cargador envía la nueva versión; la baja lógica
+ * tiene su propio diálogo (TSK-43).
  */
 @Component({
   selector: 'app-manuscript-detail',
@@ -49,6 +55,7 @@ const INSTITUTIONAL_OFFSET = '-0500';
     FileSizePipe,
     PdfUploaderComponent,
     WithdrawDialogComponent,
+    ConfirmDialogComponent,
   ],
   template: `
     <section aria-labelledby="manuscript-detail-title">
@@ -117,6 +124,30 @@ const INSTITUTIONAL_OFFSET = '-0500';
           <p class="callout callout--success" role="status">{{ message }}</p>
         }
 
+        @if (confirmation(); as done) {
+          <section
+            class="callout callout--success"
+            role="status"
+            aria-labelledby="confirmation-title"
+          >
+            <h2 id="confirmation-title">{{ done.title }}</h2>
+            <dl class="data">
+              <dt>Código de seguimiento</dt>
+              <dd>{{ done.result.code }}</dd>
+              <dt>Versión</dt>
+              <dd>v{{ done.result.version_number }}</dd>
+              <dt>Ronda</dt>
+              <dd>{{ done.result.round_number }}</dd>
+              <dt>Enviado el</dt>
+              <dd>{{ done.result.submitted_at | date: 'dd/MM/yyyy HH:mm' : offset }}</dd>
+              <dt>Sello de integridad</dt>
+              <dd>
+                <code>{{ done.result.integrity_seal }}</code>
+              </dd>
+            </dl>
+          </section>
+        }
+
         <div class="actions">
           @if (editable()) {
             <a class="btn btn--primary" [routerLink]="['/app/author/manuscripts', m.id, 'edit']">
@@ -142,6 +173,43 @@ const INSTITUTIONAL_OFFSET = '-0500';
           (confirmed)="confirmWithdraw($event)"
           (cancelled)="cancelWithdraw()"
         />
+
+        @if (canUpload()) {
+          <section class="card" aria-labelledby="submit-title">
+            <h2 id="submit-title">Enviar el manuscrito</h2>
+            @if (missingForSubmit().length > 0) {
+              <p class="callout callout--warning" role="status" id="submit-missing">
+                Para enviarlo aún falta: {{ missingForSubmit().join(', ') }}.
+              </p>
+            } @else {
+              <p>
+                Todo está listo. Al enviarlo se crea la versión v1 con el PDF y los metadatos
+                actuales, y el Editor recibe el manuscrito.
+              </p>
+            }
+            @if (submitError()) {
+              <p class="submit-error" role="alert">{{ submitError() }}</p>
+            }
+            <button
+              type="button"
+              class="btn btn--primary"
+              [disabled]="missingForSubmit().length > 0 || submitting()"
+              [attr.aria-describedby]="missingForSubmit().length > 0 ? 'submit-missing' : null"
+              (click)="openSubmit()"
+            >
+              {{ submitting() ? 'Enviando…' : 'Enviar manuscrito' }}
+            </button>
+          </section>
+
+          <app-confirm-dialog
+            title="Enviar el manuscrito"
+            confirmLabel="Enviar manuscrito"
+            [message]="submitMessage()"
+            [open]="submitOpen()"
+            (confirmed)="confirmSubmit()"
+            (cancelled)="cancelSubmit()"
+          />
+        }
 
         <section class="card" aria-labelledby="metadata-title">
           <h2 id="metadata-title">Datos generales</h2>
@@ -198,6 +266,15 @@ const INSTITUTIONAL_OFFSET = '-0500';
             [manuscriptId]="m.id"
             [current]="m.draft_file"
             (uploaded)="onDraftUploaded($event)"
+            (stateConflict)="onStateConflict()"
+          />
+        } @else if (canSendVersion()) {
+          <app-pdf-uploader
+            target="version"
+            [manuscriptId]="m.id"
+            [nextVersion]="m.current_version + 1"
+            (versionSubmitted)="onVersionSubmitted($event)"
+            (stateConflict)="onStateConflict()"
           />
         } @else if (m.draft_file; as draft) {
           <section class="card" aria-labelledby="draft-title">
@@ -255,6 +332,14 @@ const INSTITUTIONAL_OFFSET = '-0500';
       background: var(--gpc-success-100);
       border-color: var(--gpc-success-700);
       color: var(--gpc-success-700);
+    }
+    .callout--warning {
+      background: var(--gpc-warning-100);
+      border-color: var(--gpc-warning-800);
+      color: var(--gpc-warning-800);
+    }
+    .submit-error {
+      color: var(--gpc-danger-700);
     }
     .callout--neutral {
       background: var(--gpc-surface);
@@ -324,6 +409,17 @@ export class ManuscriptDetailComponent {
   protected readonly withdrawError = signal('');
   protected readonly notice = signal('');
 
+  protected readonly submitOpen = signal(false);
+  protected readonly submitting = signal(false);
+  protected readonly submitError = signal('');
+  /** Comprobante del último envío o nueva versión (código, versión, ronda, fecha y sello). */
+  protected readonly confirmation = signal<{ title: string; result: SubmissionResult } | null>(
+    null,
+  );
+
+  /** Clave de idempotencia del envío en curso: se reutiliza si hay que reintentarlo. */
+  private submitKey: string | null = null;
+
   protected readonly editable = computed(() => {
     const manuscript = this.manuscript();
     return manuscript !== null && isEditable(manuscript);
@@ -332,11 +428,42 @@ export class ManuscriptDetailComponent {
   /**
    * El PDF de borrador solo se adjunta o reemplaza mientras el manuscrito
    * es un borrador activo; en correcciones la carga es la de una nueva
-   * versión (TSK-44).
+   * versión.
    */
   protected readonly canUpload = computed(() => {
     const manuscript = this.manuscript();
     return manuscript !== null && manuscript.is_active && manuscript.status === 'DRAFT';
+  });
+
+  /** En correcciones la carga del PDF corregido es una nueva versión. */
+  protected readonly canSendVersion = computed(() => {
+    const manuscript = this.manuscript();
+    return (
+      manuscript !== null && manuscript.is_active && manuscript.status === 'REQUIRES_CORRECTIONS'
+    );
+  });
+
+  /** Lo que aún falta para poder enviar el borrador (CA-HU-04-02). */
+  protected readonly missingForSubmit = computed(() => {
+    const manuscript = this.manuscript();
+    if (manuscript === null) {
+      return [];
+    }
+    const missing = (['title', 'abstract', 'keywords', 'area', 'language'] as const)
+      .filter((field) => {
+        const value = manuscript[field];
+        return Array.isArray(value) ? value.length === 0 : value.trim() === '';
+      })
+      .map((field) => SUBMISSION_FIELD_LABELS[field]);
+    if (manuscript.draft_file === null) {
+      missing.push(SUBMISSION_FIELD_LABELS['draft_file']);
+    }
+    return missing;
+  });
+
+  protected readonly submitMessage = computed(() => {
+    const draft = this.manuscript()?.draft_file;
+    return `Se creará la versión v1 con ${draft ? `el PDF «${draft.filename}»` : 'el PDF adjunto'} y los metadatos actuales. Una vez enviado no podrá editarlos hasta que el Editor solicite correcciones.`;
   });
 
   protected readonly action = computed(() => {
@@ -388,11 +515,84 @@ export class ManuscriptDetailComponent {
     });
   }
 
+  protected openSubmit(): void {
+    if (this.missingForSubmit().length > 0 || this.submitting()) {
+      return;
+    }
+    this.submitError.set('');
+    this.notice.set('');
+    this.confirmation.set(null);
+    this.submitOpen.set(true);
+  }
+
+  protected cancelSubmit(): void {
+    this.submitOpen.set(false);
+  }
+
+  /**
+   * Envío formal: crea la versión v1 y la ronda 0. La clave de
+   * idempotencia se conserva entre reintentos de esta misma intención, de
+   * modo que un corte de red no duplica el envío.
+   */
+  protected confirmSubmit(): void {
+    this.submitOpen.set(false);
+    if (this.submitting()) {
+      return;
+    }
+    this.submitting.set(true);
+    this.submitError.set('');
+    this.submitKey ??= newIdempotencyKey();
+
+    this.service.submit(this.id, this.submitKey).subscribe({
+      next: (result) => {
+        this.submitKey = null;
+        this.submitting.set(false);
+        this.confirmation.set({ title: 'Manuscrito enviado', result });
+        this.refresh();
+      },
+      error: (error: ApiError) => {
+        this.submitting.set(false);
+        if (error.status === 409) {
+          this.submitKey = null;
+          this.onStateConflict();
+          return;
+        }
+        if (error.status === 400) {
+          // Faltan datos: al corregirlos es una intención nueva.
+          this.submitKey = null;
+        }
+        this.submitError.set(submissionErrorMessage(error));
+      },
+    });
+  }
+
+  /** El servidor registró la nueva versión: se muestra el comprobante y el estado vigente. */
+  protected onVersionSubmitted(result: SubmissionResult): void {
+    this.notice.set('');
+    this.confirmation.set({ title: 'Nueva versión enviada', result });
+    this.refresh();
+  }
+
+  /** El estado cambió mientras se trabajaba (otra pestaña, otro actor): se actualiza. */
+  protected onStateConflict(): void {
+    this.confirmation.set(null);
+    this.notice.set('El estado del manuscrito cambió; se actualizó la información.');
+    this.refresh();
+  }
+
   /** El servidor ya guardó el PDF: se refleja sin recargar el manuscrito. */
   protected onDraftUploaded(draft: DraftFileSummary): void {
     this.manuscript.update((manuscript) =>
       manuscript ? { ...manuscript, draft_file: draft } : manuscript,
     );
+  }
+
+  /** Recarga el manuscrito sin parpadeo; si falla, pasa a la carga con error visible. */
+  private refresh(): void {
+    this.service.get(this.id).subscribe({
+      next: ({ manuscript }) => this.manuscript.set(manuscript),
+      error: () => this.load(),
+    });
   }
 
   protected load(): void {
