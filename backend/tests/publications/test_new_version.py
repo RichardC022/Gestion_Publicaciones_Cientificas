@@ -593,8 +593,12 @@ class TestAccess:
     def test_multirole_user_cannot_send_a_version_for_a_manuscript_seen_as_editor(self, corrected, send) -> None:
         assert send(actor("AUTHOR", "EDITOR"), corrected).status_code == 404
 
-    def test_get_is_not_allowed(self, owner, corrected) -> None:
-        assert client_for(owner).get(versions_url(corrected)).status_code == 405
+    def test_only_get_and_post_are_allowed(self, owner, corrected) -> None:
+        client = client_for(owner)
+
+        assert client.put(versions_url(corrected), {}, format="json").status_code == 405
+        assert client.patch(versions_url(corrected), {}, format="json").status_code == 405
+        assert client.delete(versions_url(corrected)).status_code == 405
 
 
 class TestEditorSeesTheHistory:
