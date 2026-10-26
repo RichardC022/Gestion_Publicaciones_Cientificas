@@ -158,7 +158,14 @@ describe('ManuscriptDetailComponent', () => {
       async (status) => {
         const { element } = await open({ status });
 
-        expect(element.querySelector('app-pdf-uploader')).toBeNull();
+        const uploader = element.querySelector('app-pdf-uploader');
+        if (status === 'REQUIRES_CORRECTIONS') {
+          // En correcciones el mismo cargador envía la nueva versión, no el borrador.
+          expect(text(uploader as HTMLElement)).toContain('Enviar nueva versión');
+          expect(text(uploader as HTMLElement)).not.toContain('Adjuntar el PDF');
+        } else {
+          expect(uploader).toBeNull();
+        }
       },
     );
 
@@ -637,6 +644,375 @@ describe('ManuscriptDetailComponent', () => {
       http
         .expectOne(WITHDRAW_URL)
         .flush(buildManuscript({ is_active: false, withdrawn_at: '2026-10-22T17:00:00Z' }));
+    });
+  });
+
+  /** Pares término/valor de una lista de definiciones. */
+  const definitions = (section: Element): Record<string, string> =>
+    Object.fromEntries(
+      Array.from(section.querySelectorAll('dt')).map((dt) => [
+        (dt.textContent ?? '').trim(),
+        (dt.nextElementSibling?.textContent ?? '').replace(/\s+/g, ' ').trim(),
+      ]),
+    );
+
+  describe('envío formal', () => {
+    const SUBMIT_URL = '/api/manuscripts/m-1/submit/';
+    const DRAFT_FILE = {
+      filename: 'articulo.pdf',
+      size_bytes: 2_621_440,
+      uploaded_at: '2026-10-20T15:30:00Z',
+    };
+    const READY = { status: 'DRAFT', draft_file: DRAFT_FILE } as const;
+    const RESULT = {
+      code: 'GPC-2026-000001',
+      status: 'SUBMITTED',
+      version_number: 1,
+      round_number: 0,
+      submitted_at: '2026-10-25T20:30:00Z',
+      integrity_seal: `sha256:${'a'.repeat(64)}`,
+    };
+    const KEY_FORMAT = /^[A-Za-z0-9._:-]{1,100}$/;
+
+    const submitCard = (element: HTMLElement) =>
+      element.querySelector('[aria-labelledby="submit-title"]') as HTMLElement | null;
+    const submitButton = (element: HTMLElement) =>
+      Array.from(element.querySelectorAll('button')).find((b) =>
+        ['Enviar manuscrito', 'Enviando…'].includes(b.textContent?.trim() ?? ''),
+      ) as HTMLButtonElement;
+    const confirmDialog = (element: HTMLElement) =>
+      element.querySelector('app-confirm-dialog dialog') as HTMLDialogElement;
+    const confirmSend = async (element: HTMLElement, settle: () => Promise<void>) => {
+      submitButton(element).click();
+      await settle();
+      (
+        Array.from(confirmDialog(element).querySelectorAll('button')).find(
+          (b) => b.textContent?.trim() === 'Enviar manuscrito',
+        ) as HTMLButtonElement
+      ).click();
+      await settle();
+    };
+
+    it('un borrador completo con PDF está listo para enviar', async () => {
+      const { element } = await open(READY);
+
+      expect(text(submitCard(element) as HTMLElement)).toContain('Todo está listo');
+      expect(submitButton(element).disabled).toBe(false);
+    });
+
+    it.each([
+      ['el título', { title: '' }, 'Título'],
+      ['el título en blanco', { title: '   ' }, 'Título'],
+      ['el resumen', { abstract: '' }, 'Resumen'],
+      ['las palabras clave', { keywords: [] }, 'Palabras clave'],
+      ['el área', { area: '' }, 'Área de conocimiento'],
+      ['el idioma', { language: '' }, 'Idioma'],
+      ['el PDF', { draft_file: null }, 'PDF del manuscrito'],
+    ])('si falta %s, lo indica y no permite enviar', async (_name, change, label) => {
+      const { element, settle } = await open({ ...READY, ...change });
+
+      expect(text(element.querySelector('#submit-missing') as HTMLElement)).toContain(label);
+      expect(submitButton(element).disabled).toBe(true);
+      expect(submitButton(element).getAttribute('aria-describedby')).toBe('submit-missing');
+      submitButton(element).click();
+      await settle();
+      expect(confirmDialog(element).open).toBe(false);
+      http.expectNone(SUBMIT_URL);
+    });
+
+    it('varios faltantes se listan juntos', async () => {
+      const { element } = await open({ status: 'DRAFT', title: '', area: '', draft_file: null });
+
+      expect(text(element.querySelector('#submit-missing') as HTMLElement).trim()).toBe(
+        'Para enviarlo aún falta: Título, Área de conocimiento, PDF del manuscrito.',
+      );
+    });
+
+    it.each(MANUSCRIPT_STATUSES.filter((status) => status !== 'DRAFT'))(
+      'en %s no se ofrece el envío formal',
+      async (status) => {
+        const { element } = await open({ status });
+
+        expect(submitCard(element)).toBeNull();
+      },
+    );
+
+    it('un borrador dado de baja no se puede enviar', async () => {
+      const { element } = await open({
+        ...READY,
+        is_active: false,
+        withdrawn_at: '2026-10-22T17:00:00Z',
+      });
+
+      expect(submitCard(element)).toBeNull();
+    });
+
+    it('pide confirmación explicando la versión que se creará y que luego no se edita', async () => {
+      const { element, settle } = await open(READY);
+
+      submitButton(element).click();
+      await settle();
+
+      expect(confirmDialog(element).open).toBe(true);
+      const dialogText = text(confirmDialog(element));
+      expect(dialogText).toContain('Se creará la versión v1');
+      expect(dialogText).toContain('«articulo.pdf»');
+      expect(dialogText).toContain('no podrá editarlos hasta que el Editor solicite correcciones');
+      http.expectNone(SUBMIT_URL);
+    });
+
+    it('cancelar la confirmación no envía nada', async () => {
+      const { element, settle } = await open(READY);
+      submitButton(element).click();
+      await settle();
+
+      (
+        Array.from(confirmDialog(element).querySelectorAll('button')).find(
+          (b) => b.textContent?.trim() === 'Cancelar',
+        ) as HTMLButtonElement
+      ).click();
+      await settle();
+
+      http.expectNone(SUBMIT_URL);
+      expect(confirmDialog(element).open).toBe(false);
+    });
+
+    it('confirmar envía POST con una Idempotency-Key válida y sin cuerpo', async () => {
+      const { element, settle } = await open(READY);
+
+      await confirmSend(element, settle);
+
+      const request = http.expectOne(SUBMIT_URL);
+      expect(request.request.method).toBe('POST');
+      expect(request.request.body).toBeNull();
+      expect(request.request.headers.get('Idempotency-Key')).toMatch(KEY_FORMAT);
+      request.flush(RESULT, { status: 201, statusText: 'Created' });
+      http
+        .expectOne('/api/manuscripts/m-1/')
+        .flush(buildManuscript({ status: 'SUBMITTED', current_version: 1 }));
+      await settle();
+    });
+
+    it('muestra el comprobante con código, versión, ronda, fecha y sello de integridad', async () => {
+      const { element, settle } = await open(READY);
+      await confirmSend(element, settle);
+
+      http.expectOne(SUBMIT_URL).flush(RESULT, { status: 201, statusText: 'Created' });
+      http
+        .expectOne('/api/manuscripts/m-1/')
+        .flush(buildManuscript({ status: 'SUBMITTED', current_version: 1 }));
+      await settle();
+
+      const receipt = element.querySelector(
+        '[aria-labelledby="confirmation-title"]',
+      ) as HTMLElement;
+      expect(receipt.querySelector('h2')?.textContent).toBe('Manuscrito enviado');
+      expect(definitions(receipt)).toEqual({
+        'Código de seguimiento': 'GPC-2026-000001',
+        Versión: 'v1',
+        Ronda: '0',
+        // 20:30 UTC son las 15:30 en la zona institucional.
+        'Enviado el': '25/10/2026 15:30',
+        'Sello de integridad': `sha256:${'a'.repeat(64)}`,
+      });
+    });
+
+    it('tras el envío el detalle pasa a Enviado y deja de ofrecer editar, enviar y cargar', async () => {
+      const { element, settle } = await open(READY);
+      await confirmSend(element, settle);
+
+      http.expectOne(SUBMIT_URL).flush(RESULT, { status: 201, statusText: 'Created' });
+      http
+        .expectOne('/api/manuscripts/m-1/')
+        .flush(buildManuscript({ status: 'SUBMITTED', current_version: 1 }));
+      await settle();
+
+      expect(text(element.querySelector('.detail-badges') as HTMLElement)).toContain('Enviado');
+      expect(submitCard(element)).toBeNull();
+      expect(element.querySelector('app-pdf-uploader')).toBeNull();
+      expect(links(element).some(([label]) => label === 'Editar manuscrito')).toBe(false);
+    });
+
+    it('no envía dos veces mientras el envío está en curso', async () => {
+      const { element, settle } = await open(READY);
+      await confirmSend(element, settle);
+
+      expect(submitButton(element).textContent?.trim()).toBe('Enviando…');
+      expect(submitButton(element).disabled).toBe(true);
+      submitButton(element).click();
+      await settle();
+
+      const request = http.expectOne(SUBMIT_URL);
+      request.flush(RESULT, { status: 201, statusText: 'Created' });
+      http.expectOne('/api/manuscripts/m-1/').flush(buildManuscript({ status: 'SUBMITTED' }));
+    });
+
+    it('si falla por un corte, el reintento usa la MISMA clave de idempotencia', async () => {
+      const { element, settle } = await open(READY);
+      await confirmSend(element, settle);
+      const first = http.expectOne(SUBMIT_URL);
+      const key = first.request.headers.get('Idempotency-Key');
+      first.flush(errorEnvelope('AUDIT_UNAVAILABLE', 'Sin auditoría.'), {
+        status: 503,
+        statusText: 'Service Unavailable',
+      });
+      await settle();
+
+      expect(element.querySelector('.submit-error')?.textContent).toContain(
+        'Servicio no disponible',
+      );
+      expect(submitButton(element).disabled).toBe(false);
+
+      await confirmSend(element, settle);
+      const retry = http.expectOne(SUBMIT_URL);
+      expect(retry.request.headers.get('Idempotency-Key')).toBe(key);
+      retry.flush(RESULT, { status: 201, statusText: 'Created' });
+      http.expectOne('/api/manuscripts/m-1/').flush(buildManuscript({ status: 'SUBMITTED' }));
+    });
+
+    it('un envío rechazado por datos faltantes explica qué falta y el siguiente intento usa clave nueva', async () => {
+      const { element, settle } = await open(READY);
+      await confirmSend(element, settle);
+      const first = http.expectOne(SUBMIT_URL);
+      const key = first.request.headers.get('Idempotency-Key');
+      first.flush(
+        errorEnvelope(
+          'VALIDATION_ERROR',
+          'Complete los campos obligatorios antes de enviar el manuscrito.',
+          {
+            title: ['Este campo es obligatorio.'],
+            authors: ['Debe indicar exactamente un autor responsable.'],
+          },
+        ),
+        { status: 400, statusText: 'Bad Request' },
+      );
+      await settle();
+
+      expect(element.querySelector('.submit-error')?.textContent).toContain(
+        'Complete los campos obligatorios antes de enviar el manuscrito. Falta: Título, Autores.',
+      );
+
+      await confirmSend(element, settle);
+      const second = http.expectOne(SUBMIT_URL);
+      expect(second.request.headers.get('Idempotency-Key')).not.toBe(key);
+      second.flush(RESULT, { status: 201, statusText: 'Created' });
+      http.expectOne('/api/manuscripts/m-1/').flush(buildManuscript({ status: 'SUBMITTED' }));
+    });
+
+    it('si el manuscrito ya no era un borrador (409) avisa y muestra el estado real', async () => {
+      const { element, settle } = await open(READY);
+      await confirmSend(element, settle);
+
+      http.expectOne(SUBMIT_URL).flush(errorEnvelope('STATE_CONFLICT', 'Ya enviado.'), {
+        status: 409,
+        statusText: 'Conflict',
+      });
+      await settle();
+      http
+        .expectOne('/api/manuscripts/m-1/')
+        .flush(buildManuscript({ status: 'SUBMITTED', current_version: 1 }));
+      await settle();
+
+      expect(element.querySelector('.callout--success')?.textContent).toContain('cambió');
+      expect(submitCard(element)).toBeNull();
+      expect(text(element.querySelector('.detail-badges') as HTMLElement)).toContain('Enviado');
+    });
+  });
+
+  describe('nueva versión en correcciones', () => {
+    const VERSION_URL = '/api/manuscripts/m-1/versions/';
+    const RESULT = {
+      code: 'GPC-2026-000001',
+      status: 'SUBMITTED',
+      version_number: 2,
+      round_number: 1,
+      submitted_at: '2026-10-25T20:30:00Z',
+      integrity_seal: `sha256:${'c'.repeat(64)}`,
+    };
+    const CORRECTIONS = {
+      status: 'REQUIRES_CORRECTIONS',
+      current_version: 1,
+      current_round: 1,
+    } as const;
+
+    const choose = async (element: HTMLElement, settle: () => Promise<void>) => {
+      const input = element.querySelector('#pdf-file') as HTMLInputElement;
+      const file = new File(['%PDF-1.7'], 'corregido.pdf', { type: 'application/pdf' });
+      Object.defineProperty(input, 'files', { value: [file], configurable: true });
+      input.dispatchEvent(new Event('change'));
+      await settle();
+    };
+    const sendButton = (element: HTMLElement) =>
+      Array.from(element.querySelectorAll('.uploader__actions button')).find(
+        (b) => b.textContent?.trim() === 'Enviar nueva versión',
+      ) as HTMLButtonElement;
+
+    it('ofrece enviar la versión siguiente y no ofrece el envío formal ni el borrador', async () => {
+      const { element } = await open(CORRECTIONS);
+
+      const uploader = text(element.querySelector('app-pdf-uploader') as HTMLElement);
+      expect(uploader).toContain('Enviar nueva versión');
+      expect(uploader).toContain('la versión v2');
+      expect(element.querySelector('[aria-labelledby="submit-title"]')).toBeNull();
+      expect(uploader).not.toContain('Borrador actual');
+    });
+
+    it('un manuscrito de correcciones dado de baja no ofrece enviar versiones', async () => {
+      const { element } = await open({
+        ...CORRECTIONS,
+        is_active: false,
+        withdrawn_at: '2026-10-22T17:00:00Z',
+      });
+
+      expect(element.querySelector('app-pdf-uploader')).toBeNull();
+    });
+
+    it('envía el PDF corregido a versions con Idempotency-Key y muestra el comprobante', async () => {
+      const { element, settle } = await open(CORRECTIONS);
+      await choose(element, settle);
+
+      sendButton(element).click();
+      await settle();
+      const request = http.expectOne(VERSION_URL);
+      expect(request.request.method).toBe('POST');
+      expect(request.request.headers.get('Idempotency-Key')).toMatch(/^[A-Za-z0-9._:-]{1,100}$/);
+      expect(((request.request.body as FormData).get('file') as File).name).toBe('corregido.pdf');
+      request.flush(RESULT, { status: 201, statusText: 'Created' });
+      http
+        .expectOne('/api/manuscripts/m-1/')
+        .flush(buildManuscript({ status: 'SUBMITTED', current_version: 2, current_round: 1 }));
+      await settle();
+
+      const receipt = element.querySelector(
+        '[aria-labelledby="confirmation-title"]',
+      ) as HTMLElement;
+      expect(receipt.querySelector('h2')?.textContent).toBe('Nueva versión enviada');
+      expect(definitions(receipt)).toMatchObject({
+        Versión: 'v2',
+        Ronda: '1',
+        'Sello de integridad': `sha256:${'c'.repeat(64)}`,
+      });
+      expect(text(element.querySelector('.detail-badges') as HTMLElement)).toContain('Enviado');
+      expect(element.querySelector('app-pdf-uploader')).toBeNull();
+    });
+
+    it('si el estado cambió (409) avisa y muestra el estado real', async () => {
+      const { element, settle } = await open(CORRECTIONS);
+      await choose(element, settle);
+      sendButton(element).click();
+      await settle();
+
+      http
+        .expectOne(VERSION_URL)
+        .flush(errorEnvelope('STATE_CONFLICT', 'Cambió.'), { status: 409, statusText: 'Conflict' });
+      await settle();
+      http
+        .expectOne('/api/manuscripts/m-1/')
+        .flush(buildManuscript({ status: 'SUBMITTED', current_version: 2 }));
+      await settle();
+
+      expect(element.querySelector('.callout--success')?.textContent).toContain('cambió');
+      expect(element.querySelector('app-pdf-uploader')).toBeNull();
     });
   });
 });

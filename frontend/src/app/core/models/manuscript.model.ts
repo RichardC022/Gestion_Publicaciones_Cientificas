@@ -81,6 +81,36 @@ export type DraftUploadEvent =
   | { kind: 'progress'; percent: number | null }
   | { kind: 'done'; draft: DraftFileSummary; replaced: boolean };
 
+/**
+ * Resultado de un envío formal o de una nueva versión
+ * (`POST .../submit/` y `POST .../versions/`): el código de seguimiento,
+ * la versión y la ronda creadas, la fecha y el sello de integridad
+ * `sha256:<hex>` del PDF exacto.
+ */
+export interface SubmissionResult {
+  code: string;
+  status: ManuscriptStatus;
+  version_number: number;
+  round_number: number;
+  submitted_at: string;
+  integrity_seal: string;
+}
+
+/** Eventos de la carga de una nueva versión: avance y resultado final. */
+export type VersionUploadEvent =
+  { kind: 'progress'; percent: number | null } | { kind: 'done'; submission: SubmissionResult };
+
+/** Fila de `GET .../versions/`: una iteración con el sello de su PDF. */
+export interface VersionSummary {
+  id: string;
+  version_number: number;
+  round_number: number;
+  original_filename: string;
+  original_size_bytes: number;
+  original_sha256: string;
+  submitted_at: string;
+}
+
 /** Entradas del historial inmutable (`GET .../history/`, HU-23). */
 export interface StatusHistoryEntry {
   type: 'CREATED' | 'STATUS_CHANGED' | 'WITHDRAWN';
