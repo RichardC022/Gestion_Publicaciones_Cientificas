@@ -95,6 +95,7 @@ class SubmissionListView(EditorBaseView):
             self.scoped_manuscripts()
             .filter(status=Manuscript.Status.SUBMITTED, is_active=True)
             .annotate(submitted_at=Subquery(latest_submission))
+            .prefetch_related("authors")
         )
         page = self.paginate_queryset(apply_filters(inbox, request.query_params))
         return self.get_paginated_response(SubmissionListSerializer(page, many=True).data)

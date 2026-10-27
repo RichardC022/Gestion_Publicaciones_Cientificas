@@ -151,6 +151,27 @@ class TestInbox:
         assert row["submitted_at"] is not None
         assert "authors" not in row and "created_by" not in row
 
+    def test_rows_name_the_corresponding_author_without_extra_queries(
+        self, editor, django_assert_max_num_queries
+    ) -> None:
+        first = submitted()
+        ManuscriptAuthorFactory(
+            manuscript=first, user=None, full_name="Luis Pérez", email="luis@x.edu", author_order=2
+        )
+        for _ in range(4):
+            submitted()
+
+        with django_assert_max_num_queries(12):
+            rows = results(client_for(editor).get(BASE + "submissions/"))
+
+        by_id = {row["id"]: row for row in rows}
+        assert len(rows) == 5
+        corresponding = first.authors.get(is_corresponding=True)
+        assert by_id[str(first.pk)]["corresponding_author"] == corresponding.full_name
+        assert by_id[str(first.pk)]["corresponding_author"] != "Luis Pérez"
+        assert all(row["corresponding_author"] for row in rows)
+        assert "email" not in str(rows) and "affiliation" not in str(rows)
+
     def test_withdrawn_manuscripts_are_not_listed(self, editor) -> None:
         submitted(is_active=False, withdrawn_at=timezone.now())
 

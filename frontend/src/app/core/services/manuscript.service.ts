@@ -3,13 +3,13 @@ import {
   HttpErrorResponse,
   HttpEvent,
   HttpEventType,
-  HttpParams,
   HttpResponse,
 } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable, catchError, filter, from, map, switchMap, throwError } from 'rxjs';
 
 import { API_BASE_URL } from '../http/api-base-url.token';
+import { toHttpParams } from '../http/query-params';
 import { toApiError } from '../models/api-error.model';
 import {
   DraftFileSummary,
@@ -299,16 +299,4 @@ function toUploadEvent(event: HttpEvent<DraftFileSummary>): DraftUploadEvent | n
 
 function toSnapshot(response: HttpResponse<Manuscript>): ManuscriptSnapshot {
   return { manuscript: response.body as Manuscript, etag: response.headers.get('ETag') };
-}
-
-/** Solo viajan los filtros con valor: un parámetro vacío no se envía. */
-function toHttpParams(params: ManuscriptListParams): HttpParams {
-  let httpParams = new HttpParams();
-  for (const [key, value] of Object.entries(params)) {
-    if (value === undefined || value === null || value === '' || value === false) {
-      continue;
-    }
-    httpParams = httpParams.set(key, String(value));
-  }
-  return httpParams;
 }
