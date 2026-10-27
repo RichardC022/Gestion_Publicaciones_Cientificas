@@ -18,7 +18,14 @@ from apps.publications.serializers import (
     ManuscriptVersionSummarySerializer,
 )
 from apps.publications.services.history import build_history
-from apps.reviews.models import MAX_SCORE, MIN_SCORE, SCORE_FIELDS, Assignment, Evaluation
+from apps.reviews.models import (
+    MAX_SCORE,
+    MIN_SCORE,
+    SCORE_FIELDS,
+    Assignment,
+    Evaluation,
+    IncidentReport,
+)
 from apps.reviews.services.assignments import RevocationCause
 from apps.reviews.services.inbox import inbox_state
 from apps.users.models import User
@@ -491,3 +498,61 @@ class ReviewerEvaluationHistoryDetailSerializer(ReviewerEvaluationHistorySeriali
             "comments_for_author",
         )
         read_only_fields = fields
+
+
+class ReportIncidentSerializer(serializers.Serializer):
+    """Body of ``POST .../identity-leak/``: the type and a non-blank description."""
+
+    report_type = serializers.ChoiceField(choices=IncidentReport.ReportType.choices)
+    description = serializers.CharField(max_length=5000, trim_whitespace=True)
+
+
+class ReviewerIncidentSerializer(serializers.ModelSerializer):
+    """What the reporter gets back: the receipt, not the text nor anything editorial."""
+
+    class Meta:
+        model = IncidentReport
+        fields = ("id", "assignment", "report_type", "status", "created_at")
+        read_only_fields = fields
+
+
+class EditorIncidentSerializer(serializers.ModelSerializer):
+    """A confidential report as the editor reads it, with the reporter's identity.
+
+    The editor module is the only place that exposes the description and
+    the reviewer; the author never reaches either.
+    """
+
+    reporter = PersonSerializer(read_only=True)
+    resolved_by = PersonSerializer(read_only=True)
+    manuscript_code = serializers.CharField(source="manuscript.code", read_only=True)
+    manuscript_title = serializers.CharField(source="manuscript.title", read_only=True)
+    correction_round_number = serializers.IntegerField(
+        source="correction_round.round_number", read_only=True, default=None
+    )
+
+    class Meta:
+        model = IncidentReport
+        fields = (
+            "id",
+            "status",
+            "report_type",
+            "description",
+            "manuscript",
+            "manuscript_code",
+            "manuscript_title",
+            "assignment",
+            "reporter",
+            "created_at",
+            "resolution",
+            "resolved_by",
+            "resolved_at",
+            "correction_round_number",
+        )
+        read_only_fields = fields
+
+
+class ResolveIncidentSerializer(serializers.Serializer):
+    """Body of ``POST .../resolve/``: the one resolution chosen."""
+
+    resolution = serializers.ChoiceField(choices=IncidentReport.Resolution.choices)

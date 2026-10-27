@@ -42,20 +42,24 @@ from apps.publications.views import (
     parse_if_match,
     replayed,
 )
-from apps.reviews.models import Assignment, Evaluation
+from apps.reviews.models import Assignment, Evaluation, IncidentReport
 from apps.reviews.serializers import (
     AssignmentSerializer,
     AssignReviewerSerializer,
     DeclareConflictSerializer,
     EditorEvaluationSerializer,
+    EditorIncidentSerializer,
     EvaluationDraftSerializer,
     EligibleReviewerSerializer,
     RegisterVerdictSerializer,
+    ReportIncidentSerializer,
+    ResolveIncidentSerializer,
     ReviewerAssignmentDetailSerializer,
     ReviewerAssignmentSerializer,
     ReviewerEvaluationHistoryDetailSerializer,
     ReviewerEvaluationHistorySerializer,
     ReviewerEvaluationSerializer,
+    ReviewerIncidentSerializer,
     ReviewerFilterSerializer,
     RevokeAssignmentSerializer,
     StartReviewSerializer,
@@ -64,6 +68,7 @@ from apps.reviews.serializers import (
     VerdictSerializer,
 )
 from apps.reviews.services.assignments import assign_reviewer, revoke_assignment, start_review
+from apps.reviews.services.incidents import report_incident, resolve_incident
 from apps.reviews.services.evaluations import declare_conflict, save_draft, submit_evaluation
 from apps.reviews.services.eligibility import eligibility_breakdown, eligible_reviewers
 from apps.reviews.permissions import IsActiveAssignedReviewer, IsAssignedReviewer
@@ -90,6 +95,12 @@ class EditorBaseView(GenericAPIView):
             Assignment.objects.filter(manuscript__in=in_scope)
             .select_related("manuscript", "version", "reviewer", "assigned_by", "revoked_by")
             .with_overdue()
+        )
+
+    def scoped_incidents(self) -> QuerySet:
+        """Confidential reports over the manuscripts in the editor's scope."""
+        return IncidentReport.objects.for_editor(self.request.user).select_related(
+            "manuscript", "reporter", "resolved_by", "correction_round"
         )
 
     def represent_assignment(self, assignment: Assignment) -> dict:
@@ -369,6 +380,46 @@ class ManuscriptEvaluationsView(EditorBaseView):
         return self.get_paginated_response(EditorEvaluationSerializer(page, many=True).data)
 
 
+class IncidentListView(EditorBaseView):
+    """``GET /api/editor/incidents/``: the confidential reports, open ones first.
+
+    ``?status=OPEN|RESOLVED`` narrows the list. Reports over a manuscript
+    the editor registered or co-authored are left out.
+    """
+
+    def get(self, request: Request) -> Response:
+        incidents = self.scoped_incidents()
+        status_filter = request.query_params.get("status")
+        if status_filter is not None:
+            if status_filter not in IncidentReport.Status.values:
+                raise DomainError(
+                    "El estado debe ser OPEN o RESOLVED.",
+                    code=ErrorCode.VALIDATION_ERROR,
+                    details={"status": ["El estado debe ser OPEN o RESOLVED."]},
+                )
+            incidents = incidents.filter(status=status_filter)
+        # "OPEN" va antes que "RESOLVED" en orden alfabético.
+        page = self.paginate_queryset(incidents.order_by("status", "-created_at", "-id"))
+        return self.get_paginated_response(EditorIncidentSerializer(page, many=True).data)
+
+
+class IncidentResolveView(EditorBaseView):
+    """``POST /api/editor/incidents/{id}/resolve/``: resolve once (``409`` the second time)."""
+
+    def post(self, request: Request, pk) -> Response:
+        get_object_or_404(self.scoped_incidents(), pk=pk)
+        body = ResolveIncidentSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        resolve_incident(
+            incident_id=pk,
+            editor=request.user,
+            resolution=body.validated_data["resolution"],
+            context=audit_request_context(request),
+        )
+        resolved = self.scoped_incidents().get(pk=pk)
+        return Response(EditorIncidentSerializer(resolved).data)
+
+
 class ReviewerBaseView(GenericAPIView):
     """Shared permissions and assignment scope of the reviewer module."""
 
@@ -564,3 +615,27 @@ class ReviewerEvaluationDetailView(ReviewerHistoryBaseView):
     def get(self, request: Request, pk) -> Response:
         evaluation = get_object_or_404(self.scoped_evaluations(), pk=pk)
         return Response(ReviewerEvaluationHistoryDetailSerializer(evaluation).data)
+
+
+class ReviewerIdentityLeakView(ReviewerBaseView):
+    """``POST /api/reviewer/assignments/{id}/identity-leak/``: a confidential report.
+
+    Private: it changes neither the evaluation, the PDF nor the manuscript,
+    and the author never learns it exists. Only the owner of an ``ACTIVE``
+    assignment files it; a second open report answers ``409``.
+    """
+
+    permission_classes = [IsAuthenticated, IsReviewer]
+
+    def post(self, request: Request, pk) -> Response:
+        self.get_assignment(pk)
+        body = ReportIncidentSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        incident = report_incident(
+            assignment_id=pk,
+            reviewer=request.user,
+            report_type=body.validated_data["report_type"],
+            description=body.validated_data["description"],
+            context=audit_request_context(request),
+        )
+        return Response(ReviewerIncidentSerializer(incident).data, status=status.HTTP_201_CREATED)

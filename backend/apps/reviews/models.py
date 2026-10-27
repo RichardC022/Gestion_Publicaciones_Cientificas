@@ -283,6 +283,19 @@ class Evaluation(models.Model):
         return f"{self.assignment_id} · {self.status}"
 
 
+class IncidentReportQuerySet(models.QuerySet):
+    """Scopes over incident reports."""
+
+    def for_editor(self, user) -> "IncidentReportQuerySet":
+        """Reports over manuscripts in the editor's scope.
+
+        The same conflict-of-interest rule as the editor's inbox: an editor
+        who registered or co-authored the manuscript never reaches its
+        reports, which answer ``404``.
+        """
+        return self.filter(manuscript__in=Manuscript.objects.for_editor(user).values("pk"))
+
+
 class IncidentReport(models.Model):
     """Reviewer's confidential report about an assignment (CA-HU-16-06).
 
@@ -355,6 +368,8 @@ class IncidentReport(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     resolved_at = models.DateTimeField(null=True, blank=True)
+
+    objects = IncidentReportQuerySet.as_manager()
 
     class Meta:
         db_table = "reviews_incident_report"

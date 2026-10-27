@@ -53,6 +53,9 @@ EARLY_CAUSE_MESSAGE = (
 OVERDUE_CAUSE_MESSAGE = "La causa 'plazo vencido' exige que la asignación haya vencido."
 REVIEWER_CAPACITY_MESSAGE = "El Revisor alcanzó su máximo de asignaciones activas."
 WITHDRAWAL_REASON = "Baja lógica del manuscrito por su Autor."
+INCIDENT_REVOCATION_REASON = "Revocada al resolver un incidente confidencial."
+#: Cause announced to the listeners; it is not an editor-selectable ``RevocationCause``.
+INCIDENT_CAUSE = "IDENTITY_LEAK"
 
 
 class RevocationCause(TextChoices):
@@ -374,3 +377,32 @@ def revoke_on_withdrawal(*, manuscript_id: UUID, withdrawn_by_id: UUID) -> Assig
     )
     _announce_revocation(assignment, RevocationCause.MANUSCRIPT_WITHDRAWN)
     return assignment
+
+
+def revoke_for_incident(assignment: Assignment, *, editor: User, context: dict) -> bool:
+    """Revoke the ``ACTIVE`` or ``EXPIRED`` assignment an incident resolution closes.
+
+    Runs inside the resolution's transaction, with the assignment already
+    locked by the caller. One already revoked or completed is left as it
+    is. The reason is a fixed text: it never repeats the reviewer's report.
+    Returns whether something was revoked.
+    """
+    if assignment.status not in (Assignment.Status.ACTIVE, Assignment.Status.EXPIRED):
+        return False
+    previous_status = assignment.status
+    _mark_revoked(assignment, revoked_by=editor, reason=INCIDENT_REVOCATION_REASON)
+    record_editor_audit(
+        "ASSIGNMENT_REVOKED",
+        "ASSIGNMENT",
+        assignment.pk,
+        editor,
+        context,
+        reason=INCIDENT_REVOCATION_REASON,
+        details={
+            "manuscript_id": str(assignment.manuscript_id),
+            "cause": INCIDENT_CAUSE,
+            "previous_status": previous_status,
+        },
+    )
+    _announce_revocation(assignment, INCIDENT_CAUSE)
+    return True

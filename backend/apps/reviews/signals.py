@@ -46,6 +46,17 @@ evaluation_submitted = Signal()
 #: no author data. Args: ``assignment_id``, ``manuscript_id``, ``reviewer_id``.
 reviewer_conflict_declared = Signal()
 
+#: A reviewer filed a confidential incident report. The editor is told; the
+#: payload they build must carry no author data and not the free text.
+#: Args: ``incident_id``, ``assignment_id``, ``manuscript_id``, ``report_type``.
+incident_reported = Signal()
+
+#: The editor resolved an incident. For ``REQUEST_ANONYMIZED_VERSION`` the
+#: author is asked for an anonymized version: that notice must never mention
+#: the report nor the reviewer. Args: ``incident_id``, ``assignment_id``,
+#: ``manuscript_id``, ``resolution``, ``correction_round_id`` (or ``None``).
+incident_resolved = Signal()
+
 
 def announce(signal: Signal, **kwargs) -> None:
     """Send ``signal`` robustly: a failing receiver is logged, never raised."""
