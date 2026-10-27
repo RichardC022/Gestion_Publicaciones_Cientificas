@@ -8,7 +8,9 @@ serializers, never on one serializer with conditional ``exclude``:
   carries the reviewer's identity, confidential comments or scores.
 * :class:`AuthorEvaluationFeedbackSerializer` — the only view of an
   evaluation the author gets: the comments written for them, the
-  verdict and the editor's observations.
+  verdict and the editor's observations. It appears as ``feedback`` in
+  the author's manuscript, and only once the editor registered a
+  verdict: a final evaluation alone is not shown.
 * :class:`EditorManuscriptSerializer` — the editor's read-only view,
   with the authors' contact data and the versions.
 """
@@ -92,6 +94,7 @@ class AuthorManuscriptSerializer(serializers.ModelSerializer):
         allow_empty=True,
     )
     draft_file = serializers.SerializerMethodField()
+    feedback = serializers.SerializerMethodField()
 
     class Meta:
         model = Manuscript
@@ -111,6 +114,7 @@ class AuthorManuscriptSerializer(serializers.ModelSerializer):
             "withdrawal_reason",
             "authors",
             "draft_file",
+            "feedback",
             "created_at",
             "updated_at",
         )
@@ -136,6 +140,26 @@ class AuthorManuscriptSerializer(serializers.ModelSerializer):
 
     def get_draft_file(self, obj: Manuscript) -> dict | None:
         return draft_file_summary(obj)
+
+    def get_feedback(self, obj: Manuscript) -> dict | None:
+        """What the author may read of the latest verdict; ``None`` before any.
+
+        The allowlist serializer receives only the three fields it
+        declares: the reviewer's identity, the confidential comments, the
+        scores and the editor's internal justification never reach it.
+        The queryset prefetches ``verdicts`` with their evaluation.
+        """
+        verdicts = list(obj.verdicts.all())
+        if not verdicts:
+            return None
+        latest = verdicts[-1]
+        return AuthorEvaluationFeedbackSerializer(
+            {
+                "comments_for_author": latest.evaluation.comments_for_author,
+                "decision": latest.decision,
+                "observations": latest.observations,
+            }
+        ).data
 
     def validate_language(self, value: str) -> str:
         value = value.strip().lower()

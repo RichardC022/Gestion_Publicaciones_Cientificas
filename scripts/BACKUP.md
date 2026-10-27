@@ -86,3 +86,9 @@ sudo chmod 0644 /etc/cron.d/gpc
 ```
 
 Ajusta la ruta `/opt/gpc` si el repositorio está en otro directorio.
+
+La plantilla incluye también la expiración de asignaciones (TSK-45 y TSK-49): cada minuto ejecuta `mark_expired_assignments`, que marca como `EXPIRED` las asignaciones `ACTIVE` con `due_at <= now()`, sin revocar ni reasignar, y escribe en `/var/log/gpc-expire.log` solo cuando hubo trabajo o un error. El contenedor `backend` debe estar en ejecución. Para probarla a mano:
+
+```bash
+docker compose exec backend python manage.py mark_expired_assignments
+```

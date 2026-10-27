@@ -404,8 +404,11 @@ class TestScopeAndPrivacy:
             "id", "code", "title", "abstract", "keywords", "area", "language",
             "status", "current_round", "current_version", "is_active",
             "withdrawn_at", "withdrawal_reason", "authors", "draft_file",
-            "created_at", "updated_at",
+            "feedback", "created_at", "updated_at",
         }
+        # Sin veredicto no hay nada que leer; con él, la lista blanca de tres campos
+        # (ver `test_author_feedback.py`).
+        assert body["feedback"] is None
         serialized = str(body).lower()
         for forbidden in ("reviewer", "confidential", "score", "created_by"):
             assert forbidden not in serialized
