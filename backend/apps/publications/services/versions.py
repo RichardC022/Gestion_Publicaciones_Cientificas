@@ -87,15 +87,18 @@ class Submission:
 
 @dataclass
 class Rollback:
-    """Version directories created by the running operation.
+    """Directories and files created by the running operation.
 
-    Only directories registered here are removed on failure, so a
-    directory that already existed before the call is never deleted.
+    Only paths registered here are removed on failure, so a directory or
+    file that already existed before the call is never deleted.
     """
 
     directories: list[Path] = field(default_factory=list)
+    files: list[Path] = field(default_factory=list)
 
     def discard(self) -> None:
+        for file in self.files:
+            file.unlink(missing_ok=True)
         for directory in self.directories:
             shutil.rmtree(directory, ignore_errors=True)
 
@@ -107,6 +110,7 @@ def record_audit(
     context: dict,
     *,
     result: str = AuditLog.Result.SUCCESS,
+    actor_role: str = Role.Code.AUTHOR,
     **extra: Any,
 ) -> None:
     AuditService.record(
@@ -115,14 +119,23 @@ def record_audit(
         entity_id=manuscript_id,
         result=result,
         actor=user,
-        actor_role=Role.Code.AUTHOR,
+        actor_role=actor_role,
         **extra,
         **context,
     )
 
 
-def _audit_failure(action: str, manuscript_id: UUID, user: User, context: dict, reason: str) -> None:
-    """Leave a ``FAILURE`` event; it is written after the rollback, on its own."""
+def audit_refusal(
+    action: str,
+    manuscript_id: UUID,
+    user: User,
+    context: dict,
+    reason: str,
+    *,
+    result: str = AuditLog.Result.FAILURE,
+    actor_role: str = Role.Code.AUTHOR,
+) -> None:
+    """Leave a ``FAILURE`` (or ``DENIED``) event; it is written after the rollback, on its own."""
     try:
         with transaction.atomic():
             record_audit(
@@ -130,7 +143,8 @@ def _audit_failure(action: str, manuscript_id: UUID, user: User, context: dict, 
                 manuscript_id,
                 user,
                 context,
-                result=AuditLog.Result.FAILURE,
+                result=result,
+                actor_role=actor_role,
                 reason=reason,
             )
     except AuditUnavailable:
@@ -145,6 +159,7 @@ def run_formal_write(
     context: dict,
     work: Callable[[Rollback], T],
     idempotency: IdempotencyScope | None = None,
+    actor_role: str = Role.Code.AUTHOR,
 ) -> T:
     """Run ``work`` in one transaction with the all-or-nothing guarantee.
 
@@ -171,8 +186,13 @@ def run_formal_write(
         # Incluye FileExistsError: el directorio de la versión ya existía.
         rollback.discard()
         logger.error("Fallo de almacenamiento en %s de %s: %s", action, manuscript_id, exc)
-        _audit_failure(
-            action, manuscript_id, user, context, f"Fallo de almacenamiento ({type(exc).__name__})."
+        audit_refusal(
+            action,
+            manuscript_id,
+            user,
+            context,
+            f"Fallo de almacenamiento ({type(exc).__name__}).",
+            actor_role=actor_role,
         )
         raise DomainError(STORAGE_MESSAGE, code=ErrorCode.STORAGE_UNAVAILABLE) from exc
     except BaseException:
