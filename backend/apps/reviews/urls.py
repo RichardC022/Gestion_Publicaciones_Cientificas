@@ -7,6 +7,8 @@ from apps.reviews.views import (
     EligibleReviewersView,
     ExpiredAssignmentsView,
     ManuscriptAssignmentsView,
+    ManuscriptEvaluationsView,
+    ManuscriptVerdictsView,
     StartReviewView,
     SubmissionDetailView,
     SubmissionListView,
@@ -29,6 +31,16 @@ urlpatterns = [
         "manuscripts/<uuid:pk>/assignments/",
         ManuscriptAssignmentsView.as_view(),
         name="editor-manuscript-assignments",
+    ),
+    path(
+        "manuscripts/<uuid:pk>/verdicts/",
+        ManuscriptVerdictsView.as_view(),
+        name="editor-manuscript-verdicts",
+    ),
+    path(
+        "manuscripts/<uuid:pk>/evaluations/",
+        ManuscriptEvaluationsView.as_view(),
+        name="editor-manuscript-evaluations",
     ),
     path(
         "assignments/expired/",

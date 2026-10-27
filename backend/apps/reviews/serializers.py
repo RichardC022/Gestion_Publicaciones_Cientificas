@@ -9,14 +9,14 @@ from __future__ import annotations
 from django.urls import reverse
 from rest_framework import serializers
 
-from apps.publications.models import Manuscript
+from apps.publications.models import Manuscript, Verdict
 from apps.publications.serializers import (
     EditorManuscriptSerializer,
     HistoryEntrySerializer,
     ManuscriptVersionSummarySerializer,
 )
 from apps.publications.services.history import build_history
-from apps.reviews.models import Assignment
+from apps.reviews.models import Assignment, Evaluation
 from apps.reviews.services.assignments import RevocationCause
 from apps.users.models import User
 
@@ -183,3 +183,76 @@ class RevokeAssignmentSerializer(serializers.Serializer):
 
     cause = serializers.ChoiceField(choices=RevocationCause.choices)
     reason = serializers.CharField(max_length=2000, trim_whitespace=True)
+
+
+class EditorEvaluationSerializer(serializers.ModelSerializer):
+    """A final evaluation as the editor reads it: reviewer identity and confidential notes.
+
+    It is an allowlist for the editor module only. The author gets
+    :class:`~apps.publications.serializers.AuthorEvaluationFeedbackSerializer`
+    and the reviewer's identity never reaches any other role.
+    """
+
+    reviewer = PersonSerializer(read_only=True)
+    version_number = serializers.IntegerField(source="version.version_number", read_only=True)
+
+    class Meta:
+        model = Evaluation
+        fields = (
+            "id",
+            "assignment",
+            "version_number",
+            "reviewer",
+            "status",
+            "originality_score",
+            "methodology_score",
+            "clarity_score",
+            "relevance_score",
+            "ethics_score",
+            "recommendation",
+            "comments_for_author",
+            "confidential_comments",
+            "conflict_declared",
+            "submitted_at",
+        )
+        read_only_fields = fields
+
+
+class VerdictSerializer(serializers.ModelSerializer):
+    """A registered verdict; read-only, because verdicts are never edited."""
+
+    editor = PersonSerializer(read_only=True)
+    version_number = serializers.IntegerField(source="version.version_number", read_only=True)
+
+    class Meta:
+        model = Verdict
+        fields = (
+            "id",
+            "decision",
+            "justification",
+            "observations",
+            "version_number",
+            "evaluation",
+            "editor",
+            "previous_verdict",
+            "created_at",
+        )
+        read_only_fields = fields
+
+
+class RegisterVerdictSerializer(serializers.Serializer):
+    """Body of ``POST /api/editor/manuscripts/{id}/verdicts/``.
+
+    Only the decision and its texts: the evaluated version, the evaluation
+    and the editor come from the manuscript and the session. Whether a
+    text is mandatory depends on the decision and the evaluation, which
+    the service checks under the manuscript lock.
+    """
+
+    decision = serializers.ChoiceField(choices=Verdict.Decision.choices)
+    justification = serializers.CharField(
+        required=False, allow_blank=True, allow_null=True, max_length=5000
+    )
+    observations = serializers.CharField(
+        required=False, allow_blank=True, allow_null=True, max_length=5000
+    )

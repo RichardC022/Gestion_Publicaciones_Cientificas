@@ -67,8 +67,14 @@ def events():
     verdict_registered.disconnect(dispatch_uid="test-verdict")
 
 
-def reviewed(editor, *, recommendation="ACCEPT", final=True, owner=None, **overrides) -> Manuscript:
-    """A manuscript under review with a real original PDF and a final evaluation."""
+def reviewed(
+    editor, *, recommendation="ACCEPT", final=True, owner=None, evaluation=None, **overrides
+) -> Manuscript:
+    """A manuscript under review with a real original PDF and a final evaluation.
+
+    ``evaluation`` adds fields to the evaluation when it is created: a
+    final one can no longer be modified.
+    """
     manuscript = submitted(owner, status="UNDER_REVIEW", **overrides)
     version = manuscript.versions.get(version_number=1)
     original = private_path(version.original_file_path)
@@ -87,6 +93,7 @@ def reviewed(editor, *, recommendation="ACCEPT", final=True, owner=None, **overr
             "relevance_score": 4,
             "ethics_score": 5,
             "submitted_at": timezone.now(),
+            **(evaluation or {}),
         }
     Evaluation.objects.create(
         assignment=assignment,
