@@ -14,3 +14,4 @@ nginx/certs/*.crt
 media.tar.gz
 SHA256SUMS
 /.claude/
+/graphify-out/
