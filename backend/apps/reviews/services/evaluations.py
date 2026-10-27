@@ -14,6 +14,9 @@ submission see each other's result instead of racing. The rules:
   assignment in the same transaction, audits it, and announces it after
   the commit. A ``FINAL`` evaluation is immutable (trigger of migration
   ``0002``); the service also refuses to touch it.
+* Declaring a conflict of interest (TSK-63) flags the evaluation, which
+  blocks every later save and submission. The assignment stays ``ACTIVE``
+  and nothing is revoked: the editor is told and decides.
 """
 
 from __future__ import annotations
@@ -28,7 +31,7 @@ from apps.audit.models import AuditLog
 from apps.audit.services import AuditService
 from apps.reviews.models import SCORE_FIELDS, Assignment, Evaluation
 from apps.reviews.services.assignments import run_audited
-from apps.reviews.signals import announce, evaluation_submitted
+from apps.reviews.signals import announce, evaluation_submitted, reviewer_conflict_declared
 from apps.users.models import Role, User
 from config.exceptions import DomainError, ErrorCode
 
@@ -45,6 +48,8 @@ OVERDUE_MESSAGE = "El plazo de evaluación venció. El borrador se conserva sin 
 CONFLICT_DECLARED_MESSAGE = "Se declaró un conflicto de interés: la evaluación está bloqueada."
 STALE_MESSAGE = "El borrador cambió desde que lo leyó. Recárguelo antes de continuar."
 MISSING_MESSAGE = "Este campo es obligatorio para enviar la evaluación."
+NOT_ACTIVE_MESSAGE = "Solo una asignación activa permite declarar un conflicto de interés."
+ALREADY_DECLARED_MESSAGE = "El conflicto de interés ya fue declarado."
 
 
 def _locked_assignment(assignment_id: UUID, reviewer: User) -> Assignment:
@@ -198,6 +203,68 @@ def submit_evaluation(
             )
         )
         evaluation.refresh_from_db()
+        return evaluation
+
+    return run_audited(work)
+
+
+def declare_conflict(
+    *, assignment_id: UUID, reviewer: User, reason: str | None, context: dict
+) -> Evaluation:
+    """Flag the evaluation as blocked by a conflict of interest and tell the editor.
+
+    Only an ``ACTIVE`` assignment can declare it, once. The flag lives on
+    the evaluation, so a reviewer who never saved a draft gets an empty
+    one that carries it; an existing draft keeps its content. The free
+    text goes to the audit trail only. Nothing about the manuscript's
+    authors is read or written.
+    """
+
+    def work() -> Evaluation:
+        assignment = _locked_assignment(assignment_id, reviewer)
+        if assignment.status != Assignment.Status.ACTIVE:
+            raise DomainError(
+                NOT_ACTIVE_MESSAGE,
+                code=ErrorCode.STATE_CONFLICT,
+                details={"status": assignment.status},
+            )
+        evaluation = Evaluation.objects.select_for_update().filter(assignment=assignment).first()
+        if evaluation is None:
+            # Nace en 1, como todo borrador guardado (ver `save_draft`).
+            evaluation = Evaluation.objects.create(
+                assignment=assignment,
+                manuscript=assignment.manuscript,
+                version=assignment.version,
+                reviewer=reviewer,
+                lock_version=1,
+                conflict_declared=True,
+            )
+        elif evaluation.conflict_declared:
+            raise DomainError(ALREADY_DECLARED_MESSAGE, code=ErrorCode.STATE_CONFLICT)
+        else:
+            evaluation.conflict_declared = True
+            evaluation.lock_version += 1
+            evaluation.save(update_fields=("conflict_declared", "lock_version", "updated_at"))
+
+        AuditService.record(
+            action="CONFLICT_OF_INTEREST_DECLARED",
+            entity_type="ASSIGNMENT",
+            entity_id=assignment.pk,
+            result=AuditLog.Result.SUCCESS,
+            actor=reviewer,
+            actor_role=Role.Code.REVIEWER,
+            reason=reason,
+            details={"manuscript_id": str(assignment.manuscript_id)},
+            **context,
+        )
+        transaction.on_commit(
+            lambda: announce(
+                reviewer_conflict_declared,
+                assignment_id=assignment.pk,
+                manuscript_id=assignment.manuscript_id,
+                reviewer_id=reviewer.pk,
+            )
+        )
         return evaluation
 
     return run_audited(work)
