@@ -6,6 +6,7 @@ import { API_BASE_URL } from '../http/api-base-url.token';
 import { toHttpParams } from '../http/query-params';
 import {
   Assignment,
+  EditorEvaluation,
   EligibleReviewersPage,
   RevocationCause,
   StartReviewResult,
@@ -13,19 +14,21 @@ import {
   SubmissionListParams,
   SubmissionRow,
   SubmissionSnapshot,
+  Verdict,
+  VerdictRegistered,
+  VerdictRequest,
+  VerdictResult,
 } from '../models/editor.model';
 import { toApiError } from '../models/api-error.model';
 import { Paginated } from '../models/paginated.model';
 
 /**
  * Módulo Editor (plan secciones 2.4 y 3.6): bandeja de nuevos envíos,
- * detalle editorial, paso a revisión, selección de Revisores, asignación
- * y revocación.
+ * detalle editorial, paso a revisión, selección de Revisores, asignación,
+ * revocación, evaluaciones y veredicto.
  *
  * La descarga del PDF de una versión no vive aquí: el Editor usa el mismo
  * endpoint autorizado que el Autor (`ManuscriptService.downloadVersion`).
- * Las demás operaciones del módulo (veredicto) se añaden con las
- * pantallas que las usan.
  */
 @Injectable({ providedIn: 'root' })
 export class EditorService {
@@ -85,6 +88,50 @@ export class EditorService {
         reviewer_id: reviewerId,
       })
       .pipe(catchError((error) => throwError(() => toApiError(error))));
+  }
+
+  /** Evaluaciones finales del manuscrito, con la identidad del Revisor (`GET .../evaluations/`). */
+  listEvaluations(manuscriptId: string, pageSize = 100): Observable<Paginated<EditorEvaluation>> {
+    return this.http
+      .get<Paginated<EditorEvaluation>>(`${this.url}manuscripts/${manuscriptId}/evaluations/`, {
+        params: toHttpParams({ page_size: pageSize }),
+      })
+      .pipe(catchError((error) => throwError(() => toApiError(error))));
+  }
+
+  /** Historial de veredictos, del más antiguo al más reciente (`GET .../verdicts/`). */
+  listVerdicts(manuscriptId: string, pageSize = 100): Observable<Paginated<Verdict>> {
+    return this.http
+      .get<Paginated<Verdict>>(`${this.url}manuscripts/${manuscriptId}/verdicts/`, {
+        params: toHttpParams({ page_size: pageSize }),
+      })
+      .pipe(catchError((error) => throwError(() => toApiError(error))));
+  }
+
+  /**
+   * Registra el veredicto (`POST .../verdicts/`). `etag` es el del manuscrito
+   * al leerlo (`If-Match`); `idempotencyKey` identifica esta intención:
+   * reintentarla con la misma clave devuelve lo ya registrado en lugar de
+   * duplicarlo.
+   */
+  createVerdict(
+    manuscriptId: string,
+    request: VerdictRequest,
+    etag: string,
+    idempotencyKey: string,
+  ): Observable<VerdictRegistered> {
+    return this.http
+      .post<VerdictResult>(`${this.url}manuscripts/${manuscriptId}/verdicts/`, request, {
+        observe: 'response',
+        headers: { 'If-Match': etag, 'Idempotency-Key': idempotencyKey },
+      })
+      .pipe(
+        map((response) => ({
+          result: response.body as VerdictResult,
+          etag: response.headers.get('ETag'),
+        })),
+        catchError((error) => throwError(() => toApiError(error))),
+      );
   }
 
   /** Revoca una asignación vigente o vencida, con causa y motivo (`POST .../revoke/`). */

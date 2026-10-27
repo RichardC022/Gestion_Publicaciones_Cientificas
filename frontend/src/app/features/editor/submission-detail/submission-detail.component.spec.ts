@@ -5,15 +5,26 @@ import { provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 
 import { API_BASE_URL } from '../../../core/http/api-base-url.token';
-import { SubmissionDetail } from '../../../core/models/editor.model';
+import { EditorEvaluation, SubmissionDetail, Verdict } from '../../../core/models/editor.model';
 import { errorEnvelope } from '../../author/testing/manuscript.fixtures';
-import { buildAssignment, buildReviewer, buildSubmissionDetail } from '../testing/editor.fixtures';
+import {
+  buildAssignment,
+  buildEvaluation,
+  buildReviewer,
+  buildSubmissionDetail,
+  buildVerdict,
+  buildVerdictResult,
+} from '../testing/editor.fixtures';
 import { SubmissionDetailComponent } from './submission-detail.component';
 
 const DETAIL_URL = '/api/editor/submissions/s-1/';
 
+const emptyPage = <T>(results: T[] = []) => ({ count: results.length, next: null, previous: null, results });
+
 describe('SubmissionDetailComponent', () => {
   let http: HttpTestingController;
+  /** Lo que responden las evaluaciones y los veredictos que el formulario de veredicto pide. */
+  let verdictData: { evaluations: EditorEvaluation[]; verdicts: Verdict[] };
 
   beforeAll(() => {
     // jsdom no implementa el ciclo abierto/cerrado del diálogo nativo.
@@ -30,6 +41,7 @@ describe('SubmissionDetailComponent', () => {
   });
 
   beforeEach(() => {
+    verdictData = { evaluations: [], verdicts: [] };
     TestBed.configureTestingModule({
       providers: [
         provideRouter([
@@ -45,6 +57,16 @@ describe('SubmissionDetailComponent', () => {
 
   afterEach(() => http.verify());
 
+  /** Responde las peticiones de evaluaciones y veredictos que haya pendientes. */
+  const answerVerdictData = () => {
+    http
+      .match((r) => r.url === '/api/editor/manuscripts/s-1/evaluations/')
+      .forEach((r) => r.flush(emptyPage(verdictData.evaluations)));
+    http
+      .match((r) => r.method === 'GET' && r.url === '/api/editor/manuscripts/s-1/verdicts/')
+      .forEach((r) => r.flush(emptyPage(verdictData.verdicts)));
+  };
+
   const text = (node: Element | null) => (node?.textContent ?? '').replace(/\s+/g, ' ').trim();
 
   /** Abre el detalle de `s-1` y responde con el envío indicado. */
@@ -53,6 +75,10 @@ describe('SubmissionDetailComponent', () => {
     await harness.navigateByUrl('/app/editor/submissions/s-1', SubmissionDetailComponent);
     const element = harness.routeNativeElement as HTMLElement;
     const settle = async () => {
+      await harness.fixture.whenStable();
+      harness.detectChanges();
+      // El formulario de veredicto pide sus datos al montarse (envíos ya en revisión).
+      answerVerdictData();
       await harness.fixture.whenStable();
       harness.detectChanges();
     };
@@ -534,6 +560,148 @@ describe('SubmissionDetailComponent', () => {
           'La acción no es válida en el estado actual.',
         );
       });
+    });
+  });
+
+  describe('veredicto', () => {
+    const VERDICT_URL = '/api/editor/manuscripts/s-1/verdicts/';
+    const verdictSection = (element: HTMLElement) => element.querySelector('app-verdict-form');
+
+    it('no aparece mientras el envío solo está enviado', async () => {
+      const { element } = await open();
+
+      expect(verdictSection(element)).toBeNull();
+    });
+
+    it.each(['UNDER_REVIEW', 'REQUIRES_CORRECTIONS', 'ACCEPTED', 'REJECTED'] as const)(
+      'aparece con el envío en estado %s',
+      async (status) => {
+        const { element } = await open({ status });
+
+        expect(verdictSection(element)).not.toBeNull();
+      },
+    );
+
+    it('un envío ya juzgado muestra el veredicto en solo lectura y sin formulario', async () => {
+      verdictData = {
+        evaluations: [buildEvaluation()],
+        verdicts: [buildVerdict({ decision: 'REJECTED', justification: 'Metodología inválida.' })],
+      };
+      const { element } = await open({ status: 'REJECTED' });
+
+      const section = verdictSection(element) as HTMLElement;
+      expect(text(section)).toContain('Rechazado');
+      expect(text(section)).toContain('Justificación: Metodología inválida.');
+      expect(section.querySelector('form')).toBeNull();
+    });
+
+    it('con el envío dado de baja no ofrece registrar', async () => {
+      verdictData = { evaluations: [buildEvaluation()], verdicts: [] };
+      const { element } = await open({
+        status: 'UNDER_REVIEW',
+        is_active: false,
+        withdrawn_at: '2026-10-22T15:00:00Z',
+      });
+
+      expect(verdictSection(element)!.querySelector('form')).toBeNull();
+    });
+
+    it('registra el veredicto con el ETag del detalle, informa el efecto y relee el detalle', async () => {
+      verdictData = { evaluations: [buildEvaluation()], verdicts: [] };
+      const { element, settle } = await open({ status: 'UNDER_REVIEW' }, '"7"');
+
+      (element.querySelector('app-verdict-form .verdict__option input') as HTMLInputElement).click();
+      await settle();
+      (element.querySelector('app-verdict-form form button[type="submit"]') as HTMLButtonElement).click();
+      await settle();
+      const confirm = Array.from(
+        element.querySelectorAll('app-verdict-form app-confirm-dialog dialog button'),
+      ).find((b) => text(b) === 'Registrar veredicto') as HTMLButtonElement;
+      confirm.click();
+      await settle();
+
+      const request = http.expectOne((r) => r.method === 'POST' && r.url === VERDICT_URL);
+      expect(request.request.headers.get('If-Match')).toBe('"7"');
+      request.flush(buildVerdictResult(), { status: 201, statusText: 'Created', headers: { ETag: '"8"' } });
+      await settle();
+      http
+        .expectOne(DETAIL_URL)
+        .flush(buildSubmissionDetail({ status: 'ACCEPTED' }), { headers: { ETag: '"8"' } });
+      await settle();
+
+      expect(text(element)).toContain('Veredicto registrado: el artículo se publicó en el catálogo.');
+      expect(text(element.querySelector('.detail-badges'))).toContain('Aceptado');
+      expect(verdictSection(element)!.querySelector('form')).toBeNull();
+    });
+
+    it('al pedir correcciones informa de la ronda abierta', async () => {
+      verdictData = {
+        evaluations: [buildEvaluation({ recommendation: 'REQUIRES_CORRECTIONS' })],
+        verdicts: [],
+      };
+      const { element, settle } = await open({ status: 'UNDER_REVIEW' });
+
+      (element.querySelectorAll('app-verdict-form .verdict__option input')[1] as HTMLInputElement).click();
+      await settle();
+      const area = element.querySelector('textarea[name="observations"]') as HTMLTextAreaElement;
+      area.value = 'Ampliar la sección 3.';
+      area.dispatchEvent(new Event('input'));
+      await settle();
+      (element.querySelector('app-verdict-form form button[type="submit"]') as HTMLButtonElement).click();
+      await settle();
+      (Array.from(element.querySelectorAll('app-verdict-form app-confirm-dialog dialog button')).find(
+        (b) => text(b) === 'Registrar veredicto',
+      ) as HTMLButtonElement).click();
+      await settle();
+
+      http
+        .expectOne((r) => r.method === 'POST' && r.url === VERDICT_URL)
+        .flush(
+          buildVerdictResult({
+            verdict: buildVerdict({ decision: 'REQUIRES_CORRECTIONS', observations: 'Ampliar la sección 3.' }),
+            opened_round: 1,
+            catalog_entry: null,
+          }),
+          { status: 201, statusText: 'Created' },
+        );
+      await settle();
+      http.expectOne(DETAIL_URL).flush(buildSubmissionDetail({ status: 'REQUIRES_CORRECTIONS' }));
+      await settle();
+
+      expect(text(element)).toContain('se abrió la ronda 1');
+    });
+
+    it('si otro Editor ya juzgó (409) relee el detalle y muestra el estado real', async () => {
+      verdictData = { evaluations: [buildEvaluation()], verdicts: [] };
+      const { element, settle } = await open({ status: 'UNDER_REVIEW' });
+      (element.querySelector('app-verdict-form .verdict__option input') as HTMLInputElement).click();
+      await settle();
+      (element.querySelector('app-verdict-form form button[type="submit"]') as HTMLButtonElement).click();
+      await settle();
+      (Array.from(element.querySelectorAll('app-verdict-form app-confirm-dialog dialog button')).find(
+        (b) => text(b) === 'Registrar veredicto',
+      ) as HTMLButtonElement).click();
+      await settle();
+
+      // Lo que responderán las lecturas que provoca el conflicto: el veredicto que ganó.
+      verdictData = {
+        evaluations: [buildEvaluation()],
+        verdicts: [buildVerdict({ decision: 'REJECTED', justification: 'Otro Editor.' })],
+      };
+      http
+        .expectOne((r) => r.method === 'POST' && r.url === VERDICT_URL)
+        .flush(errorEnvelope('VERDICT_CONFLICT', 'Ya existe un veredicto.'), {
+          status: 409,
+          statusText: 'Conflict',
+        });
+      await settle();
+      // El detalle y los datos del formulario se releen.
+      http.expectOne(DETAIL_URL).flush(buildSubmissionDetail({ status: 'REJECTED' }));
+      await settle();
+
+      expect(text(element.querySelector('.detail-badges'))).toContain('Rechazado');
+      expect(text(verdictSection(element))).toContain('Otro Editor.');
+      expect(verdictSection(element)!.querySelector('form')).toBeNull();
     });
   });
 
