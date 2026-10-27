@@ -6,6 +6,9 @@ from apps.reviews.views import (
     ReviewerAssignmentDetailView,
     ReviewerAssignmentDocumentView,
     ReviewerAssignmentListView,
+    ReviewerConflictView,
+    ReviewerEvaluationDetailView,
+    ReviewerEvaluationListView,
     ReviewerEvaluationSubmitView,
     ReviewerEvaluationView,
 )
@@ -35,5 +38,20 @@ urlpatterns = [
         "assignments/<uuid:pk>/evaluation/submit/",
         ReviewerEvaluationSubmitView.as_view(),
         name="reviewer-evaluation-submit",
+    ),
+    path(
+        "assignments/<uuid:pk>/conflict/",
+        ReviewerConflictView.as_view(),
+        name="reviewer-conflict",
+    ),
+    path(
+        "evaluations/",
+        ReviewerEvaluationListView.as_view(),
+        name="reviewer-evaluation-list",
+    ),
+    path(
+        "evaluations/<uuid:pk>/",
+        ReviewerEvaluationDetailView.as_view(),
+        name="reviewer-evaluation-detail",
     ),
 ]

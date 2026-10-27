@@ -28,7 +28,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 
 from apps.publications.filters import apply_filters
-from apps.publications.models import Manuscript, ManuscriptVersion
+from apps.publications.models import Manuscript, ManuscriptVersion, Verdict
 from apps.publications.services.downloads import authorize_sanitized_download, xaccel_response
 from apps.publications.services.idempotency import (
     IdempotencyScope,
@@ -46,12 +46,15 @@ from apps.reviews.models import Assignment, Evaluation
 from apps.reviews.serializers import (
     AssignmentSerializer,
     AssignReviewerSerializer,
+    DeclareConflictSerializer,
     EditorEvaluationSerializer,
     EvaluationDraftSerializer,
     EligibleReviewerSerializer,
     RegisterVerdictSerializer,
     ReviewerAssignmentDetailSerializer,
     ReviewerAssignmentSerializer,
+    ReviewerEvaluationHistoryDetailSerializer,
+    ReviewerEvaluationHistorySerializer,
     ReviewerEvaluationSerializer,
     ReviewerFilterSerializer,
     RevokeAssignmentSerializer,
@@ -61,7 +64,7 @@ from apps.reviews.serializers import (
     VerdictSerializer,
 )
 from apps.reviews.services.assignments import assign_reviewer, revoke_assignment, start_review
-from apps.reviews.services.evaluations import save_draft, submit_evaluation
+from apps.reviews.services.evaluations import declare_conflict, save_draft, submit_evaluation
 from apps.reviews.services.eligibility import eligibility_breakdown, eligible_reviewers
 from apps.reviews.permissions import IsActiveAssignedReviewer, IsAssignedReviewer
 from apps.users.permissions import IsEditor, IsReviewer
@@ -493,3 +496,71 @@ class ReviewerEvaluationSubmitView(ReviewerBaseView):
             context=audit_request_context(request),
         )
         return evaluation_response(evaluation)
+
+
+class ReviewerConflictView(ReviewerBaseView):
+    """``POST /api/reviewer/assignments/{id}/conflict/``: declare a conflict of interest.
+
+    Blocks the evaluation (no more saves or submission) and tells the
+    editor; the assignment stays ``ACTIVE`` until the editor decides.
+    """
+
+    permission_classes = [IsAuthenticated, IsReviewer]
+
+    def post(self, request: Request, pk) -> Response:
+        self.get_assignment(pk)
+        body = DeclareConflictSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        evaluation = declare_conflict(
+            assignment_id=pk,
+            reviewer=request.user,
+            reason=(body.validated_data.get("reason") or "").strip() or None,
+            context=audit_request_context(request),
+        )
+        return evaluation_response(evaluation)
+
+
+class ReviewerHistoryBaseView(GenericAPIView):
+    """The reviewer's own final evaluations, through the same scope as the inbox.
+
+    Starting from :meth:`Assignment.objects.for_reviewer` keeps a
+    withdrawn manuscript and one the reviewer co-authored out of the
+    history. Drafts are never listed. The permission of the module role is
+    enough here: :class:`IsAssignedReviewer` reads an object with a
+    ``reviewer_id`` as an assignment, which an evaluation is not.
+    """
+
+    permission_classes = [IsAuthenticated, IsReviewer]
+
+    def scoped_evaluations(self) -> QuerySet:
+        own = Assignment.objects.for_reviewer(self.request.user).values("pk")
+        latest_verdict = Verdict.objects.filter(evaluation=OuterRef("pk")).order_by(
+            "-created_at", "-id"
+        )
+        return (
+            Evaluation.objects.filter(assignment__in=own, status=Evaluation.Status.FINAL)
+            .select_related("manuscript", "version")
+            .annotate(
+                editorial_decision=Subquery(latest_verdict.values("decision")[:1]),
+                editorial_decided_at=Subquery(latest_verdict.values("created_at")[:1]),
+            )
+            .order_by("-submitted_at", "-id")
+        )
+
+
+class ReviewerEvaluationListView(ReviewerHistoryBaseView):
+    """``GET /api/reviewer/evaluations/``: history of the reviewer's final evaluations."""
+
+    def get(self, request: Request) -> Response:
+        page = self.paginate_queryset(self.scoped_evaluations())
+        return self.get_paginated_response(
+            ReviewerEvaluationHistorySerializer(page, many=True).data
+        )
+
+
+class ReviewerEvaluationDetailView(ReviewerHistoryBaseView):
+    """``GET /api/reviewer/evaluations/{id}/``: one final evaluation, read-only."""
+
+    def get(self, request: Request, pk) -> Response:
+        evaluation = get_object_or_404(self.scoped_evaluations(), pk=pk)
+        return Response(ReviewerEvaluationHistoryDetailSerializer(evaluation).data)

@@ -18,7 +18,7 @@ from apps.publications.serializers import (
     ManuscriptVersionSummarySerializer,
 )
 from apps.publications.services.history import build_history
-from apps.reviews.models import MAX_SCORE, MIN_SCORE, Assignment, Evaluation
+from apps.reviews.models import MAX_SCORE, MIN_SCORE, SCORE_FIELDS, Assignment, Evaluation
 from apps.reviews.services.assignments import RevocationCause
 from apps.reviews.services.inbox import inbox_state
 from apps.users.models import User
@@ -428,3 +428,66 @@ class EvaluationDraftSerializer(serializers.Serializer):
     confidential_comments = serializers.CharField(
         required=False, allow_blank=True, allow_null=True, max_length=10000
     )
+
+
+class DeclareConflictSerializer(serializers.Serializer):
+    """Body of ``POST .../conflict/``: an optional reason, kept in the audit trail only."""
+
+    reason = serializers.CharField(
+        required=False, allow_blank=True, allow_null=True, max_length=2000
+    )
+
+
+class ReviewerEvaluationHistorySerializer(serializers.ModelSerializer):
+    """Row of the reviewer's history: a final evaluation of their own, read-only.
+
+    Anonymized by construction: the manuscript is identified by code,
+    title and area, and the editorial result is only the decision and its
+    date — never the justification or the observations the editor wrote
+    for the author. ``editorial_decision`` and ``editorial_decided_at``
+    are annotated by the view from the latest verdict, if any.
+    """
+
+    manuscript_code = serializers.CharField(source="manuscript.code", read_only=True)
+    manuscript_title = serializers.CharField(source="manuscript.title", read_only=True)
+    area = serializers.CharField(source="manuscript.area", read_only=True)
+    version_number = serializers.IntegerField(source="version.version_number", read_only=True)
+    round_number = serializers.IntegerField(source="version.round_number", read_only=True)
+    editorial_result = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Evaluation
+        fields = (
+            "id",
+            "assignment",
+            "manuscript_code",
+            "manuscript_title",
+            "area",
+            "version_number",
+            "round_number",
+            "recommendation",
+            "submitted_at",
+            "editorial_result",
+        )
+        read_only_fields = fields
+
+    def get_editorial_result(self, obj: Evaluation) -> dict | None:
+        if obj.editorial_decision is None:
+            return None
+        return {"decision": obj.editorial_decision, "decided_at": obj.editorial_decided_at}
+
+
+class ReviewerEvaluationHistoryDetailSerializer(ReviewerEvaluationHistorySerializer):
+    """A final evaluation in full, for reading: scores and the comments for the author.
+
+    The confidential comments are left out on purpose (CA-HU-17): they are
+    for the editor and no history read-back carries them.
+    """
+
+    class Meta(ReviewerEvaluationHistorySerializer.Meta):
+        fields = (
+            *ReviewerEvaluationHistorySerializer.Meta.fields,
+            *SCORE_FIELDS,
+            "comments_for_author",
+        )
+        read_only_fields = fields

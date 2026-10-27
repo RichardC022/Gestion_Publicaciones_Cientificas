@@ -40,6 +40,12 @@ assignment_expired = Signal()
 #: ``manuscript_id``, ``reviewer_id``.
 evaluation_submitted = Signal()
 
+#: A reviewer declared a conflict of interest on an ``ACTIVE`` assignment
+#: and the evaluation was blocked. The assignment stays ``ACTIVE``: the
+#: editor decides whether to revoke it. The payload they build must carry
+#: no author data. Args: ``assignment_id``, ``manuscript_id``, ``reviewer_id``.
+reviewer_conflict_declared = Signal()
+
 
 def announce(signal: Signal, **kwargs) -> None:
     """Send ``signal`` robustly: a failing receiver is logged, never raised."""
