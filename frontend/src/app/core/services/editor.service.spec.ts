@@ -4,9 +4,12 @@ import { TestBed } from '@angular/core/testing';
 
 import {
   buildAssignment,
+  buildEvaluation,
   buildSubmissionDetail,
   buildSubmissionPage,
   buildSubmissionRow,
+  buildVerdict,
+  buildVerdictResult,
 } from '../../features/editor/testing/editor.fixtures';
 import { errorEnvelope } from '../../features/author/testing/manuscript.fixtures';
 import { API_BASE_URL } from '../http/api-base-url.token';
@@ -211,5 +214,108 @@ describe('EditorService · asignaciones', () => {
       });
 
     expect(error?.status).toBe(400);
+  });
+});
+
+describe('EditorService · veredicto', () => {
+  let service: EditorService;
+  let http: HttpTestingController;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: API_BASE_URL, useValue: '/api/' },
+      ],
+    });
+    service = TestBed.inject(EditorService);
+    http = TestBed.inject(HttpTestingController);
+  });
+
+  afterEach(() => http.verify());
+
+  const page = <T>(results: T[]) => ({ count: results.length, next: null, previous: null, results });
+
+  it('lista las evaluaciones finales del manuscrito con la identidad del Revisor', () => {
+    let reviewer: string | undefined;
+    service.listEvaluations('s-1').subscribe((value) => (reviewer = value.results[0].reviewer.full_name));
+
+    const request = http.expectOne((r) => r.url === '/api/editor/manuscripts/s-1/evaluations/');
+    expect(request.request.method).toBe('GET');
+    expect(request.request.params.get('page_size')).toBe('100');
+    request.flush(page([buildEvaluation()]));
+
+    expect(reviewer).toBe('Marta Ruiz');
+  });
+
+  it('lista el historial de veredictos', () => {
+    let decisions: string[] = [];
+    service.listVerdicts('s-1').subscribe((value) => (decisions = value.results.map((v) => v.decision)));
+
+    http
+      .expectOne((r) => r.url === '/api/editor/manuscripts/s-1/verdicts/')
+      .flush(page([buildVerdict({ decision: 'REQUIRES_CORRECTIONS' }), buildVerdict({ decision: 'ACCEPTED' })]));
+
+    expect(decisions).toEqual(['REQUIRES_CORRECTIONS', 'ACCEPTED']);
+  });
+
+  it('registra el veredicto con If-Match e Idempotency-Key y devuelve el ETag nuevo', () => {
+    const result = buildVerdictResult();
+    let registered: { etag: string | null } | undefined;
+    service
+      .createVerdict(
+        's-1',
+        { decision: 'ACCEPTED', justification: null, observations: null },
+        '"4"',
+        'clave-1',
+      )
+      .subscribe((value) => (registered = value));
+
+    const request = http.expectOne('/api/editor/manuscripts/s-1/verdicts/');
+    expect(request.request.method).toBe('POST');
+    expect(request.request.headers.get('If-Match')).toBe('"4"');
+    expect(request.request.headers.get('Idempotency-Key')).toBe('clave-1');
+    expect(request.request.body).toEqual({
+      decision: 'ACCEPTED',
+      justification: null,
+      observations: null,
+    });
+    request.flush(result, { status: 201, statusText: 'Created', headers: { ETag: '"5"' } });
+
+    expect(registered).toEqual({ result, etag: '"5"' });
+  });
+
+  it('un segundo veredicto llega como 409 VERDICT_CONFLICT', () => {
+    let error: ApiError | undefined;
+    service
+      .createVerdict('s-1', { decision: 'ACCEPTED', justification: null, observations: null }, '"4"', 'k')
+      .subscribe({ error: (e: ApiError) => (error = e) });
+
+    http
+      .expectOne('/api/editor/manuscripts/s-1/verdicts/')
+      .flush(errorEnvelope('VERDICT_CONFLICT', 'La versión evaluada ya tiene un veredicto.'), {
+        status: 409,
+        statusText: 'Conflict',
+      });
+
+    expect(error?.status).toBe(409);
+    expect(error?.code).toBe('VERDICT_CONFLICT');
+  });
+
+  it('un editor con conflicto de interés recibe 403', () => {
+    let error: ApiError | undefined;
+    service
+      .createVerdict('s-1', { decision: 'ACCEPTED', justification: null, observations: null }, '"4"', 'k')
+      .subscribe({ error: (e: ApiError) => (error = e) });
+
+    http
+      .expectOne('/api/editor/manuscripts/s-1/verdicts/')
+      .flush(errorEnvelope('FORBIDDEN', 'Conflicto de interés.'), {
+        status: 403,
+        statusText: 'Forbidden',
+      });
+
+    expect(error?.status).toBe(403);
   });
 });

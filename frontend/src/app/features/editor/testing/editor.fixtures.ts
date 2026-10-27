@@ -1,8 +1,11 @@
 import {
   Assignment,
+  EditorEvaluation,
   EligibleReviewer,
   SubmissionDetail,
   SubmissionRow,
+  Verdict,
+  VerdictResult,
 } from '../../../core/models/editor.model';
 import { Paginated } from '../../../core/models/paginated.model';
 
@@ -135,6 +138,60 @@ export function buildReviewer(overrides: Partial<EligibleReviewer> = {}): Eligib
     expertise_areas: ['Agronomía'],
     max_active_assignments: 3,
     active_assignments: 1,
+    ...overrides,
+  };
+}
+
+export function buildEvaluation(overrides: Partial<EditorEvaluation> = {}): EditorEvaluation {
+  return {
+    id: 'ev-1',
+    assignment: 'a-1',
+    version_number: 1,
+    reviewer: { id: 'r-1', full_name: 'Marta Ruiz', email: 'marta@unl.edu.ec' },
+    status: 'FINAL',
+    originality_score: 4,
+    methodology_score: 3,
+    clarity_score: 5,
+    relevance_score: 4,
+    ethics_score: 5,
+    recommendation: 'ACCEPT',
+    comments_for_author: 'Buen trabajo; falta detallar el muestreo.',
+    confidential_comments: 'Solo para el Editor: sospecho autocitas.',
+    conflict_declared: false,
+    submitted_at: '2026-11-05T15:00:00Z',
+    ...overrides,
+  };
+}
+
+export function buildVerdict(overrides: Partial<Verdict> = {}): Verdict {
+  return {
+    id: 'vd-1',
+    decision: 'ACCEPTED',
+    justification: null,
+    observations: null,
+    version_number: 1,
+    evaluation: 'ev-1',
+    editor: { id: 'e-1', full_name: 'Edgar Mora', email: 'edgar@unl.edu.ec' },
+    previous_verdict: null,
+    created_at: '2026-11-06T15:00:00Z',
+    ...overrides,
+  };
+}
+
+export function buildVerdictResult(overrides: Partial<VerdictResult> = {}): VerdictResult {
+  const verdict = overrides.verdict ?? buildVerdict();
+  return {
+    verdict,
+    manuscript: {
+      id: 's-1',
+      code: 'GPC-2026-000001',
+      status: 'ACCEPTED',
+      current_round: 0,
+      current_version: 1,
+    },
+    catalog_entry: { id: 'c-1', published_at: '2026-11-06T15:00:00Z' },
+    opened_round: null,
+    history: [verdict],
     ...overrides,
   };
 }

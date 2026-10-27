@@ -201,3 +201,94 @@ export interface StartReviewResult {
   status: ManuscriptStatus;
   assignment: OpenAssignment | null;
 }
+
+/** Decisiones del Editor sobre un manuscrito evaluado. */
+export type VerdictDecision = 'ACCEPTED' | 'REJECTED' | 'REQUIRES_CORRECTIONS';
+
+/** Recomendación que el Revisor escribe en su evaluación final. */
+export type Recommendation = 'ACCEPT' | 'REQUIRES_CORRECTIONS' | 'REJECT';
+
+export const RECOMMENDATION_LABELS: Readonly<Record<Recommendation, string>> = {
+  ACCEPT: 'Aceptar',
+  REQUIRES_CORRECTIONS: 'Requiere correcciones',
+  REJECT: 'Rechazar',
+};
+
+/** La decisión que equivale a seguir la recomendación del Revisor. */
+export const DECISION_BY_RECOMMENDATION: Readonly<Record<Recommendation, VerdictDecision>> = {
+  ACCEPT: 'ACCEPTED',
+  REQUIRES_CORRECTIONS: 'REQUIRES_CORRECTIONS',
+  REJECT: 'REJECTED',
+};
+
+/** Verdadero si la decisión del Editor se aparta de la recomendación del Revisor. */
+export function departsFromRecommendation(
+  decision: VerdictDecision,
+  recommendation: Recommendation,
+): boolean {
+  return DECISION_BY_RECOMMENDATION[recommendation] !== decision;
+}
+
+/**
+ * Evaluación final tal como la lee el Editor (`EditorEvaluationSerializer`):
+ * con la identidad del Revisor y los comentarios confidenciales. Solo el
+ * módulo Editor declara estos campos.
+ */
+export interface EditorEvaluation {
+  id: string;
+  assignment: string;
+  version_number: number;
+  reviewer: PersonSummary;
+  status: string;
+  originality_score: number | null;
+  methodology_score: number | null;
+  clarity_score: number | null;
+  relevance_score: number | null;
+  ethics_score: number | null;
+  recommendation: Recommendation | null;
+  comments_for_author: string | null;
+  confidential_comments: string | null;
+  conflict_declared: boolean;
+  submitted_at: string | null;
+}
+
+/** Veredicto registrado; es inmutable, por eso la interfaz solo lo lee. */
+export interface Verdict {
+  id: string;
+  decision: VerdictDecision;
+  justification: string | null;
+  observations: string | null;
+  version_number: number;
+  evaluation: string;
+  editor: PersonSummary;
+  previous_verdict: string | null;
+  created_at: string;
+}
+
+/** Cuerpo de `POST .../verdicts/`. */
+export interface VerdictRequest {
+  decision: VerdictDecision;
+  justification: string | null;
+  observations: string | null;
+}
+
+/** Respuesta de un veredicto registrado (`201`). */
+export interface VerdictResult {
+  verdict: Verdict;
+  manuscript: {
+    id: string;
+    code: string;
+    status: ManuscriptStatus;
+    current_round: number;
+    current_version: number;
+  };
+  catalog_entry: { id: string; published_at: string } | null;
+  opened_round: number | null;
+  history: Verdict[];
+}
+
+/** Un veredicto registrado junto con el `ETag` nuevo del manuscrito. */
+export interface VerdictRegistered {
+  result: VerdictResult;
+  etag: string | null;
+}

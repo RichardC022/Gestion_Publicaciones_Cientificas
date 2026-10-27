@@ -8,6 +8,7 @@ import {
   EligibleReviewer,
   SubmissionDetail,
   SubmissionVersion,
+  VerdictRegistered,
 } from '../../../core/models/editor.model';
 import { EditorService } from '../../../core/services/editor.service';
 import { ManuscriptService } from '../../../core/services/manuscript.service';
@@ -20,6 +21,7 @@ import { FileSizePipe } from '../../../shared/pipes/file-size.pipe';
 import { saveBlob } from '../../../shared/utils/save-blob';
 import { AssignReviewerDialogComponent } from '../assign-reviewer-dialog/assign-reviewer-dialog.component';
 import { ReviewerPickerComponent } from '../reviewer-picker/reviewer-picker.component';
+import { VerdictFormComponent } from '../verdict-form/verdict-form.component';
 import {
   RevocationRequest,
   RevokeAssignmentDialogComponent,
@@ -44,6 +46,10 @@ const INSTITUTIONAL_OFFSET = '-0500';
  *   elegibles y confirmación con la fecha límite del servidor) o revocar
  *   (causa y motivo). Tras cada acción se vuelve a leer el detalle, y un
  *   `409` (otro Editor actuó antes) se explica y deja ver el estado real.
+ * * Con el envío en revisión o ya juzgado, la sección «Evaluación y
+ *   veredicto» muestra la evaluación final, los veredictos registrados
+ *   (solo lectura) y, si corresponde, el formulario para registrar el
+ *   veredicto con el `ETag` del detalle.
  * * La ruta exige el rol `EDITOR`; el backend vuelve a validarlo y deja
  *   fuera los manuscritos con conflicto de interés (`404`). No hay datos
  *   de auditoría global ni acciones de Administrador.
@@ -62,6 +68,7 @@ const INSTITUTIONAL_OFFSET = '-0500';
     ReviewerPickerComponent,
     AssignReviewerDialogComponent,
     RevokeAssignmentDialogComponent,
+    VerdictFormComponent,
   ],
   template: `
     <section aria-labelledby="submission-detail-title">
@@ -166,6 +173,19 @@ const INSTITUTIONAL_OFFSET = '-0500';
               }
             }
           </section>
+        }
+
+        @if (judgeable.includes(m.status)) {
+          <div class="card">
+            <app-verdict-form
+              [manuscriptId]="m.id"
+              [version]="m.current_version"
+              [etag]="etag()"
+              [canRegister]="m.status === 'UNDER_REVIEW' && m.is_active"
+              (registered)="verdictRegistered($event)"
+              (stale)="load(true)"
+            />
+          </div>
         }
 
         <section class="card" aria-labelledby="metadata-title">
@@ -435,6 +455,16 @@ export class SubmissionDetailComponent {
   protected readonly loading = signal(true);
   protected readonly error = signal<ApiError | null>(null);
   protected readonly submission = signal<SubmissionDetail | null>(null);
+  /** `ETag` del detalle: el veredicto lo envía en `If-Match`. */
+  protected readonly etag = signal<string | null>(null);
+
+  /** Estados en los que hay evaluación o veredicto que mostrar. */
+  protected readonly judgeable: readonly string[] = [
+    'UNDER_REVIEW',
+    'REQUIRES_CORRECTIONS',
+    'ACCEPTED',
+    'REJECTED',
+  ];
 
   protected readonly dialogOpen = signal(false);
   protected readonly starting = signal(false);
@@ -478,8 +508,9 @@ export class SubmissionDetailComponent {
     }
     this.error.set(null);
     this.editor.getSubmission(this.id).subscribe({
-      next: ({ submission }) => {
+      next: ({ submission, etag }) => {
         this.submission.set(submission);
+        this.etag.set(etag);
         this.loading.set(false);
       },
       error: (error: ApiError) => {
@@ -513,6 +544,19 @@ export class SubmissionDetailComponent {
         this.load(true);
       },
     });
+  }
+
+  /** Informa del efecto del veredicto y vuelve a leer el detalle (estado y `ETag` nuevos). */
+  protected verdictRegistered({ result }: VerdictRegistered): void {
+    this.startError.set('');
+    this.notice.set(
+      result.verdict.decision === 'ACCEPTED'
+        ? 'Veredicto registrado: el artículo se publicó en el catálogo.'
+        : result.verdict.decision === 'REJECTED'
+          ? 'Veredicto registrado: el manuscrito fue rechazado.'
+          : `Veredicto registrado: se abrió la ronda ${result.opened_round} para que el Autor envíe una nueva versión.`,
+    );
+    this.load(true);
   }
 
   protected chooseReviewer(reviewer: EligibleReviewer): void {
