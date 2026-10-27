@@ -6,6 +6,8 @@ from apps.reviews.views import (
     AssignmentRevokeView,
     EligibleReviewersView,
     ExpiredAssignmentsView,
+    IncidentListView,
+    IncidentResolveView,
     ManuscriptAssignmentsView,
     ManuscriptEvaluationsView,
     ManuscriptVerdictsView,
@@ -51,5 +53,11 @@ urlpatterns = [
         "assignments/<uuid:pk>/revoke/",
         AssignmentRevokeView.as_view(),
         name="editor-assignment-revoke",
+    ),
+    path("incidents/", IncidentListView.as_view(), name="editor-incident-list"),
+    path(
+        "incidents/<uuid:pk>/resolve/",
+        IncidentResolveView.as_view(),
+        name="editor-incident-resolve",
     ),
 ]

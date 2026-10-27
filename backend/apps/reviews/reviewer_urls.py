@@ -11,6 +11,7 @@ from apps.reviews.views import (
     ReviewerEvaluationListView,
     ReviewerEvaluationSubmitView,
     ReviewerEvaluationView,
+    ReviewerIdentityLeakView,
 )
 
 urlpatterns = [
@@ -43,6 +44,11 @@ urlpatterns = [
         "assignments/<uuid:pk>/conflict/",
         ReviewerConflictView.as_view(),
         name="reviewer-conflict",
+    ),
+    path(
+        "assignments/<uuid:pk>/identity-leak/",
+        ReviewerIdentityLeakView.as_view(),
+        name="reviewer-identity-leak",
     ),
     path(
         "evaluations/",

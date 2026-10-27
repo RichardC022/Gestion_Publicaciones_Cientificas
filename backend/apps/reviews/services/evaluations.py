@@ -52,7 +52,7 @@ NOT_ACTIVE_MESSAGE = "Solo una asignación activa permite declarar un conflicto 
 ALREADY_DECLARED_MESSAGE = "El conflicto de interés ya fue declarado."
 
 
-def _locked_assignment(assignment_id: UUID, reviewer: User) -> Assignment:
+def locked_assignment(assignment_id: UUID, reviewer: User) -> Assignment:
     """The reviewer's own assignment, locked; anything else answers ``404``."""
     try:
         return (
@@ -120,7 +120,7 @@ def save_draft(
 ) -> Evaluation:
     """Create or update the private draft; only the fields given are changed."""
     with transaction.atomic():
-        assignment = _locked_assignment(assignment_id, reviewer)
+        assignment = locked_assignment(assignment_id, reviewer)
         _ensure_open(assignment)
         evaluation = _current_evaluation(assignment, expected_lock_version)
         changes = _normalized(values)
@@ -158,7 +158,7 @@ def submit_evaluation(
     """
 
     def work() -> Evaluation:
-        assignment = _locked_assignment(assignment_id, reviewer)
+        assignment = locked_assignment(assignment_id, reviewer)
         _ensure_open(assignment)
         evaluation = _current_evaluation(assignment, expected_lock_version)
         missing = _missing_fields(evaluation)
@@ -221,7 +221,7 @@ def declare_conflict(
     """
 
     def work() -> Evaluation:
-        assignment = _locked_assignment(assignment_id, reviewer)
+        assignment = locked_assignment(assignment_id, reviewer)
         if assignment.status != Assignment.Status.ACTIVE:
             raise DomainError(
                 NOT_ACTIVE_MESSAGE,
