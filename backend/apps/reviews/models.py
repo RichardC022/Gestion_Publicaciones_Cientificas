@@ -21,7 +21,7 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.db import models
-from django.db.models import BooleanField, ExpressionWrapper, F, Q
+from django.db.models import BooleanField, Exists, ExpressionWrapper, F, OuterRef, Q
 from django.db.models.functions import Now
 from django.utils import timezone
 
@@ -57,6 +57,30 @@ class AssignmentQuerySet(models.QuerySet):
                 Q(status=Assignment.Status.ACTIVE, due_at__lte=Now()),
                 output_field=BooleanField(),
             )
+        )
+
+    def with_evaluation_started(self) -> "AssignmentQuerySet":
+        """Annotate ``has_evaluation``: the reviewer already saved a draft or a final."""
+        return self.annotate(
+            has_evaluation=Exists(Evaluation.objects.filter(assignment=OuterRef("pk")))
+        )
+
+    def for_reviewer(self, user) -> "AssignmentQuerySet":
+        """Assignments a reviewer may reach: their own, over active manuscripts.
+
+        The reviewer's endpoints start here and never at the global
+        manuscript repository (plan section 2.9, layer 1). A manuscript the
+        reviewer registered or co-authored — by account or by e-mail, the
+        same rule as the eligibility check — is left out, and so is a
+        withdrawn one. Whether the assignment is ``ACTIVE`` or
+        ``COMPLETED`` is up to the object permission, not to this scope.
+        """
+        return (
+            self.filter(reviewer=user, manuscript__is_active=True)
+            .exclude(manuscript__created_by=user)
+            .exclude(manuscript__authors__user=user)
+            .exclude(manuscript__authors__email__iexact=user.email)
+            .select_related("manuscript", "version")
         )
 
 
