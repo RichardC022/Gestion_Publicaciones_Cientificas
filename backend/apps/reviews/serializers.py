@@ -33,9 +33,14 @@ class PersonSerializer(serializers.ModelSerializer):
 
 
 class SubmissionListSerializer(serializers.ModelSerializer):
-    """Row of the editor's inbox; ``submitted_at`` is annotated by the view."""
+    """Row of the editor's inbox; ``submitted_at`` is annotated by the view.
+
+    ``corresponding_author`` is only a name: the full roster, contacts and
+    affiliations are in the detail. The view prefetches ``authors``.
+    """
 
     submitted_at = serializers.DateTimeField(read_only=True)
+    corresponding_author = serializers.SerializerMethodField()
 
     class Meta:
         model = Manuscript
@@ -48,10 +53,17 @@ class SubmissionListSerializer(serializers.ModelSerializer):
             "status",
             "current_round",
             "current_version",
+            "corresponding_author",
             "submitted_at",
             "created_at",
         )
         read_only_fields = fields
+
+    def get_corresponding_author(self, obj: Manuscript) -> str | None:
+        """The corresponding author's name, or the first author's if none is marked."""
+        authors = list(obj.authors.all())
+        chosen = next((a for a in authors if a.is_corresponding), authors[0] if authors else None)
+        return chosen.full_name if chosen else None
 
 
 class EditorVersionSerializer(ManuscriptVersionSummarySerializer):
