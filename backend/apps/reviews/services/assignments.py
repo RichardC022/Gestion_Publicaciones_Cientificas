@@ -7,8 +7,14 @@ each other's result instead of racing; the partial unique index of
 ``reviews_assignment`` stays as the last barrier.
 
 The deadline is fixed by PostgreSQL (``now() + 20 days``) and never by
-the client clock. Area, availability and capacity rules, notices and
-the reaction to a withdrawal belong to TSK-48.
+the client clock. A reviewer must be eligible (active role, available,
+declaring the manuscript's area, no conflict of interest) and below
+their ``max_active_assignments``; the profile row is locked while the
+load is counted, so two editors cannot overbook the same reviewer.
+
+Each change is audited inside its transaction and announced after the
+commit (:mod:`apps.reviews.signals`). The withdrawal of a manuscript
+revokes its active assignment through :func:`revoke_on_withdrawal`.
 """
 
 from __future__ import annotations
@@ -24,8 +30,9 @@ from apps.audit.models import AuditLog
 from apps.audit.services import AuditService, AuditUnavailable
 from apps.publications.models import Manuscript, StatusEvent
 from apps.reviews.models import ASSIGNMENT_DAYS, Assignment
-from apps.reviews.services.eligibility import has_conflict
-from apps.users.models import Role, User
+from apps.reviews.services.eligibility import ineligibility_reason
+from apps.reviews.signals import announce, assignment_created, assignment_revoked
+from apps.users.models import ReviewerProfile, Role, User
 from apps.users.services.auth import AUDIT_UNAVAILABLE_MESSAGE
 from config.exceptions import DomainError, ErrorCode
 
@@ -44,8 +51,8 @@ EARLY_CAUSE_MESSAGE = (
     "error de asignación o cuenta inhabilitada."
 )
 OVERDUE_CAUSE_MESSAGE = "La causa 'plazo vencido' exige que la asignación haya vencido."
-INVALID_REVIEWER_MESSAGE = "El Revisor indicado no está disponible para esta asignación."
-REVIEWER_CONFLICT_MESSAGE = "El Revisor figura como autor del manuscrito."
+REVIEWER_CAPACITY_MESSAGE = "El Revisor alcanzó su máximo de asignaciones activas."
+WITHDRAWAL_REASON = "Baja lógica del manuscrito por su Autor."
 
 
 class RevocationCause(TextChoices):
@@ -55,6 +62,8 @@ class RevocationCause(TextChoices):
     ASSIGNMENT_ERROR = "ASSIGNMENT_ERROR", "Error de asignación"
     ACCOUNT_DISABLED = "ACCOUNT_DISABLED", "Cuenta inhabilitada"
     OVERDUE = "OVERDUE", "Plazo vencido"
+    # Solo la fija el sistema al dar de baja el manuscrito.
+    MANUSCRIPT_WITHDRAWN = "MANUSCRIPT_WITHDRAWN", "Baja lógica del manuscrito"
 
 
 #: Causes allowed while the assignment is still within its deadline.
@@ -115,17 +124,23 @@ def _ensure_no_open_assignment(manuscript: Manuscript) -> None:
 
 
 def _reviewer_for_assignment(manuscript: Manuscript, reviewer_id: UUID) -> User:
-    reviewer = User.objects.filter(
-        pk=reviewer_id,
-        is_active=True,
-        role_assignments__is_active=True,
-        role_assignments__role__code=Role.Code.REVIEWER,
-    ).first()
-    if reviewer is None:
-        raise _validation_error("reviewer_id", INVALID_REVIEWER_MESSAGE)
-    if has_conflict(manuscript, reviewer):
-        raise _validation_error("reviewer_id", REVIEWER_CONFLICT_MESSAGE)
-    return reviewer
+    """The eligible reviewer, with their profile locked and capacity checked."""
+    problem = ineligibility_reason(manuscript, reviewer_id)
+    if problem is not None:
+        raise _validation_error("reviewer_id", problem)
+    profile = ReviewerProfile.objects.select_for_update().select_related("user").get(
+        user_id=reviewer_id
+    )
+    active = Assignment.objects.filter(
+        reviewer_id=reviewer_id, status=Assignment.Status.ACTIVE
+    ).count()
+    if active >= profile.max_active_assignments:
+        raise DomainError(
+            REVIEWER_CAPACITY_MESSAGE,
+            code=ErrorCode.ASSIGNMENT_CONFLICT,
+            details={"active": active, "max": profile.max_active_assignments},
+        )
+    return profile.user
 
 
 def _create_assignment(
@@ -164,7 +179,49 @@ def _create_assignment(
             "due_at": assignment.due_at.isoformat(),
         },
     )
+    transaction.on_commit(
+        lambda: announce(
+            assignment_created,
+            assignment_id=assignment.pk,
+            manuscript_id=manuscript.pk,
+            reviewer_id=reviewer.pk,
+            assigned_by_id=editor.pk,
+        )
+    )
     return assignment
+
+
+def _mark_revoked(assignment: Assignment, *, revoked_by: User | None, reason: str) -> None:
+    """Close the assignment as ``REVOKED``; the instant is the database's."""
+    assignment.status = Assignment.Status.REVOKED
+    assignment.revoked_by = revoked_by
+    assignment.revocation_reason = reason
+    assignment.revoked_at = Now()
+    assignment.lock_version += 1
+    assignment.save(
+        update_fields=(
+            "status",
+            "revoked_by",
+            "revoked_at",
+            "revocation_reason",
+            "lock_version",
+            "updated_at",
+        )
+    )
+    assignment.refresh_from_db()
+
+
+def _announce_revocation(assignment: Assignment, cause: str) -> None:
+    """Tell the listeners once the revocation is committed."""
+    transaction.on_commit(
+        lambda: announce(
+            assignment_revoked,
+            assignment_id=assignment.pk,
+            manuscript_id=assignment.manuscript_id,
+            reviewer_id=assignment.reviewer_id,
+            cause=str(cause),
+        )
+    )
 
 
 def _audited(work):
@@ -265,22 +322,7 @@ def revoke_assignment(
                 else EARLY_CAUSE_MESSAGE,
             )
         previous_status = assignment.status
-        assignment.status = Assignment.Status.REVOKED
-        assignment.revoked_by = editor
-        assignment.revocation_reason = reason
-        assignment.lock_version += 1
-        assignment.revoked_at = Now()
-        assignment.save(
-            update_fields=(
-                "status",
-                "revoked_by",
-                "revoked_at",
-                "revocation_reason",
-                "lock_version",
-                "updated_at",
-            )
-        )
-        assignment.refresh_from_db()
+        _mark_revoked(assignment, revoked_by=editor, reason=reason)
         record_editor_audit(
             "ASSIGNMENT_REVOKED",
             "ASSIGNMENT",
@@ -294,6 +336,41 @@ def revoke_assignment(
                 "previous_status": previous_status,
             },
         )
+        _announce_revocation(assignment, cause)
         return assignment
 
     return _audited(work)
+
+
+def revoke_on_withdrawal(*, manuscript_id: UUID, withdrawn_by_id: UUID) -> Assignment | None:
+    """Revoke the active assignment of a manuscript its author withdrew.
+
+    Runs inside the withdrawal's transaction (the ``manuscript_withdrawing``
+    signal): if the audit cannot be written the whole withdrawal aborts.
+    The system revokes it, so ``revoked_by`` stays empty and the author's
+    identity never reaches the assignment. Evaluations are left untouched.
+    """
+    assignment = (
+        Assignment.objects.select_for_update()
+        .filter(manuscript_id=manuscript_id, status=Assignment.Status.ACTIVE)
+        .first()
+    )
+    if assignment is None:
+        return None
+    _mark_revoked(assignment, revoked_by=None, reason=WITHDRAWAL_REASON)
+    AuditService.record(
+        action="ASSIGNMENT_REVOKED",
+        entity_type="ASSIGNMENT",
+        entity_id=assignment.pk,
+        result=AuditLog.Result.SUCCESS,
+        actor_id=withdrawn_by_id,
+        actor_role=Role.Code.AUTHOR,
+        reason=WITHDRAWAL_REASON,
+        details={
+            "manuscript_id": str(manuscript_id),
+            "cause": RevocationCause.MANUSCRIPT_WITHDRAWN,
+            "previous_status": Assignment.Status.ACTIVE,
+        },
+    )
+    _announce_revocation(assignment, RevocationCause.MANUSCRIPT_WITHDRAWN)
+    return assignment
