@@ -5,6 +5,9 @@ import { Observable, catchError, map, throwError } from 'rxjs';
 import { API_BASE_URL } from '../http/api-base-url.token';
 import { toHttpParams } from '../http/query-params';
 import {
+  Assignment,
+  EligibleReviewersPage,
+  RevocationCause,
   StartReviewResult,
   SubmissionDetail,
   SubmissionListParams,
@@ -16,12 +19,13 @@ import { Paginated } from '../models/paginated.model';
 
 /**
  * Módulo Editor (plan secciones 2.4 y 3.6): bandeja de nuevos envíos,
- * detalle editorial y paso a revisión.
+ * detalle editorial, paso a revisión, selección de Revisores, asignación
+ * y revocación.
  *
  * La descarga del PDF de una versión no vive aquí: el Editor usa el mismo
  * endpoint autorizado que el Autor (`ManuscriptService.downloadVersion`).
- * Las demás operaciones del módulo (asignación, veredicto) se añaden con
- * las pantallas que las usan.
+ * Las demás operaciones del módulo (veredicto) se añaden con las
+ * pantallas que las usan.
  */
 @Injectable({ providedIn: 'root' })
 export class EditorService {
@@ -55,6 +59,42 @@ export class EditorService {
   startReview(id: string): Observable<StartReviewResult> {
     return this.http
       .post<StartReviewResult>(`${this.url}submissions/${id}/start-review/`, {})
+      .pipe(catchError((error) => throwError(() => toApiError(error))));
+  }
+
+  /**
+   * Revisores elegibles para el manuscrito (`GET .../reviewers/`): área,
+   * disponibilidad y sin conflicto de interés. Si no queda ninguno, la
+   * respuesta trae `diagnosis` con la causa.
+   */
+  listEligibleReviewers(manuscriptId: string, pageSize = 100): Observable<EligibleReviewersPage> {
+    return this.http
+      .get<EligibleReviewersPage>(`${this.url}reviewers/`, {
+        params: toHttpParams({ manuscript_id: manuscriptId, page_size: pageSize }),
+      })
+      .pipe(catchError((error) => throwError(() => toApiError(error))));
+  }
+
+  /**
+   * Asigna al Revisor (`POST .../assignments/`). El plazo (`due_at`) lo
+   * fija el servidor: la respuesta trae la fecha límite definitiva.
+   */
+  assignReviewer(manuscriptId: string, reviewerId: string): Observable<Assignment> {
+    return this.http
+      .post<Assignment>(`${this.url}manuscripts/${manuscriptId}/assignments/`, {
+        reviewer_id: reviewerId,
+      })
+      .pipe(catchError((error) => throwError(() => toApiError(error))));
+  }
+
+  /** Revoca una asignación vigente o vencida, con causa y motivo (`POST .../revoke/`). */
+  revokeAssignment(
+    assignmentId: string,
+    cause: RevocationCause,
+    reason: string,
+  ): Observable<Assignment> {
+    return this.http
+      .post<Assignment>(`${this.url}assignments/${assignmentId}/revoke/`, { cause, reason })
       .pipe(catchError((error) => throwError(() => toApiError(error))));
   }
 }

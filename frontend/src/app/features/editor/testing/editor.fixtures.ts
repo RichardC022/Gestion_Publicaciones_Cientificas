@@ -1,4 +1,9 @@
-import { SubmissionDetail, SubmissionRow } from '../../../core/models/editor.model';
+import {
+  Assignment,
+  EligibleReviewer,
+  SubmissionDetail,
+  SubmissionRow,
+} from '../../../core/models/editor.model';
 import { Paginated } from '../../../core/models/paginated.model';
 
 /** Datos de ejemplo del módulo Editor para las pruebas. */
@@ -96,6 +101,40 @@ export function buildSubmissionDetail(
     open_assignment: null,
     created_at: '2026-10-20T15:30:00Z',
     updated_at: '2026-10-21T15:30:00Z',
+    ...overrides,
+  };
+}
+
+export function buildAssignment(overrides: Partial<Assignment> = {}): Assignment {
+  return {
+    id: 'a-1',
+    manuscript: 's-1',
+    manuscript_code: 'GPC-2026-000001',
+    manuscript_title: 'Efecto del clima en cultivos andinos',
+    version_number: 1,
+    status: 'ACTIVE',
+    assigned_at: '2026-10-22T15:00:00Z',
+    due_at: '2026-11-11T15:00:00Z',
+    is_overdue: false,
+    reviewer: { id: 'r-1', full_name: 'Marta Ruiz', email: 'marta@unl.edu.ec' },
+    assigned_by: { id: 'e-1', full_name: 'Edgar Mora', email: 'edgar@unl.edu.ec' },
+    completed_at: null,
+    revoked_at: null,
+    revoked_by: null,
+    revocation_reason: null,
+    ...overrides,
+  };
+}
+
+export function buildReviewer(overrides: Partial<EligibleReviewer> = {}): EligibleReviewer {
+  return {
+    id: 'r-1',
+    institutional_id: 'INST-0001',
+    full_name: 'Marta Ruiz',
+    email: 'marta@unl.edu.ec',
+    expertise_areas: ['Agronomía'],
+    max_active_assignments: 3,
+    active_assignments: 1,
     ...overrides,
   };
 }

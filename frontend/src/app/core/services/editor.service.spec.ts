@@ -3,6 +3,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 
 import {
+  buildAssignment,
   buildSubmissionDetail,
   buildSubmissionPage,
   buildSubmissionRow,
@@ -118,5 +119,97 @@ describe('EditorService', () => {
       expect(error?.status).toBe(409);
       expect(error?.code).toBe('STATE_CONFLICT');
     });
+  });
+});
+
+describe('EditorService · asignaciones', () => {
+  let service: EditorService;
+  let http: HttpTestingController;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: API_BASE_URL, useValue: '/api/' },
+      ],
+    });
+    service = TestBed.inject(EditorService);
+    http = TestBed.inject(HttpTestingController);
+  });
+
+  afterEach(() => http.verify());
+
+  it('lista los Revisores elegibles del manuscrito y conserva el diagnóstico', () => {
+    const diagnosis = { reviewers: 3, conflict: 1, no_profile: 0, unavailable: 1, other_area: 1 };
+    let page: { diagnosis?: unknown } | undefined;
+    service.listEligibleReviewers('s-1').subscribe((value) => (page = value));
+
+    const request = http.expectOne((r) => r.url === '/api/editor/reviewers/');
+    expect(request.request.method).toBe('GET');
+    expect(request.request.params.get('manuscript_id')).toBe('s-1');
+    expect(request.request.params.get('page_size')).toBe('100');
+    request.flush({ count: 0, next: null, previous: null, results: [], diagnosis });
+
+    expect(page?.diagnosis).toEqual(diagnosis);
+  });
+
+  it('asigna al Revisor y devuelve la fecha límite fijada por el servidor', () => {
+    const assignment = buildAssignment({ due_at: '2026-11-11T15:00:00Z' });
+    let result: { due_at: string } | undefined;
+    service.assignReviewer('s-1', 'r-1').subscribe((value) => (result = value));
+
+    const request = http.expectOne('/api/editor/manuscripts/s-1/assignments/');
+    expect(request.request.method).toBe('POST');
+    expect(request.request.body).toEqual({ reviewer_id: 'r-1' });
+    request.flush(assignment, { status: 201, statusText: 'Created' });
+
+    expect(result?.due_at).toBe('2026-11-11T15:00:00Z');
+  });
+
+  it('una segunda asignación activa llega como 409 ASSIGNMENT_CONFLICT', () => {
+    let error: ApiError | undefined;
+    service.assignReviewer('s-1', 'r-2').subscribe({ error: (e: ApiError) => (error = e) });
+
+    http
+      .expectOne('/api/editor/manuscripts/s-1/assignments/')
+      .flush(errorEnvelope('ASSIGNMENT_CONFLICT', 'El manuscrito ya tiene un Revisor activo.'), {
+        status: 409,
+        statusText: 'Conflict',
+      });
+
+    expect(error?.status).toBe(409);
+    expect(error?.code).toBe('ASSIGNMENT_CONFLICT');
+  });
+
+  it('revoca con causa y motivo', () => {
+    let status: string | undefined;
+    service
+      .revokeAssignment('a-1', 'ASSIGNMENT_ERROR', 'Se asignó al Revisor equivocado.')
+      .subscribe((value) => (status = value.status));
+
+    const request = http.expectOne('/api/editor/assignments/a-1/revoke/');
+    expect(request.request.method).toBe('POST');
+    expect(request.request.body).toEqual({
+      cause: 'ASSIGNMENT_ERROR',
+      reason: 'Se asignó al Revisor equivocado.',
+    });
+    request.flush(buildAssignment({ status: 'REVOKED' }));
+
+    expect(status).toBe('REVOKED');
+  });
+
+  it('una causa temprana inválida llega como 400', () => {
+    let error: ApiError | undefined;
+    service.revokeAssignment('a-1', 'OVERDUE', 'x').subscribe({ error: (e: ApiError) => (error = e) });
+
+    http
+      .expectOne('/api/editor/assignments/a-1/revoke/')
+      .flush(errorEnvelope('VALIDATION_ERROR', 'Causa inválida.'), {
+        status: 400,
+        statusText: 'Bad Request',
+      });
+
+    expect(error?.status).toBe(400);
   });
 });
