@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import re
 
+from django.db.models import Prefetch
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from rest_framework import status
@@ -28,7 +29,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 
 from apps.publications.filters import apply_filters
-from apps.publications.models import Manuscript, ManuscriptVersion
+from apps.publications.models import Manuscript, ManuscriptVersion, Verdict
 from apps.publications.permissions import IsManuscriptOwner
 from apps.publications.serializers import (
     AuthorManuscriptSerializer,
@@ -129,7 +130,12 @@ class ManuscriptBaseView(GenericAPIView):
                 as_editor=Role.Code.EDITOR in roles,
             )
             .select_related("created_by")
-            .prefetch_related("authors", "versions")
+            .prefetch_related(
+                "authors",
+                "versions",
+                # El Autor lee el último veredicto y los comentarios que le escribió el Revisor.
+                Prefetch("verdicts", queryset=Verdict.objects.select_related("evaluation")),
+            )
         )
 
     def idempotency_scope(self, request: Request, request_hash_of) -> IdempotencyScope | None:
