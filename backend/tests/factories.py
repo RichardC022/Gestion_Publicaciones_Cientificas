@@ -28,7 +28,7 @@ from apps.publications.models import (
     StatusEvent,
     Verdict,
 )
-from apps.reviews.models import ASSIGNMENT_DAYS, Assignment, Evaluation
+from apps.reviews.models import ASSIGNMENT_DAYS, Assignment, Evaluation, IncidentReport
 from apps.users.models import ReviewerProfile, Role, User, UserRole
 
 #: Plain password of every account built by :class:`UserFactory`.
@@ -205,6 +205,22 @@ class FinalEvaluationFactory(EvaluationFactory):
     relevance_score = 4
     ethics_score = 5
     submitted_at = LazyFunction(timezone.now)
+
+
+class IncidentReportFactory(DjangoModelFactory):
+    """An ``OPEN`` identity-leak report written by the assignment's reviewer.
+
+    It writes only the row: no notification, revocation or status change.
+    """
+
+    class Meta:
+        model = IncidentReport
+
+    assignment = SubFactory(AssignmentFactory)
+    manuscript = SelfAttribute("assignment.manuscript")
+    reporter = SelfAttribute("assignment.reviewer")
+    report_type = IncidentReport.ReportType.IDENTITY_LEAK
+    description = "El texto menciona la afiliación de los autores."
 
 
 class VerdictFactory(DjangoModelFactory):
