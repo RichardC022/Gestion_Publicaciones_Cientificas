@@ -1,39 +1,75 @@
 services:
   db:
-    image: postgres:16
-    container_name: postgres_db
-    restart: always
+    image: postgres:16-alpine
+    restart: unless-stopped
     environment:
-      POSTGRES_DB: ${DB_NAME:-PROYECTO_GPC}
-      POSTGRES_USER: ${DB_USER:-boot}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD no definido en .env}
-    ports:
-      - "5433:5432"
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      TZ: ${TZ}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-boot} -d ${DB_NAME:-PROYECTO_GPC}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 30s
+    networks:
+      - backend_net
 
-  web:
-    build: .
-    container_name: django_app
-    restart: always
+  backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    # `.env` (creado con permisos 0600 y nunca versionado) porta los
+    # secretos de PostgreSQL, Django, JWT, cookies y SMTP del backend.
+    env_file: .env
     command: >
-      bash -c "python manage.py migrate &&
-               python manage.py runserver 0.0.0.0:8000"
+      sh -c "umask 0027 &&
+             /app/scripts/check_env.sh &&
+             /app/scripts/init_media.sh &&
+             python manage.py migrate --noinput &&
+             python manage.py collectstatic --noinput &&
+             exec gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3 --timeout 120 --access-logfile -"
     volumes:
-      - .:/app
-    ports:
-      - "8000:8000"
-    env_file:
-      - .env
+      - media_data:/data/media
+      - static_data:/app/staticfiles
+      - ./scripts:/app/scripts:ro
     depends_on:
       db:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health/')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - backend_net
+      - frontend_net
+
+  web:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - media_data:/data/media:ro
+      - static_data:/app/staticfiles:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - frontend_net
 
 volumes:
   postgres_data:
+  media_data:
+  static_data:
+
+networks:
+  backend_net:
+    internal: true
+  frontend_net:

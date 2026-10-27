@@ -4,7 +4,7 @@ Sistema cliente-servidor para gestionar el ciclo editorial de publicaciones cien
 
 El proyecto sigue una arquitectura SPA + API REST:
 
-- **Frontend:** Angular 17+ con TypeScript.
+- **Frontend:** Angular 22 con TypeScript.
 - **Backend:** Python 3.12, Django 5.2 LTS y Django REST Framework.
 - **Base de datos:** PostgreSQL 16.
 - **Servidor web:** Nginx 1.27.
@@ -42,6 +42,7 @@ Gestion_Publicaciones_Cientificas/
 │   │   ├── asgi.py
 │   │   └── wsgi.py
 │   ├── apps/
+│   ├── tests/
 │   ├── requirements/
 │   │   ├── base.txt
 │   │   ├── development.txt
@@ -67,10 +68,11 @@ Gestion_Publicaciones_Cientificas/
 │   └── ci.yml
 ├── docker-compose.yml
 ├── .env.example
+├── .env.development.example
 └── README.md
 ```
 
-El directorio `frontend/` está reservado para la SPA Angular. Su proyecto base se crea en la tarea `TSK-13`.
+El directorio `frontend/` contiene la SPA Angular y su `Dockerfile` multi-stage.
 
 ---
 
@@ -87,14 +89,22 @@ cd Gestion_Publicaciones_Cientificas
 
 ### 3.2 Crear el archivo de entorno
 
-Copia el ejemplo y ajusta los valores reales:
+Para desarrollo local, parte de la plantilla de desarrollo (sin TLS ni SMTP
+reales). Si ya existe un `.env`, no lo sobrescribas:
+
+```bash
+cp .env.development.example .env
+chmod 600 .env
+```
+
+Para un despliegue real, parte de `.env.example` y ajusta los valores:
 
 ```bash
 cp .env.example .env
 chmod 600 .env
 ```
 
-Edita `.env` y cambia al menos:
+Si usas `.env.example` (despliegue real), edita `.env` y cambia al menos:
 
 - `DJANGO_SECRET_KEY`
 - `POSTGRES_PASSWORD`
@@ -105,7 +115,14 @@ Edita `.env` y cambia al menos:
 - `EMAIL_HOST_USER`
 - `DEFAULT_FROM_EMAIL`
 
-No uses los valores de ejemplo `change-me` en producción.
+No uses los valores de ejemplo `change-me` en producción. La plantilla
+`.env.development.example` ya trae valores locales funcionales.
+
+> **Contraseña de PostgreSQL:** `POSTGRES_PASSWORD` solo se aplica al crear el
+> volumen `postgres_data` por primera vez. Si el volumen ya existe y cambias la
+> contraseña en `.env`, el backend fallará con `password authentication failed`.
+> Actualiza la contraseña dentro de PostgreSQL o recrea la base con
+> `docker compose down -v` (esto borra los datos).
 
 > **Seguridad de sesión (TSK-16).** El refresh token viaja siempre en una
 > cookie `HttpOnly` con `SameSite=Strict` (JavaScript no puede leerla) y el
@@ -115,13 +132,12 @@ No uses los valores de ejemplo `change-me` en producción.
 > el TLS de Nginx. Los tiempos de vida llegan de `JWT_ACCESS_MINUTES=15`,
 > `JWT_REFRESH_DAYS=7` y `SESSION_IDLE_MINUTES=30`.
 
-**Los valores de producción son distintos de los de desarrollo.** El archivo
-`.env` describe un entorno de producción (`DJANGO_SETTINGS_MODULE=config.settings.production`,
+**Los valores de producción son distintos de los de desarrollo.**
+`.env.example` describe un entorno de producción (`DJANGO_SETTINGS_MODULE=config.settings.production`,
 `DEBUG=0`, hosts y orígenes CSRF reales, SMTP institucional y `COOKIE_SECURE=1`).
-Para un entorno de desarrollo local usa `DJANGO_SETTINGS_MODULE=config.settings.development`,
+`.env.development.example` describe desarrollo local (`DJANGO_SETTINGS_MODULE=config.settings.development`,
 `DEBUG=1`, `ALLOWED_HOSTS=localhost,127.0.0.1`, `CSRF_TRUSTED_ORIGINS=http://localhost`,
-correo por consola (ya configurado en `config.settings.development`) y, si no hay
-TLS local, `COOKIE_SECURE=0`. Nunca reutilices secretos de producción en desarrollo.
+correo por consola y `COOKIE_SECURE=0`). Nunca reutilices secretos de producción en desarrollo.
 
 ### 3.3 Validar la configuración
 
@@ -174,7 +190,7 @@ docker compose run --rm backend python manage.py seed_roles
 
 Este comando es idempotente y forma parte de la Fase 1 del plan. Cuando se ejecuta en una base vacía, crea exactamente los cuatro roles; si ya existen, no duplica registros.
 
-> **Nota de fase:** `seed_roles` se implementa junto con los modelos de identidad en `TSK-17`. En la fase de cimientos puede devolver `Unknown command`; hasta esa tarea, el aprovisionamiento operativo puede realizarse temporalmente desde Django Admin.
+El comando crea `AUTHOR`, `REVIEWER`, `EDITOR` y `ADMIN` si no existen y puede ejecutarse de nuevo sin duplicarlos.
 
 ### 3.8 Crear el superusuario operativo
 
@@ -218,7 +234,39 @@ Inspecciona los logs del backend:
 docker compose logs backend
 ```
 
-El endpoint de salud `/api/health/` forma parte de la tarea `TSK-12`. Hasta que esa tarea se implemente, usa `manage.py check` y `docker compose ps` como verificación operativa de la fase de cimientos.
+Comprueba también el endpoint de salud, que debe responder `200`:
+
+```bash
+curl -i http://localhost/api/health/
+```
+
+### 3.11 URLs de acceso
+
+Con el stack levantado (`docker compose up -d`), las URLs locales son:
+
+| Componente | URL local | Notas |
+|---|---|---|
+| Web / SPA (Nginx) | http://localhost/ | Entrada principal; redirige a `/catalog`. |
+| Catálogo público | http://localhost/catalog | No requiere sesión. |
+| Iniciar sesión | http://localhost/login | Acepta email, usuario o ID institucional. |
+| Panel interno | http://localhost/app/dashboard | Requiere sesión y rol activo. |
+| Django Admin | http://localhost/admin/ | Requiere superusuario. |
+| API REST | http://localhost/api/ | Base de la API. |
+| Salud del backend | http://localhost/api/health/ | Debe responder `200` con `{"status":"ok"}`. |
+
+Solo se publica el puerto `80` (Nginx). El backend (`backend:8000`) y PostgreSQL (`db:5432`) no tienen puerto publicado al host: se accede a ellos a través de Nginx o con `docker compose exec`.
+
+**Frontend en modo desarrollo (opcional):**
+
+```bash
+cd frontend
+npm install
+npm start
+```
+
+Disponible en http://localhost:4200. El proxy de Angular envía `/api` a `http://localhost`, por lo que el stack de Docker debe estar levantado.
+
+Si accedes desde otro equipo o servidor, reemplaza `localhost` por la IP o el dominio del host, por ejemplo `http://192.168.1.50/`. En producción usa HTTPS y agrega el dominio a `ALLOWED_HOSTS` y `CSRF_TRUSTED_ORIGINS`.
 
 ---
 
@@ -243,10 +291,10 @@ Para una prueba inicial de la infraestructura:
 3. Valida que los archivos estáticos estén disponibles:
 
    ```bash
-   docker compose exec backend find /app/staticfiles -maxdepth 2 -type f | head
+   docker compose exec backend find /app/staticfiles -maxdepth 3 -type f | head
    ```
 
-Cuando se implemente el flujo de autor, la carga funcional de un PDF de prueba se realizará con un archivo de máximo **50 MB**. Nginx admite cuerpos de hasta **60 MB**, pero Django rechaza archivos que superen 50 MB.
+El flujo de autor admite un PDF de prueba de máximo **50 MB**. Nginx admite cuerpos de hasta **60 MB**, pero Django rechaza archivos que superen 50 MB.
 
 ---
 
@@ -346,7 +394,7 @@ El script `scripts/init_media.sh` crea y normaliza la estructura. Se ejecuta aut
 
 ## 7. TLS y Nginx
 
-La topología objetivo de producción publica los puertos `80` y `443`. En la fase de cimientos actual, el servicio `web` publica únicamente `:80`; la habilitación de `:443` se realiza junto con la instalación del certificado institucional y el ajuste final de Nginx.
+La topología objetivo de producción publica los puertos `80` y `443`. Actualmente el servicio `web` publica únicamente `:80`; la habilitación de `:443` se realiza junto con la instalación del certificado institucional y el ajuste final de Nginx.
 
 Para producción, coloca el certificado institucional en:
 
@@ -398,6 +446,16 @@ BACKUP_ROOT=/backups
 RETENTION_DAYS=30
 ```
 
+En desarrollo local, `/backups` suele requerir permisos de superusuario. Crea la ruta y asígnala a tu usuario antes de ejecutar el respaldo:
+
+```bash
+sudo mkdir -p /backups
+sudo chown "$USER":"$(id -gn)" /backups
+chmod 700 /backups
+```
+
+`BACKUP_ROOT` debe ser una ruta absoluta fuera del repositorio y de `/data/media`.
+
 ### 8.2 Programación diaria
 
 Instala la plantilla de cron:
@@ -412,6 +470,8 @@ Ajusta la ruta del repositorio en el archivo si no está en `/opt/gpc`.
 
 ### 8.3 Restauración
 
+> **Pendiente (TSK-76):** `restore.sh` invoca el comando de gestión `verify_integrity`, que aún no existe. Por eso la restauración completa falla actualmente en el paso de verificación de integridad; no la uses como restauración de producción hasta que ese comando esté implementado.
+
 ```bash
 ./scripts/restore.sh /backups/<timestamp>
 ```
@@ -422,7 +482,7 @@ Para pruebas automatizadas:
 ./scripts/restore.sh --yes /backups/<timestamp>
 ```
 
-La restauración:
+La restauración, cuando `verify_integrity` esté disponible:
 
 1. Verifica los checksums.
 2. Detiene `web` y `backend`.
@@ -432,8 +492,6 @@ La restauración:
 6. Ejecuta la verificación de integridad.
 7. Levanta los servicios.
 8. Ejecuta `manage.py check`.
-
-> **Nota de fase:** el comando de gestión `verify_integrity` se implementa en `TSK-76`. Hasta esa tarea, la prueba de restauración se realiza en un entorno aislado y se registra manualmente según `scripts/BACKUP.md`.
 
 ### 8.4 Prueba mensual
 
@@ -463,7 +521,7 @@ Jobs incluidos:
 
 El pipeline usa PostgreSQL, nunca SQLite, y no consume secretos de producción.
 
-> **Nota de fase:** el job de Angular falla hasta que `TSK-13` cree el proyecto en `frontend/`. Ese comportamiento es intencional: el pipeline debe impedir publicar un frontend que no compila.
+El job de Angular compila la SPA en modo producción e impide publicar un frontend que no compila.
 
 ---
 
@@ -483,13 +541,32 @@ Para ejecutar pruebas desde un entorno de desarrollo:
 docker compose run --rm backend sh -c "python -m pip install --user --requirement requirements/development.txt && python -m pytest"
 ```
 
-### 10.2 Compose
+### 10.2 Frontend
+
+Desde el directorio `frontend/`:
+
+```bash
+cd frontend
+npm ci
+npx ng test --watch=false
+```
+
+Para desarrollo con recarga en caliente, con el stack de Docker Compose levantado:
+
+```bash
+cd frontend
+npm start
+```
+
+La SPA de desarrollo usa `frontend/proxy.conf.json` para enviar `/api/` al backend.
+
+### 10.3 Compose
 
 ```bash
 docker compose config --quiet
 ```
 
-### 10.3 Nginx
+### 10.4 Nginx
 
 Verifica que las rutas internas no sean accesibles directamente:
 
@@ -520,25 +597,18 @@ Las respuestas esperadas son de denegación o recurso no disponible, no la entre
 
 ## 12. Estado del proyecto
 
-Este repositorio está en **Fase 0: Fundación**.
+Las fases 0, 1 y 2 están implementadas:
 
-Ya está implementada la base de:
-
-- Estructura `/backend` y `/frontend`.
-- PostgreSQL 16.
-- Docker Compose.
-- Nginx.
-- Volumen `media_data`.
-- Respaldo y restauración.
-- Pipeline de integración continua.
-- Documentación operativa inicial.
+- Infraestructura: Docker Compose, PostgreSQL 16, Nginx, backend con Gunicorn y volumen `media_data`.
+- Identidad: autenticación JWT con refresh en cookie `HttpOnly`, bloqueo de intentos, roles y panel multirrol.
+- Autor: manuscritos, autores, carga y sanitización de PDF, envío formal, versiones, historial, descargas y baja lógica.
+- Calidad: CI, respaldo, pruebas backend y frontend.
 
 Las fases siguientes agregan:
 
-- Apps de dominio y salud del backend.
-- Autenticación institucional.
-- Panel unificado.
-- Manuscritos, evaluaciones, veredictos y catálogo.
+- Revisión por pares y asignaciones.
+- Veredictos editoriales y catálogo público.
+- Notificaciones y auditoría administrativa.
 - Endurecimiento y prueba de carga.
 
 ---
