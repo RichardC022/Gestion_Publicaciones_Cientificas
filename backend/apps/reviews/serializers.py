@@ -18,7 +18,7 @@ from apps.publications.serializers import (
     ManuscriptVersionSummarySerializer,
 )
 from apps.publications.services.history import build_history
-from apps.reviews.models import Assignment, Evaluation
+from apps.reviews.models import MAX_SCORE, MIN_SCORE, Assignment, Evaluation
 from apps.reviews.services.assignments import RevocationCause
 from apps.reviews.services.inbox import inbox_state
 from apps.users.models import User
@@ -369,3 +369,62 @@ class ReviewerAssignmentDetailSerializer(ReviewerAssignmentSerializer):
         if obj.status != Assignment.Status.ACTIVE:
             return None
         return reverse("reviewer-assignment-document", kwargs={"pk": obj.pk})
+
+
+class ReviewerEvaluationSerializer(serializers.ModelSerializer):
+    """The reviewer's own draft or final evaluation, confidential notes included.
+
+    The optimistic lock travels in the ``ETag`` header, not in the body.
+    An evaluation that was not saved yet is shown as an empty draft.
+    """
+
+    class Meta:
+        model = Evaluation
+        fields = (
+            "id",
+            "status",
+            "originality_score",
+            "methodology_score",
+            "clarity_score",
+            "relevance_score",
+            "ethics_score",
+            "recommendation",
+            "comments_for_author",
+            "confidential_comments",
+            "conflict_declared",
+            "submitted_at",
+        )
+        read_only_fields = fields
+
+
+class EvaluationDraftSerializer(serializers.Serializer):
+    """Body of ``PUT .../evaluation/``: every field optional, a gap is a valid draft.
+
+    Only the keys sent are changed, and nothing else is accepted: the
+    status, the conflict flag and the lock can never be set from here.
+    """
+
+    originality_score = serializers.IntegerField(
+        min_value=MIN_SCORE, max_value=MAX_SCORE, required=False, allow_null=True
+    )
+    methodology_score = serializers.IntegerField(
+        min_value=MIN_SCORE, max_value=MAX_SCORE, required=False, allow_null=True
+    )
+    clarity_score = serializers.IntegerField(
+        min_value=MIN_SCORE, max_value=MAX_SCORE, required=False, allow_null=True
+    )
+    relevance_score = serializers.IntegerField(
+        min_value=MIN_SCORE, max_value=MAX_SCORE, required=False, allow_null=True
+    )
+    ethics_score = serializers.IntegerField(
+        min_value=MIN_SCORE, max_value=MAX_SCORE, required=False, allow_null=True
+    )
+    recommendation = serializers.ChoiceField(
+        choices=Evaluation.Recommendation.choices, required=False, allow_null=True
+    )
+    comments_for_author = serializers.CharField(
+        required=False, allow_blank=True, allow_null=True, max_length=10000
+    )
+    confidential_comments = serializers.CharField(
+        required=False, allow_blank=True, allow_null=True, max_length=10000
+    )

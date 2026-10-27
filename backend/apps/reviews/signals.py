@@ -34,6 +34,12 @@ assignment_revoked = Signal()
 #: ``reviewer_id``, ``assigned_by_id``.
 assignment_expired = Signal()
 
+#: A reviewer submitted the final evaluation and the assignment became
+#: ``COMPLETED``. The editor is told; the payload they build must carry
+#: no author data. Args: ``evaluation_id``, ``assignment_id``,
+#: ``manuscript_id``, ``reviewer_id``.
+evaluation_submitted = Signal()
+
 
 def announce(signal: Signal, **kwargs) -> None:
     """Send ``signal`` robustly: a failing receiver is logged, never raised."""

@@ -224,7 +224,7 @@ def _announce_revocation(assignment: Assignment, cause: str) -> None:
     )
 
 
-def _audited(work):
+def run_audited(work):
     """Run ``work`` atomically; a missing audit trail aborts it with ``503``."""
     try:
         with transaction.atomic():
@@ -272,7 +272,7 @@ def start_review(
             assignment = _create_assignment(manuscript, reviewer_id, editor, context)
         return manuscript, assignment
 
-    return _audited(work)
+    return run_audited(work)
 
 
 def assign_reviewer(
@@ -290,7 +290,7 @@ def assign_reviewer(
             )
         return _create_assignment(manuscript, reviewer_id, editor, context)
 
-    return _audited(work)
+    return run_audited(work)
 
 
 def revoke_assignment(
@@ -339,7 +339,7 @@ def revoke_assignment(
         _announce_revocation(assignment, cause)
         return assignment
 
-    return _audited(work)
+    return run_audited(work)
 
 
 def revoke_on_withdrawal(*, manuscript_id: UUID, withdrawn_by_id: UUID) -> Assignment | None:
