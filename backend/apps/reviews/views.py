@@ -1,4 +1,4 @@
-"""Editor endpoints (plan section 2.4, TSK-47).
+"""Editor (plan section 2.4, TSK-47) and reviewer (section 2.5, TSK-61) endpoints.
 
 Every view requires an authenticated account with the active ``EDITOR``
 role (``403`` otherwise). The scope is :meth:`Manuscript.objects.for_editor`,
@@ -6,6 +6,10 @@ which leaves out drafts and any manuscript the editor registered or
 co-authored: those answer ``404``, so a conflict of interest never
 reveals that the manuscript exists, and the editor can neither assign
 nor judge it.
+
+The reviewer's views start at :meth:`Assignment.objects.for_reviewer`,
+never at the global manuscript repository: a foreign assignment, a
+withdrawn manuscript or one the reviewer authored answers ``404``.
 """
 
 from __future__ import annotations
@@ -14,6 +18,7 @@ import json
 
 from django.db.models import OuterRef, Q, QuerySet, Subquery
 from django.db.models.functions import Now
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.generics import GenericAPIView
@@ -24,6 +29,7 @@ from rest_framework.response import Response
 
 from apps.publications.filters import apply_filters
 from apps.publications.models import Manuscript, ManuscriptVersion
+from apps.publications.services.downloads import authorize_sanitized_download, xaccel_response
 from apps.publications.services.idempotency import (
     IdempotencyScope,
     IdempotentReplay,
@@ -43,6 +49,8 @@ from apps.reviews.serializers import (
     EditorEvaluationSerializer,
     EligibleReviewerSerializer,
     RegisterVerdictSerializer,
+    ReviewerAssignmentDetailSerializer,
+    ReviewerAssignmentSerializer,
     ReviewerFilterSerializer,
     RevokeAssignmentSerializer,
     StartReviewSerializer,
@@ -52,7 +60,8 @@ from apps.reviews.serializers import (
 )
 from apps.reviews.services.assignments import assign_reviewer, revoke_assignment, start_review
 from apps.reviews.services.eligibility import eligibility_breakdown, eligible_reviewers
-from apps.users.permissions import IsEditor
+from apps.reviews.permissions import IsActiveAssignedReviewer, IsAssignedReviewer
+from apps.users.permissions import IsEditor, IsReviewer
 from config.exceptions import DomainError, ErrorCode
 from config.request_context import audit_request_context
 
@@ -352,3 +361,73 @@ class ManuscriptEvaluationsView(EditorBaseView):
         )
         page = self.paginate_queryset(evaluations)
         return self.get_paginated_response(EditorEvaluationSerializer(page, many=True).data)
+
+
+class ReviewerBaseView(GenericAPIView):
+    """Shared permissions and assignment scope of the reviewer module."""
+
+    permission_classes = [IsAuthenticated, IsReviewer, IsAssignedReviewer]
+
+    def scoped_assignments(self) -> QuerySet:
+        return (
+            Assignment.objects.for_reviewer(self.request.user)
+            .with_overdue()
+            .with_evaluation_started()
+        )
+
+    def get_assignment(self, pk) -> Assignment:
+        """The reviewer's own assignment; anything else answers ``404``."""
+        return get_object_or_404(self.scoped_assignments(), pk=pk)
+
+
+class ReviewerAssignmentListView(ReviewerBaseView):
+    """``GET /api/reviewer/assignments/``: the reviewer's own inbox."""
+
+    def get(self, request: Request) -> Response:
+        page = self.paginate_queryset(self.scoped_assignments())
+        return self.get_paginated_response(ReviewerAssignmentSerializer(page, many=True).data)
+
+
+class ReviewerAssignmentDetailView(ReviewerBaseView):
+    """``GET /api/reviewer/assignments/{id}/``: blind detail of an ``ACTIVE`` or ``COMPLETED`` one."""
+
+    def get(self, request: Request, pk) -> Response:
+        assignment = self.get_assignment(pk)
+        self.check_object_permissions(request, assignment)
+        return Response(
+            ReviewerAssignmentDetailSerializer(assignment, context={"request": request}).data
+        )
+
+
+class ReviewerAssignmentDocumentView(ReviewerBaseView):
+    """``GET /api/reviewer/assignments/{id}/document/``: the sanitized PDF.
+
+    Only an ``ACTIVE`` assignment downloads; any other status of the
+    reviewer's own assignment answers ``410``. The internal path always
+    ends in ``sanitized.pdf`` and the name is generic, so the original
+    and the author's file name never reach the reviewer. The download is
+    audited first; if the audit fails the answer is ``503`` without redirect.
+    """
+
+    permission_classes = [IsAuthenticated, IsReviewer, IsActiveAssignedReviewer]
+
+    def get(self, request: Request, pk) -> HttpResponse:
+        assignment = self.get_assignment(pk)
+        if assignment.status != Assignment.Status.ACTIVE:
+            raise DomainError(
+                "Esta asignación ya no permite descargar el documento.",
+                code=ErrorCode.STATE_CONFLICT,
+                status_code=410,
+            )
+        self.check_object_permissions(request, assignment)
+
+        manuscript, version = assignment.manuscript, assignment.version
+        internal_uri = authorize_sanitized_download(
+            manuscript=manuscript,
+            version=version,
+            user=request.user,
+            context=audit_request_context(request),
+        )
+        return xaccel_response(
+            internal_uri, f"manuscript-{manuscript.code}-v{version.version_number}.pdf"
+        )

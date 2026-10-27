@@ -24,4 +24,5 @@ urlpatterns = [
     path("dashboard/", DashboardView.as_view(), name="dashboard"),
     path("manuscripts/", include("apps.publications.urls")),
     path("editor/", include("apps.reviews.urls")),
+    path("reviewer/", include("apps.reviews.reviewer_urls")),
 ]

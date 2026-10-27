@@ -1,7 +1,9 @@
-"""Serializers of the editor module (plan section 2.4).
+"""Serializers of the editor and reviewer modules (plan sections 2.4 and 2.9).
 
-The editor is the only role that sees the reviewer's identity, so these
-allowlists are never shared with the author or reviewer modules.
+The editor is the only role that sees the reviewer's identity, so the
+editor allowlists are never shared with the author or reviewer modules.
+The reviewer ones are separate, explicit allowlists: the double-blind
+rule never depends on an ``exclude`` or on a conditional field.
 """
 
 from __future__ import annotations
@@ -9,7 +11,7 @@ from __future__ import annotations
 from django.urls import reverse
 from rest_framework import serializers
 
-from apps.publications.models import Manuscript, Verdict
+from apps.publications.models import Manuscript, ManuscriptVersion, Verdict
 from apps.publications.serializers import (
     EditorManuscriptSerializer,
     HistoryEntrySerializer,
@@ -18,6 +20,7 @@ from apps.publications.serializers import (
 from apps.publications.services.history import build_history
 from apps.reviews.models import Assignment, Evaluation
 from apps.reviews.services.assignments import RevocationCause
+from apps.reviews.services.inbox import inbox_state
 from apps.users.models import User
 
 
@@ -268,3 +271,101 @@ class RegisterVerdictSerializer(serializers.Serializer):
     observations = serializers.CharField(
         required=False, allow_blank=True, allow_null=True, max_length=5000
     )
+
+
+class ReviewerManuscriptSerializer(serializers.ModelSerializer):
+    """The manuscript as its reviewer sees it: content, never authorship.
+
+    Allowlist for the reviewer module (plan section 2.9, layer 2). It has
+    no authors, affiliations, contact data, ``created_by`` or status
+    history, and no file name of the author.
+    """
+
+    class Meta:
+        model = Manuscript
+        fields = (
+            "id",
+            "code",
+            "title",
+            "abstract",
+            "keywords",
+            "area",
+            "language",
+            "current_round",
+            "current_version",
+        )
+        read_only_fields = fields
+
+
+class ReviewerVersionSerializer(serializers.ModelSerializer):
+    """The assigned version as its reviewer sees it: numbers and date only.
+
+    It has no original file name, metadata snapshot, ``submitted_by``,
+    paths or hashes. The download name is built from the manuscript code.
+    """
+
+    class Meta:
+        model = ManuscriptVersion
+        fields = ("version_number", "round_number", "submitted_at")
+        read_only_fields = fields
+
+
+class ReviewerAssignmentSerializer(serializers.ModelSerializer):
+    """Row of the reviewer's inbox: the assignment and its blind manuscript summary.
+
+    ``is_overdue`` and ``has_evaluation`` are annotated by the view
+    (``with_overdue`` and ``with_evaluation_started``). It carries no
+    authorship and no identity of the editor who assigned it.
+    """
+
+    manuscript_code = serializers.CharField(source="manuscript.code", read_only=True)
+    manuscript_title = serializers.CharField(source="manuscript.title", read_only=True)
+    area = serializers.CharField(source="manuscript.area", read_only=True)
+    version_number = serializers.IntegerField(source="version.version_number", read_only=True)
+    round_number = serializers.IntegerField(source="version.round_number", read_only=True)
+    is_overdue = serializers.BooleanField(read_only=True)
+    state = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Assignment
+        fields = (
+            "id",
+            "manuscript_code",
+            "manuscript_title",
+            "area",
+            "version_number",
+            "round_number",
+            "assigned_at",
+            "due_at",
+            "status",
+            "state",
+            "is_overdue",
+            "completed_at",
+        )
+        read_only_fields = fields
+
+    def get_state(self, obj: Assignment) -> str:
+        return inbox_state(
+            status=obj.status, is_overdue=obj.is_overdue, has_evaluation=obj.has_evaluation
+        ).value
+
+
+class ReviewerAssignmentDetailSerializer(ReviewerAssignmentSerializer):
+    """One assignment with the blind manuscript, the assigned version and the PDF path.
+
+    ``document_url`` is the API path, never the volume path, and only
+    while the assignment is ``ACTIVE``: any other status gets ``410``.
+    """
+
+    manuscript = ReviewerManuscriptSerializer(read_only=True)
+    version = ReviewerVersionSerializer(read_only=True)
+    document_url = serializers.SerializerMethodField()
+
+    class Meta(ReviewerAssignmentSerializer.Meta):
+        fields = (*ReviewerAssignmentSerializer.Meta.fields, "manuscript", "version", "document_url")
+        read_only_fields = fields
+
+    def get_document_url(self, obj: Assignment) -> str | None:
+        if obj.status != Assignment.Status.ACTIVE:
+            return None
+        return reverse("reviewer-assignment-document", kwargs={"pk": obj.pk})

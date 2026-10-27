@@ -1,4 +1,4 @@
-"""Authorized delivery of a version's original PDF (plan sections 4.6 and 6.4).
+"""Authorized delivery of a version's PDF (plan sections 4.6 and 6.4).
 
 Django only authorizes; Nginx serves the bytes. The answer is an empty
 ``200`` whose ``X-Accel-Redirect`` points to the internal location
@@ -6,8 +6,9 @@ Django only authorizes; Nginx serves the bytes. The answer is an empty
 
 * The internal path is built ONLY from the manuscript UUID and the
   version number — never from the stored name, a query parameter or
-  any user input — and it always ends in ``original.pdf``. The reviewer
-  has its own endpoint that serves ``sanitized.pdf``.
+  any user input. Author and editor always get ``original.pdf``; the
+  reviewer has its own entry point that serves ``sanitized.pdf`` and
+  can never resolve the original.
 * The download is audited BEFORE answering. If the audit trail cannot
   be written no redirect is emitted and the answer is ``503``.
 * A file that cannot be found is a storage failure (``503``), and it is
@@ -35,11 +36,44 @@ def authorize_original_download(
     *, manuscript: Manuscript, version: ManuscriptVersion, user: User, context: dict
 ) -> str:
     """Audit the download and return the internal URI Nginx must serve."""
-    relative = version_relative_dir(manuscript.pk, version.version_number) / "original.pdf"
+    role = Role.Code.AUTHOR if manuscript.created_by_id == user.pk else Role.Code.EDITOR
+    return _authorize_download(
+        kind="original",
+        manuscript=manuscript,
+        version=version,
+        user=user,
+        role=role,
+        context=context,
+    )
+
+
+def authorize_sanitized_download(
+    *, manuscript: Manuscript, version: ManuscriptVersion, user: User, context: dict
+) -> str:
+    """Same as the original one, for the reviewer's ``sanitized.pdf``."""
+    return _authorize_download(
+        kind="sanitized",
+        manuscript=manuscript,
+        version=version,
+        user=user,
+        role=Role.Code.REVIEWER,
+        context=context,
+    )
+
+
+def _authorize_download(
+    *,
+    kind: str,
+    manuscript: Manuscript,
+    version: ManuscriptVersion,
+    user: User,
+    role: str,
+    context: dict,
+) -> str:
+    relative = version_relative_dir(manuscript.pk, version.version_number) / f"{kind}.pdf"
     if not private_path(relative).is_file():
         raise DomainError(FILE_UNAVAILABLE_MESSAGE, code=ErrorCode.STORAGE_UNAVAILABLE)
 
-    role = Role.Code.AUTHOR if manuscript.created_by_id == user.pk else Role.Code.EDITOR
     try:
         with transaction.atomic():
             AuditService.record(
@@ -52,7 +86,7 @@ def authorize_original_download(
                 details={
                     "manuscript_id": str(manuscript.pk),
                     "version_number": version.version_number,
-                    "kind": "original",
+                    "kind": kind,
                 },
                 **context,
             )
