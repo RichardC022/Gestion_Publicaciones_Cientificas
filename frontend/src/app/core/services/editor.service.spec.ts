@@ -319,3 +319,61 @@ describe('EditorService · veredicto', () => {
     expect(error?.status).toBe(403);
   });
 });
+
+describe('EditorService · vencidas', () => {
+  let service: EditorService;
+  let http: HttpTestingController;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: API_BASE_URL, useValue: '/api/' },
+      ],
+    });
+    service = TestBed.inject(EditorService);
+    http = TestBed.inject(HttpTestingController);
+  });
+
+  afterEach(() => http.verify());
+
+  it('pide solo la lectura de las vencidas, con la página pedida', () => {
+    let codes: string[] = [];
+    service.listExpiredAssignments(2, 20).subscribe(
+      (value) => (codes = value.results.map((a) => a.manuscript_code)),
+    );
+
+    const request = http.expectOne((r) => r.url === '/api/editor/assignments/expired/');
+    expect(request.request.method).toBe('GET');
+    expect(request.request.params.get('page')).toBe('2');
+    expect(request.request.params.get('page_size')).toBe('20');
+    request.flush({
+      count: 1,
+      next: null,
+      previous: null,
+      results: [buildAssignment({ status: 'EXPIRED', manuscript_code: 'GPC-2026-000009' })],
+    });
+
+    expect(codes).toEqual(['GPC-2026-000009']);
+  });
+
+  it('la primera página no envía el parámetro page', () => {
+    service.listExpiredAssignments().subscribe();
+
+    const request = http.expectOne((r) => r.url === '/api/editor/assignments/expired/');
+    expect(request.request.params.has('page')).toBe(false);
+    request.flush({ count: 0, next: null, previous: null, results: [] });
+  });
+
+  it('un rol sin acceso llega como 403', () => {
+    let error: ApiError | undefined;
+    service.listExpiredAssignments().subscribe({ error: (e: ApiError) => (error = e) });
+
+    http
+      .expectOne((r) => r.url === '/api/editor/assignments/expired/')
+      .flush(errorEnvelope('FORBIDDEN', 'Acceso denegado.'), { status: 403, statusText: 'Forbidden' });
+
+    expect(error?.status).toBe(403);
+  });
+});

@@ -25,7 +25,7 @@ import { Paginated } from '../models/paginated.model';
 /**
  * Módulo Editor (plan secciones 2.4 y 3.6): bandeja de nuevos envíos,
  * detalle editorial, paso a revisión, selección de Revisores, asignación,
- * revocación, evaluaciones y veredicto.
+ * revocación, asignaciones vencidas, evaluaciones y veredicto.
  *
  * La descarga del PDF de una versión no vive aquí: el Editor usa el mismo
  * endpoint autorizado que el Autor (`ManuscriptService.downloadVersion`).
@@ -132,6 +132,20 @@ export class EditorService {
         })),
         catchError((error) => throwError(() => toApiError(error))),
       );
+  }
+
+  /**
+   * Asignaciones vencidas pendientes de decisión (`GET .../assignments/expired/`):
+   * las que el servidor ya marcó `EXPIRED` y las `ACTIVE` con `due_at <= now()`
+   * que la tarea programada aún no marcó. Es solo una consulta: nada se
+   * revoca ni se reasigna.
+   */
+  listExpiredAssignments(page = 1, pageSize = 20): Observable<Paginated<Assignment>> {
+    return this.http
+      .get<Paginated<Assignment>>(`${this.url}assignments/expired/`, {
+        params: toHttpParams({ page: page > 1 ? page : undefined, page_size: pageSize }),
+      })
+      .pipe(catchError((error) => throwError(() => toApiError(error))));
   }
 
   /** Revoca una asignación vigente o vencida, con causa y motivo (`POST .../revoke/`). */
