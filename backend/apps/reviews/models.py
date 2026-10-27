@@ -18,7 +18,8 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.db import models
-from django.db.models import ExpressionWrapper, F, Q
+from django.db.models import BooleanField, ExpressionWrapper, F, Q
+from django.db.models.functions import Now
 from django.utils import timezone
 
 from apps.publications.models import Manuscript, ManuscriptVersion
@@ -37,6 +38,23 @@ SCORE_FIELDS = (
     "relevance_score",
     "ethics_score",
 )
+
+
+class AssignmentQuerySet(models.QuerySet):
+    """Scopes over assignments."""
+
+    def with_overdue(self) -> "AssignmentQuerySet":
+        """Annotate ``is_overdue``: ``ACTIVE`` and past ``due_at``, by the database clock.
+
+        The scheduled task only marks ``EXPIRED`` later; the exact cut is
+        always ``due_at <= now()`` evaluated by PostgreSQL.
+        """
+        return self.annotate(
+            is_overdue=ExpressionWrapper(
+                Q(status=Assignment.Status.ACTIVE, due_at__lte=Now()),
+                output_field=BooleanField(),
+            )
+        )
 
 
 class Assignment(models.Model):
@@ -92,6 +110,8 @@ class Assignment(models.Model):
     lock_version = models.IntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    objects = AssignmentQuerySet.as_manager()
 
     class Meta:
         db_table = "reviews_assignment"
