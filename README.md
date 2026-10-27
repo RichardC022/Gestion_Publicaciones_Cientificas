@@ -410,6 +410,12 @@ sudo chmod 0644 /etc/cron.d/gpc
 
 Ajusta la ruta del repositorio en el archivo si no está en `/opt/gpc`.
 
+La plantilla incluye también la expiración de asignaciones (TSK-45 y TSK-49): cada minuto ejecuta `mark_expired_assignments`, que marca como `EXPIRED` las asignaciones `ACTIVE` con `due_at <= now()`, sin revocar ni reasignar, y escribe en `/var/log/gpc-expire.log` solo cuando hubo trabajo o un error. El contenedor `backend` debe estar en ejecución. Para probarla a mano:
+
+```bash
+docker compose exec backend python manage.py mark_expired_assignments
+```
+
 ### 8.3 Restauración
 
 ```bash
@@ -460,6 +466,7 @@ Jobs incluidos:
 - Backend tests sobre PostgreSQL 16.
 - Angular production build.
 - Docker Compose validation.
+- Aislamiento del volumen de archivos (`scripts/smoke_media_isolation.sh`).
 
 El pipeline usa PostgreSQL, nunca SQLite, y no consume secretos de producción.
 
@@ -500,6 +507,21 @@ curl -I http://127.0.0.1/_catalog/
 ```
 
 Las respuestas esperadas son de denegación o recurso no disponible, no la entrega de archivos.
+
+La **prueba de humo completa** del aislamiento del volumen es un script que no necesita la base de datos ni el stack en ejecución:
+
+```bash
+./scripts/smoke_media_isolation.sh
+```
+
+Levanta, de forma efímera, Nginx con la configuración real (`nginx/conf.d/default.conf`), el volumen en solo lectura y un backend de prueba que responde con `X-Accel-Redirect`, y comprueba que:
+
+- desde fuera, `/_protected/`, `/_catalog/` y `/media/` no entregan archivos (tampoco con rutas codificadas, dobles barras o `..`) ni listan directorios;
+- cuando el backend autoriza, Nginx sí entrega el PDF con `Cache-Control` y `nosniff` (control positivo);
+- una redirección interna a `/media/` también se deniega;
+- Nginx no puede escribir en el volumen y, en `docker-compose.yml`, solo `backend` lo monta con escritura.
+
+Requiere Docker, `curl` y `python3`; termina con código distinto de cero si algo falla y limpia sus contenedores y su volumen.
 
 ---
 
