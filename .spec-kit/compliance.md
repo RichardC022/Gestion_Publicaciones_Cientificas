@@ -1,10 +1,10 @@
 # Matriz de Cumplimiento — TSK-01 a TSK-57 (Fases 0, 1, 2 y 3)
 
 **Archivo:** `compliance.md`
-**Fecha de la auditoría:** 26 de octubre de 2026 (TSK-01 a TSK-44) · **actualizada el 27 de octubre de 2026** (añade la Fase 3, TSK-45 a TSK-57, y revisa cada deuda contra el estado actual)
-**Rama / commit auditado:** `dev/jostin-setup` @ `2821a64` (TSK-57) y la corrección del panel unificado, aún sin commit
+**Fecha de la auditoría:** 26 de octubre de 2026 (TSK-01 a TSK-44) · **actualizada el 27 de octubre de 2026** (añade la Fase 3, TSK-45 a TSK-57, revisa cada deuda contra el estado actual, registra la resolución de D-19 y el inicio de la Fase 4 con la TSK-58)
+**Rama / commit auditado:** `dev/jostin-setup` @ `2821a64` (TSK-57) más cambios aún sin commit: corrección del panel unificado, D-19 y TSK-58
 **Contrastado contra:** `.spec-kit/specify.md`, `.spec-kit/plan.md`, `.spec-kit/tasks.md`, `.spec-kit/constitution.md`, `.spec-kit/clarify.md`
-**Alcance:** lectura y ejecución de pruebas. Lo único que se modificó en esta actualización es el título duplicado de las tarjetas del panel (`UnifiedDashboardComponent`); no se tocó configuración ni contenedores.
+**Alcance:** lectura y ejecución de pruebas. Lo que se modificó desde la auditoría de la Fase 3: el título duplicado de las tarjetas del panel, `feedback` en la respuesta del Autor (D-19) y, en la TSK-58, un script de humo, un job de CI y guardas de pruebas; la configuración de Nginx y los contenedores no se tocaron.
 
 ---
 
@@ -12,10 +12,11 @@
 
 | Evidencia | Resultado |
 |---|---|
-| Pruebas backend (pytest, contenedor efímero con dependencias de desarrollo contra el PostgreSQL 16 del proyecto) | **960 pasan, 1 omitida, 1 `xfail`** (antes: 677 y 1 omitida). La omitida es la prueba de la plantilla de cron, que se salta dentro de la imagen del backend porque `scripts/` no está en ella (con `scripts/` montado pasa). El `xfail(strict=True)` documenta una deuda real (D-10). |
-| Pruebas frontend (`ng test`, Vitest) | **45 archivos, 775 pruebas, todas pasan** (antes: 36 archivos, 559). |
+| Pruebas backend (pytest, contenedor efímero con dependencias de desarrollo contra el PostgreSQL 16 del proyecto) | **975 pasan, 8 omitidas, 1 `xfail`** (antes: 677 y 1 omitida). Las 8 omitidas son comprobaciones que necesitan archivos del repositorio que la imagen del backend no trae: la plantilla de cron y la configuración de Nginx (7 casos); con esos archivos montados pasan (las de Nginx: 10 de 10) y con una configuración rota fallan. El `xfail(strict=True)` documenta una deuda real (D-10). |
+| Pruebas frontend (`ng test`, Vitest) | **45 archivos, 775 pruebas, todas pasan** (antes: 36 archivos, 559). Sin cambios en D-19 ni en TSK-58: el frontend ya consumía `feedback`. |
 | Compilación `ng build --configuration production` | **Correcta** (1 advertencia NG8113, ver D-13). |
 | Migraciones | `makemigrations --check` sin cambios pendientes; `reviews` 0001–0002 y `publications` 0007–0008 son nuevas. |
+| Aislamiento del volumen (TSK-58) | `scripts/smoke_media_isolation.sh`: **todas las comprobaciones pasan**, 3 ejecuciones seguidas sin intermitencias; las tres mutaciones probadas (quitar `internal`, quitar `deny all`, montar `web` sin `:ro`) la hacen fallar. Verificado también contra el stack real en ejecución: la configuración que carga `web` es idéntica a la del repositorio (`nginx -t` correcto), `backend` monta `media_data` con escritura y `web` en solo lectura, y las rutas internas no entregan archivos. |
 | Concurrencia | Las pruebas con hilos reales (`transaction=True`) se repitieron 6 veces seguidas sin fallos ni intermitencias. |
 | Lectura de código | `docker-compose.yml`, `nginx/`, `.github/workflows/ci.yml`, `scripts/cron/gpc.cron`, settings, servicios de `users`, `publications` y `reviews`, migraciones, rutas, modelos y servicios Angular del módulo Editor. |
 | Contenedores en ejecución | `db` y `backend` saludables, `web` y `adminer` arriba. El `backend` en ejecución **sí está actualizado**: tiene `reviews` 0001–0002 y `publications` 0007–0008 aplicadas y los servicios `verdicts.py`, `catalog.py`, `assignments.py`, `eligibility.py` y `expiration.py`. |
@@ -60,13 +61,14 @@
 | APIs del Editor: bandeja, asignación y revocación | TSK-47 | HU-10, HU-11; RF-03; plan §2.4 | ✅ | 100 % | Siete endpoints bajo `/api/editor/`; ámbito `for_editor()` (conflicto de interés → `404`); segunda asignación `ACTIVE` → `409`; una vencida debe revocarse antes de reasignar. |
 | Servicio de asignación y reasignación | TSK-48 | HU-11; RF-03 | 🟡 | 90 % | `due_at` fijado por PostgreSQL; elegibilidad por cuenta, disponibilidad, área y conflicto; capacidad con bloqueo del perfil; la baja lógica revoca la asignación. Pendiente: los avisos no tienen receptor y el plan §2.4 pide repetir la exclusión de autores «en la base de datos», que hoy solo vive en el servicio. D-10. |
 | Modelos de veredicto y catálogo | TSK-50 | RF-07, RF-19; RN-12; plan §1.11–1.12, §1.15 | ✅ | 100 % | `Verdict` append-only (trigger), `CatalogEntry` con único activo por manuscrito, `CorrectionRound.opened_by_verdict` con FK `DEFERRABLE INITIALLY DEFERRED`, `CHECK` de justificación y observaciones. Ajustes al plan en 2.4. |
-| Veredicto normal y publicación | TSK-51, 52 | HU-13; RF-07, RF-15, RF-19; RN-12 | 🟡 | 85 % | Servicio y `POST/GET .../verdicts/`, `GET .../evaluations/`: una transacción con veredicto, estado, ronda, catálogo y copia pública sanitizada; `If-Match` + `Idempotency-Key`; falla de auditoría o de copia → `503`/rollback. **Incumple CA-HU-13-04:** el Autor no puede leer las observaciones (D-19), y no existe aún el catálogo público que muestre el artículo (D-17). |
+| Veredicto normal y publicación | TSK-51, 52 | HU-13; RF-07, RF-15, RF-19; RN-12 | 🟡 | 95 % | Servicio y `POST/GET .../verdicts/`, `GET .../evaluations/`: una transacción con veredicto, estado, ronda, catálogo y copia pública sanitizada; `If-Match` + `Idempotency-Key`; falla de auditoría o de copia → `503`/rollback. Desde D-19 el Autor lee las observaciones (`feedback`, lista blanca de tres campos). Pendiente: no existe aún el catálogo público que muestre el artículo (D-17). |
 | Pruebas backend de la Fase 3 | TSK-53 | Plan §7.1 | ✅ | 100 % | Factorías de `reviews`, concurrencia real (asignación, capacidad, vencimiento vs revocación, baja vs asignación, veredicto doble, misma clave) y cuatro ciclos completos por la API; cadena de auditoría íntegra tras cada uno. |
 | Frontend del Editor: bandeja, detalle y vencidas | TSK-54, 57 | HU-10, HU-12 | ✅ | 95 % | Bandeja con filtros y orden en la URL, detalle con PDF por `Blob` y sellos, vista de vencidas sin acciones automáticas, rutas con `rolesGuard` y acceso por URL a un envío ajeno → error sin datos. El orden usa `updated_at` (la API no ordena por fecha de envío); `IncidentListComponent` sigue como andamio (Fase 4). |
 | Frontend del Editor: selector y diálogos | TSK-55 | HU-11 | ✅ | 100 % | Selector con búsqueda, carga y **causa cuando no hay elegibles** (`diagnosis` del backend); diálogo de asignación que muestra la fecha límite devuelta por el servidor y advierte del `409`; diálogo de revocación con causa y motivo obligatorios. |
 | Frontend del Editor: formulario de veredicto | TSK-56 | HU-13 | 🟡 | 90 % | Recomendación del Revisor en solo lectura, validación espejo del servidor, advertencia al apartarse, confirmación, reintento con la misma `Idempotency-Key`, veredictos anteriores solo en lectura. No muestra la autorización administrativa de corrección (CA-HU-13-12, Fase 5). |
+| Aislamiento del volumen y acceso al PDF sanitizado | TSK-58 | Plan §4.6; RNF de privacidad; Constitución §5 | 🟡 | 90 % | Prueba de humo ejecutable (`scripts/smoke_media_isolation.sh`) y job de CI: `/_protected/`, `/_catalog/` y `/media/` no entregan archivos (tampoco con rutas codificadas, `//` o `..`), no hay listados, el control positivo entrega con `Cache-Control` y `nosniff`, una redirección interna a `/media/` se deniega, y solo `backend` escribe en el volumen. **Pendiente:** el endpoint del Revisor (TSK-61) aún no existe; hasta entonces solo hay una guarda que prohíbe al módulo `reviews` nombrar el PDF original. |
 
-**Resumen numérico** (promedio simple de las 33 filas): **≈ 93,5 %** global · Fase 0 ≈ 86 % · Fase 1 ≈ 95 % (baja de 97 % al corregir la fila del panel) · Fase 2 ≈ 97 % (sube de 96 % al reflejar la revocación en la baja lógica) · Fase 3 ≈ 95 %.
+**Resumen numérico** (promedio simple de las 34 filas): **≈ 93,7 %** global · Fase 0 ≈ 86 % · Fase 1 ≈ 95 % (baja de 97 % al corregir la fila del panel) · Fase 2 ≈ 97 % (sube de 96 % al reflejar la revocación en la baja lógica) · Fase 3 ≈ 96 % · Fase 4 (en curso, solo TSK-58) ≈ 90 %.
 
 ---
 
@@ -167,7 +169,7 @@ Observación de alcance: `ManuscriptService.listVersions` (plan §3.6) existe co
 | Concurrencia | Hilos con conexión propia: dos Editores asignando, capacidad entre manuscritos, doble `start-review`, revocar vs vencer, baja vs asignación, veredicto doble, misma clave a la vez, baja vs veredicto. Seis ejecuciones seguidas estables | ✅ |
 | Frontend del Editor | Bandeja, detalle, selector, diálogos, formulario de veredicto y vencidas, probados contra las rutas reales con `rolesGuard` | ✅ |
 | Baja lógica ↔ catálogo | La `CatalogEntry` no se desactiva ni se elimina la copia pública al dar de baja un manuscrito aceptado (plan §4.8, pasos 5 y 7). Lo documenta un `xfail(strict=True)` | ❌ D-10 |
-| Veredicto → Autor | `AuthorEvaluationFeedbackSerializer` existe pero ningún endpoint lo usa; el frontend ya lo espera como `feedback` | ❌ D-19 |
+| Veredicto → Autor | `feedback` en la respuesta del Autor: `comments_for_author`, decisión y observaciones del último veredicto, y solo cuando existe un veredicto (una evaluación final por sí sola no se muestra). Nunca incluye la identidad del Revisor, los comentarios confidenciales, las puntuaciones ni la justificación interna del Editor; 12 pruebas, incluida una de consultas para evitar N+1 en el listado | ✅ |
 | Avisos | Siete señales emitidas tras el commit (`manuscript_submitted`, `new_version_submitted`, `manuscript_withdrawn`, `assignment_created`, `assignment_revoked`, `assignment_expired`, `verdict_registered`), sin receptores | ⏳ Fase 5 |
 
 **Ajustes al plan** (cada uno decidido y probado):
@@ -196,7 +198,7 @@ Prioridad: **Crítica** (resolver antes de cualquier `push` o despliegue) · **A
 | D-04 | **Media** | `environment.production.ts` sigue con `production: false` y las claves duplicadas `apiUrl`/`apiBaseUrl`; solo `apiBaseUrl` se usa. | `frontend/src/environments/environment.production.ts`, `environment.ts` | Restaurar `production: true`; eliminar `apiUrl` o unificar el nombre. |
 | D-05 | ~~Media~~ **Resuelta** | `.gitignore` ya cubre `credentials.txt` y `/graphify-out/`. | `.gitignore` | Ninguno. (Un patrón `credentials*.txt` cubriría variantes; opcional.) |
 | D-06 | **Media** | Con `COOKIE_SECURE=1`, `SECURE_HSTS_SECONDS` de un año con `preload` y sin TLS en Nginx, la cookie `Secure` del refresh no viaja por HTTP en un host real y HSTS con preload es arriesgado antes de tener certificado válido. Sin cambios. | `backend/config/settings/production.py`, `.env.example` | Resolver D-02; mientras tanto, desarrollo local con `COOKIE_SECURE=0` y activar HSTS preload solo con el certificado institucional. |
-| D-07 | **Media** | CI: el paso de pruebas del backend convierte «ninguna prueba recolectada» (`exit 5`) en éxito, tolerancia que ya no tiene sentido con 960 pruebas; no existe job de pruebas del frontend (`ng test`, 775 pruebas) ni de linter. Sin cambios. | `.github/workflows/ci.yml` | Eliminar la tolerancia a `exit 5`; añadir `ng test --watch=false`. |
+| D-07 | **Media** | CI: el paso de pruebas del backend convierte «ninguna prueba recolectada» (`exit 5`) en éxito, tolerancia que ya no tiene sentido con 975 pruebas; no existe job de pruebas del frontend (`ng test`, 775 pruebas) ni de linter. Desde la TSK-58 el CI sí ejecuta la prueba de humo del volumen (`media-isolation`). | `.github/workflows/ci.yml` | Eliminar la tolerancia a `exit 5`; añadir `ng test --watch=false`. |
 | D-08 | **Baja** | La imagen de producción copia `tests/` y `pytest.ini`, pero `requirements/production.txt` no instala `pytest`. Sin cambios. | `backend/Dockerfile`, `requirements/production.txt` | No copiar `tests/` a la imagen de producción o crear una etapa de pruebas. |
 | D-09 | **Media** | `verify_integrity.sh` depende del comando `verify_integrity` (TSK-76), inexistente (solo hay `seed_roles` y `mark_expired_assignments`); la restauración de humo no se ejercitó. El cron ya programa también la expiración. | `scripts/verify_integrity.sh`, `scripts/cron/gpc.cron` | Aceptar como dependencia conocida hasta TSK-76; ejecutar una restauración de humo antes del piloto. |
 | D-10 | **Media** | **Atendido solo en parte.** Hecho: la baja lógica revoca la asignación `ACTIVE` (TSK-48). Pendiente: (a) desactivar la `CatalogEntry` y retirar la copia pública al dar de baja un manuscrito aceptado (plan §4.8, pasos 5 y 7), que documenta el `xfail` de `test_verdict_concurrency.py`; (b) los receptores de las siete señales de dominio, que esperan a `notifications` (Fase 5). | `apps/publications/services/withdraw.py`, `apps/*/signals.py` | Implementar (a) con un receptor de `manuscript_withdrawing`/`manuscript_withdrawn` en `publications`; al hacerlo, quitar el `xfail`. (b) con TSK-75. |
@@ -208,7 +210,7 @@ Prioridad: **Crítica** (resolver antes de cualquier `push` o despliegue) · **A
 | D-16 | **Baja** | `ruff` no está disponible en el contenedor de desarrollo (`No module named ruff`) ni se ejecuta en CI: el código de las TSK-46 a TSK-57 se escribió siguiendo el estilo vecino, sin linter. | `backend/requirements/development.txt`, `.github/workflows/ci.yml` | Añadir `ruff` a las dependencias de desarrollo y un paso de CI. |
 | D-17 | **Media** | No existe ningún endpoint público del catálogo: un manuscrito aceptado queda en `CatalogEntry` con su copia pública, pero ningún visitante puede consultarlo (CA-HU-13-02, «disponible en el catálogo público en cinco minutos»). Las pantallas `features/catalog/**` son andamios. | `apps/publications/` (sin vistas de catálogo) | TSK-74 (backend) y TSK-80 (frontend). |
 | D-18 | **Baja** | No hay rotación de logs para `/var/log/gpc-expire.log` (el cron corre cada minuto) ni para `gpc-backup.log`; la instalación de la plantilla de cron en el servidor no está verificada. | `scripts/cron/gpc.cron`, documentación | Añadir una regla de `logrotate` y una verificación de instalación en el runbook (TSK-88). |
-| D-19 | **Alta** | **El Autor no puede leer las observaciones del veredicto.** Tras `REQUIRES_CORRECTIONS` solo ve el cambio de estado: `AuthorEvaluationFeedbackSerializer` (TSK-32) no está conectado a ningún endpoint, aunque el detalle del Autor (TSK-41) ya espera un campo `feedback`. Incumple CA-HU-13-04 («el Autor recibe las observaciones»). No hay fuga de datos: el problema es de omisión. | `apps/publications/serializers.py`, `views.py` | Exponer `feedback` en el detalle del Autor con la lista blanca de tres campos (`comments_for_author`, decisión, observaciones del Editor) y probar que nunca incluye al Revisor ni los comentarios confidenciales. |
+| D-19 | ~~Alta~~ **Resuelta** | El Autor no podía leer las observaciones del veredicto: `AuthorEvaluationFeedbackSerializer` no estaba conectado. Ahora `AuthorManuscriptSerializer` expone `feedback` con la lista blanca de tres campos y solo tras un veredicto, con `prefetch` de veredictos y evaluaciones. Se actualizó una prueba existente que fijaba el conjunto exacto de campos de la respuesta del Autor, porque el contrato cambió a propósito. | `apps/publications/serializers.py`, `views.py` | Ninguno. |
 
 **Archivos y configuraciones de entorno — resumen**
 
@@ -221,18 +223,19 @@ Prioridad: **Crítica** (resolver antes de cualquier `push` o despliegue) · **A
 
 ## 4. Siguiente paso
 
-**Veredicto: la Fase 3 (TSK-45 a TSK-57) está completa y verificada; el proyecto puede iniciar la Fase 4 (TSK-58).** El flujo del Editor funciona de extremo a extremo —envío, revisión, asignación, vencimiento, revocación, veredicto, ronda y publicación— con 960 pruebas de backend y 775 de frontend en verde y compilación de producción correcta. Las desviaciones del plan están decididas y probadas (ver 2.4). Lo que queda abierto es deuda de integración y de infraestructura, no defectos del flujo; la excepción es la credencial publicada.
+**Veredicto: la Fase 3 (TSK-45 a TSK-57) está completa y verificada, D-19 está resuelta y la Fase 4 ya comenzó con la TSK-58.** El flujo del Editor funciona de extremo a extremo —envío, revisión, asignación, vencimiento, revocación, veredicto, ronda y publicación— con 975 pruebas de backend y 775 de frontend en verde y compilación de producción correcta. Las desviaciones del plan están decididas y probadas (ver 2.4). Lo que queda abierto es deuda de integración y de infraestructura, no defectos del flujo; la excepción es la credencial publicada.
 
 1. **Ya (no depende de código):** rotar la credencial de `credentials.txt` (D-01). El commit que la contiene está en cuatro ramas remotas.
-2. **Antes de dar el flujo por cerrado:** D-19. Sin ella, el Autor devuelto a correcciones no ve qué debe corregir; es un cambio pequeño de backend que ya tiene su frontend esperándolo.
-3. **Antes de un despliegue o piloto:** D-02 (TLS), D-03 (puertos de `db` y `adminer`, este último ya publicado), D-06 y D-10 (retirada del catálogo al dar de baja).
-4. **Puede proceder en paralelo con la Fase 4:** D-04, D-07, D-11, D-12, D-13, D-16 y D-18.
+2. **Antes de un despliegue o piloto:** D-02 (TLS), D-03 (puertos de `db` y `adminer`, este último ya publicado), D-06 y D-10 (retirada del catálogo al dar de baja).
+3. **Puede proceder en paralelo con la Fase 4:** D-04, D-07, D-11, D-12, D-13, D-16 y D-18.
 
-**Estado de partida de la Fase 4 (verificado):**
+**Estado de la Fase 4 (verificado):**
+
+- **TSK-58 hecha** (ver la fila de la matriz): el aislamiento del volumen está probado y el CI lo vigila. Queda por cumplir cuando exista el endpoint del Revisor (TSK-61) que solo resuelva `sanitized.pdf`; la guarda de `tests/test_media_isolation.py` fallará si el módulo `reviews` nombra el PDF original.
 
 - `apps/reviews` tiene `Assignment`, `Evaluation`, los permisos `IsAssignedReviewer`/`IsActiveAssignedReviewer` y los endpoints del Editor. **No existe aún** el envío de la evaluación por el Revisor (`DRAFT` → `FINAL`), ni el paso de la asignación a `COMPLETED`, ni `IncidentReport`, ni `/api/reviewer/**`. Hoy la evaluación `FINAL` solo se crea con factorías en las pruebas.
 - Las pantallas del Revisor (`features/reviewer/**`) y `IncidentListComponent` son andamios.
 - La descarga del PDF sanitizado por el Revisor (TSK-58 y siguientes) debe apoyarse en `/_protected/`, que ya cubre `private/`, y en la copia `sanitized.pdf` de cada versión.
 - Las señales de dominio (`assignment_created`, `assignment_revoked`, `assignment_expired`, `verdict_registered`) están listas para que `notifications` las consuma en la Fase 5.
 
-**Pendiente de tu orden:** confirmar el inicio de la TSK-58, y decidir si D-19 (observaciones del Autor) se atiende antes de la Fase 4.
+**Pendiente de tu orden:** confirmar el inicio de la TSK-59 (modelo de incidentes confidenciales) y decidir qué hacer con D-01 (rotación de la credencial), que sigue siendo lo único crítico.
