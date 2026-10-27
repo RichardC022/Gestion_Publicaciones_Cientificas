@@ -10,3 +10,6 @@ class ReviewsConfig(AppConfig):
     name = "apps.reviews"
     label = "reviews"
     verbose_name = "Reviews"
+
+    def ready(self) -> None:
+        from apps.reviews import receivers  # noqa: F401
