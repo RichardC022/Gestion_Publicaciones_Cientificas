@@ -30,3 +30,10 @@ manuscript_withdrawing = Signal()
 #: ``withdrawn_by_id``, ``previous_status``. The reason is left out on purpose:
 #: it is free text written by the author and must not travel to the reviewer.
 manuscript_withdrawn = Signal()
+
+#: The editor registered a verdict and the transaction committed. Args:
+#: ``manuscript_id``, ``verdict_id``, ``decision``, ``editor_id``. The
+#: justification and observations are left out on purpose: receivers
+#: build their own sanitized payloads (the author gets the observations,
+#: never the editor's internal justification).
+verdict_registered = Signal()
