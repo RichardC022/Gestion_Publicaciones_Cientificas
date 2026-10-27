@@ -47,10 +47,12 @@ from apps.reviews.serializers import (
     AssignmentSerializer,
     AssignReviewerSerializer,
     EditorEvaluationSerializer,
+    EvaluationDraftSerializer,
     EligibleReviewerSerializer,
     RegisterVerdictSerializer,
     ReviewerAssignmentDetailSerializer,
     ReviewerAssignmentSerializer,
+    ReviewerEvaluationSerializer,
     ReviewerFilterSerializer,
     RevokeAssignmentSerializer,
     StartReviewSerializer,
@@ -59,6 +61,7 @@ from apps.reviews.serializers import (
     VerdictSerializer,
 )
 from apps.reviews.services.assignments import assign_reviewer, revoke_assignment, start_review
+from apps.reviews.services.evaluations import save_draft, submit_evaluation
 from apps.reviews.services.eligibility import eligibility_breakdown, eligible_reviewers
 from apps.reviews.permissions import IsActiveAssignedReviewer, IsAssignedReviewer
 from apps.users.permissions import IsEditor, IsReviewer
@@ -431,3 +434,62 @@ class ReviewerAssignmentDocumentView(ReviewerBaseView):
         return xaccel_response(
             internal_uri, f"manuscript-{manuscript.code}-v{version.version_number}.pdf"
         )
+
+
+def evaluation_response(evaluation: Evaluation) -> Response:
+    """The reviewer's evaluation with its optimistic lock as the ``ETag``."""
+    response = Response(ReviewerEvaluationSerializer(evaluation).data)
+    response["ETag"] = etag_for(evaluation)
+    return response
+
+
+class ReviewerEvaluationView(ReviewerBaseView):
+    """``GET``/``PUT /api/reviewer/assignments/{id}/evaluation/``: the private draft or the final.
+
+    ``GET`` answers an empty draft before the first save. ``PUT`` needs
+    ``If-Match`` with the ``ETag`` read (``"0"`` for the empty draft) and
+    changes only the fields sent; the service decides whether the
+    assignment still accepts writes. Neither shows the draft to anyone
+    but the reviewer who owns the assignment.
+    """
+
+    def get_permissions(self):
+        if self.request.method == "GET":
+            return super().get_permissions()
+        return [IsAuthenticated(), IsReviewer()]
+
+    def get(self, request: Request, pk) -> Response:
+        assignment = self.get_assignment(pk)
+        self.check_object_permissions(request, assignment)
+        evaluation = Evaluation.objects.filter(assignment=assignment).first()
+        if evaluation is None:
+            evaluation = Evaluation(id=None, assignment=assignment)
+        return evaluation_response(evaluation)
+
+    def put(self, request: Request, pk) -> Response:
+        self.get_assignment(pk)
+        body = EvaluationDraftSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        evaluation = save_draft(
+            assignment_id=pk,
+            reviewer=request.user,
+            values=body.validated_data,
+            expected_lock_version=parse_if_match(request, "de la evaluación"),
+        )
+        return evaluation_response(evaluation)
+
+
+class ReviewerEvaluationSubmitView(ReviewerBaseView):
+    """``POST /api/reviewer/assignments/{id}/evaluation/submit/``: the immutable final."""
+
+    permission_classes = [IsAuthenticated, IsReviewer]
+
+    def post(self, request: Request, pk) -> Response:
+        self.get_assignment(pk)
+        evaluation = submit_evaluation(
+            assignment_id=pk,
+            reviewer=request.user,
+            expected_lock_version=parse_if_match(request, "de la evaluación"),
+            context=audit_request_context(request),
+        )
+        return evaluation_response(evaluation)
