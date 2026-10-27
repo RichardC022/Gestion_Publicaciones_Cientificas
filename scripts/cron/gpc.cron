@@ -6,3 +6,12 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 # Respaldo diario de PostgreSQL y del volumen media_data a las 02:15.
 # flock evita ejecuciones solapadas si un respaldo tarda más de un día.
 15 2 * * * root cd /opt/gpc && /usr/bin/flock -n /var/lock/gpc-backup.lock /opt/gpc/scripts/backup.sh >> /var/log/gpc-backup.log 2>&1
+
+# TSK-45: expiración de asignaciones de revisión, cada minuto.
+# Solo marca como EXPIRED las asignaciones ACTIVE con due_at <= now(); no revoca ni reasigna.
+# El comando es idempotente y no repite avisos al Editor (criterio de aceptación de TSK-49).
+# flock -n evita ejecuciones solapadas y usa un lock propio para no bloquear el respaldo.
+# -T desactiva el pseudo-TTY, que cron no tiene.
+# DESACTIVADA: el comando mark_expired_assignments se crea en la TSK-49. Hasta entonces
+# fallaría cada minuto. Se activa en la TSK-49: quitar el «#» inicial de la línea siguiente.
+# * * * * * root cd /opt/gpc && /usr/bin/flock -n /var/lock/gpc-expire.lock /usr/bin/docker compose exec -T backend python manage.py mark_expired_assignments >> /var/log/gpc-expire.log 2>&1
