@@ -6,6 +6,7 @@
  * autores y la identidad del Revisor asignado.
  */
 import { HistoryEntry, ManuscriptAuthor, ManuscriptStatus, VersionSummary } from './manuscript.model';
+import { Paginated } from './paginated.model';
 
 /** Fila de la bandeja de nuevos envíos (`GET /api/editor/submissions/`). */
 export interface SubmissionRow {
@@ -69,6 +70,101 @@ export interface OpenAssignment {
   reviewer: PersonSummary;
 }
 
+/** Asignación completa tal como la ve el Editor (`AssignmentSerializer`). */
+export interface Assignment extends OpenAssignment {
+  manuscript: string;
+  manuscript_code: string;
+  manuscript_title: string;
+  version_number: number;
+  assigned_by: PersonSummary;
+  completed_at: string | null;
+  revoked_at: string | null;
+  revoked_by: PersonSummary | null;
+  revocation_reason: string | null;
+}
+
+/** Una asignación sin resolver: vigente o vencida y aún sin revocar. */
+export function isOpenAssignment(assignment: Pick<OpenAssignment, 'status'>): boolean {
+  return assignment.status === 'ACTIVE' || assignment.status === 'EXPIRED';
+}
+
+/** Vencida: ya marcada `EXPIRED` o `ACTIVE` pasada su fecha límite (reloj del servidor). */
+export function isOverdue(assignment: Pick<OpenAssignment, 'status' | 'is_overdue'>): boolean {
+  return assignment.status === 'EXPIRED' || assignment.is_overdue;
+}
+
+/** Revisor candidato con su pericia y su carga actual. */
+export interface EligibleReviewer {
+  id: string;
+  institutional_id: string;
+  full_name: string;
+  email: string;
+  expertise_areas: string[];
+  max_active_assignments: number;
+  active_assignments: number;
+}
+
+/** Con la carga completa la API rechazaría la asignación con `409`. */
+export function isAtCapacity(reviewer: EligibleReviewer): boolean {
+  return reviewer.active_assignments >= reviewer.max_active_assignments;
+}
+
+/**
+ * Por qué una lista de candidatos quedó vacía: cuántas cuentas de Revisor
+ * hay y cuántas excluye cada regla (exclusivas, suman `reviewers`).
+ */
+export interface EligibilityDiagnosis {
+  reviewers: number;
+  conflict: number;
+  no_profile: number;
+  unavailable: number;
+  other_area: number;
+}
+
+/** Página de candidatos; `diagnosis` solo llega cuando está vacía. */
+export interface EligibleReviewersPage extends Paginated<EligibleReviewer> {
+  diagnosis?: EligibilityDiagnosis;
+}
+
+export type RevocationCause =
+  'CONFLICT_OF_INTEREST' | 'ASSIGNMENT_ERROR' | 'ACCOUNT_DISABLED' | 'OVERDUE';
+
+/**
+ * Causas de revocación. Con el plazo vigente solo valen las tres
+ * «tempranas»; `OVERDUE` exige que la asignación haya vencido.
+ */
+export const REVOCATION_CAUSES: readonly {
+  value: RevocationCause;
+  label: string;
+  hint: string;
+  early: boolean;
+}[] = [
+  {
+    value: 'CONFLICT_OF_INTEREST',
+    label: 'Conflicto de interés',
+    hint: 'El Revisor tiene un vínculo con el manuscrito o sus autores.',
+    early: true,
+  },
+  {
+    value: 'ASSIGNMENT_ERROR',
+    label: 'Error de asignación',
+    hint: 'Se asignó a la persona equivocada o al manuscrito equivocado.',
+    early: true,
+  },
+  {
+    value: 'ACCOUNT_DISABLED',
+    label: 'Cuenta inhabilitada',
+    hint: 'La cuenta del Revisor ya no puede acceder al sistema.',
+    early: true,
+  },
+  {
+    value: 'OVERDUE',
+    label: 'Plazo vencido',
+    hint: 'El Revisor no evaluó dentro de los 20 días.',
+    early: false,
+  },
+];
+
 /** Detalle editorial de un envío (`GET /api/editor/submissions/{id}/`). */
 export interface SubmissionDetail {
   id: string;
@@ -87,7 +183,7 @@ export interface SubmissionDetail {
   authors: ManuscriptAuthor[];
   versions: SubmissionVersion[];
   history: HistoryEntry[];
-  open_assignment: OpenAssignment | null;
+  open_assignment: Assignment | null;
   created_at: string;
   updated_at: string;
 }

@@ -9,6 +9,8 @@ interest and is never eligible (plan section 2.4, assignment rules).
 
 from __future__ import annotations
 
+from enum import StrEnum
+
 from django.db.models import Count, Q, QuerySet
 from django.db.models.functions import Lower
 
@@ -29,42 +31,84 @@ def has_conflict(manuscript: Manuscript, user: User) -> bool:
     return manuscript.authors.filter(Q(user=user) | Q(email__iexact=user.email)).exists()
 
 
+class Ineligibility(StrEnum):
+    """Why an active reviewer account cannot take a manuscript."""
+
+    CONFLICT = "conflict"
+    NO_PROFILE = "no_profile"
+    UNAVAILABLE = "unavailable"
+    OTHER_AREA = "other_area"
+
+
 INVALID_REVIEWER_MESSAGE = "El Revisor indicado no está disponible para esta asignación."
 REVIEWER_CONFLICT_MESSAGE = "El Revisor figura como autor del manuscrito."
 REVIEWER_UNAVAILABLE_MESSAGE = "El Revisor marcó que no está disponible."
 REVIEWER_AREA_MESSAGE = "El Revisor no declara el área del manuscrito."
 
+MESSAGES = {
+    Ineligibility.CONFLICT: REVIEWER_CONFLICT_MESSAGE,
+    Ineligibility.NO_PROFILE: INVALID_REVIEWER_MESSAGE,
+    Ineligibility.UNAVAILABLE: REVIEWER_UNAVAILABLE_MESSAGE,
+    Ineligibility.OTHER_AREA: REVIEWER_AREA_MESSAGE,
+}
 
-def ineligibility_reason(manuscript: Manuscript, reviewer_id) -> str | None:
-    """Why the account cannot review the manuscript; ``None`` if it can.
 
-    Applies, in order, the same rules as :func:`eligible_reviewers`, so
-    the editor gets the specific cause. Capacity is not checked here: it
-    needs the reviewer's profile row locked and is the service's job.
+def diagnose(
+    manuscript: Manuscript | None, reviewer: User, *, area: str | None
+) -> Ineligibility | None:
+    """The first rule the reviewer account breaks; ``None`` if it can review.
+
+    Applies, in order, the same rules as :func:`eligible_reviewers`.
+    Without a ``manuscript`` no conflict of interest can be evaluated, and
+    without an ``area`` any expertise is accepted. Capacity is not checked
+    here: it needs the reviewer's profile row locked and is the service's job.
     """
-    reviewer = (
-        User.objects.filter(
-            pk=reviewer_id,
-            is_active=True,
-            role_assignments__is_active=True,
-            role_assignments__role__code=Role.Code.REVIEWER,
-        )
-        .select_related("reviewer_profile")
-        .first()
-    )
-    if reviewer is None:
-        return INVALID_REVIEWER_MESSAGE
-    if has_conflict(manuscript, reviewer):
-        return REVIEWER_CONFLICT_MESSAGE
+    if manuscript is not None and has_conflict(manuscript, reviewer):
+        return Ineligibility.CONFLICT
     try:
         profile: ReviewerProfile = reviewer.reviewer_profile
     except ReviewerProfile.DoesNotExist:
-        return INVALID_REVIEWER_MESSAGE
+        return Ineligibility.NO_PROFILE
     if not profile.is_available:
-        return REVIEWER_UNAVAILABLE_MESSAGE
-    if manuscript.area not in profile.expertise_areas:
-        return REVIEWER_AREA_MESSAGE
+        return Ineligibility.UNAVAILABLE
+    if area and area not in profile.expertise_areas:
+        return Ineligibility.OTHER_AREA
     return None
+
+
+def _reviewer_accounts() -> QuerySet:
+    """Active accounts with the active ``REVIEWER`` role, profile included."""
+    return User.objects.filter(
+        is_active=True,
+        role_assignments__is_active=True,
+        role_assignments__role__code=Role.Code.REVIEWER,
+    ).select_related("reviewer_profile")
+
+
+def ineligibility_reason(manuscript: Manuscript, reviewer_id) -> str | None:
+    """Why the account cannot review the manuscript; ``None`` if it can."""
+    reviewer = _reviewer_accounts().filter(pk=reviewer_id).first()
+    if reviewer is None:
+        return INVALID_REVIEWER_MESSAGE
+    reason = diagnose(manuscript, reviewer, area=manuscript.area)
+    return MESSAGES[reason] if reason else None
+
+
+def eligibility_breakdown(*, manuscript: Manuscript | None, area: str | None) -> dict[str, int]:
+    """How many reviewer accounts exist and what rules exclude them.
+
+    The causes are exclusive and checked in the order of :func:`diagnose`,
+    so ``reviewers`` equals the eligible ones plus the sum of the causes.
+    It explains an empty list of candidates to the editor.
+    """
+    counts = {reason.value: 0 for reason in Ineligibility}
+    total = 0
+    for reviewer in _reviewer_accounts():
+        total += 1
+        reason = diagnose(manuscript, reviewer, area=area)
+        if reason:
+            counts[reason.value] += 1
+    return {"reviewers": total, **counts}
 
 
 def eligible_reviewers(*, manuscript: Manuscript | None = None, area: str | None = None) -> QuerySet:

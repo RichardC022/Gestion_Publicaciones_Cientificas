@@ -3,7 +3,12 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 
 import { ApiError } from '../../../core/models/api-error.model';
-import { SubmissionDetail, SubmissionVersion } from '../../../core/models/editor.model';
+import {
+  Assignment,
+  EligibleReviewer,
+  SubmissionDetail,
+  SubmissionVersion,
+} from '../../../core/models/editor.model';
 import { EditorService } from '../../../core/services/editor.service';
 import { ManuscriptService } from '../../../core/services/manuscript.service';
 import { ConfirmDialogComponent } from '../../../shared/components/confirm-dialog.component';
@@ -13,6 +18,12 @@ import { RoundCounterComponent } from '../../../shared/components/round-counter.
 import { StatusBadgeComponent } from '../../../shared/components/status-badge.component';
 import { FileSizePipe } from '../../../shared/pipes/file-size.pipe';
 import { saveBlob } from '../../../shared/utils/save-blob';
+import { AssignReviewerDialogComponent } from '../assign-reviewer-dialog/assign-reviewer-dialog.component';
+import { ReviewerPickerComponent } from '../reviewer-picker/reviewer-picker.component';
+import {
+  RevocationRequest,
+  RevokeAssignmentDialogComponent,
+} from '../revoke-assignment-dialog/revoke-assignment-dialog.component';
 
 /** Fechas y horas se muestran en la zona institucional (UTC-5, sin horario de verano). */
 const INSTITUTIONAL_OFFSET = '-0500';
@@ -29,6 +40,10 @@ const INSTITUTIONAL_OFFSET = '-0500';
  *   confirmación y, al terminar, vuelve a leer el detalle: el estado que
  *   se muestra es siempre el del servidor, también si otro Editor se
  *   adelantó (`409`).
+ * * En revisión, la sección «Revisor» permite asignar (selector de
+ *   elegibles y confirmación con la fecha límite del servidor) o revocar
+ *   (causa y motivo). Tras cada acción se vuelve a leer el detalle, y un
+ *   `409` (otro Editor actuó antes) se explica y deja ver el estado real.
  * * La ruta exige el rol `EDITOR`; el backend vuelve a validarlo y deja
  *   fuera los manuscritos con conflicto de interés (`404`). No hay datos
  *   de auditoría global ni acciones de Administrador.
@@ -44,6 +59,9 @@ const INSTITUTIONAL_OFFSET = '-0500';
     RoundCounterComponent,
     ConfirmDialogComponent,
     FileSizePipe,
+    ReviewerPickerComponent,
+    AssignReviewerDialogComponent,
+    RevokeAssignmentDialogComponent,
   ],
   template: `
     <section aria-labelledby="submission-detail-title">
@@ -104,18 +122,50 @@ const INSTITUTIONAL_OFFSET = '-0500';
               {{ starting() ? 'Pasando a revisión…' : 'Pasar a revisión' }}
             </button>
           </div>
-        } @else if (m.status === 'UNDER_REVIEW' && m.is_active) {
-          <div class="callout callout--info" role="status">
+        }
+
+        @if (m.status === 'UNDER_REVIEW' && m.is_active) {
+          <section class="card" aria-labelledby="reviewer-title">
+            <h2 id="reviewer-title">Revisor</h2>
             @if (m.open_assignment; as assignment) {
               <p>
-                En revisión con <strong>{{ assignment.reviewer.full_name }}</strong>
-                ({{ assignment.reviewer.email }}). Plazo:
-                {{ assignment.due_at | date: 'dd/MM/yyyy HH:mm' : offset }}.
+                <strong>{{ assignment.reviewer.full_name }}</strong>
+                ({{ assignment.reviewer.email }})
+                <app-status-badge [status]="assignment.is_overdue ? 'EXPIRED' : assignment.status" />
               </p>
+              <p>
+                Fecha límite: {{ assignment.due_at | date: 'dd/MM/yyyy HH:mm' : offset }}
+                @if (assignment.status === 'EXPIRED' || assignment.is_overdue) {
+                  — el plazo terminó; revoque la asignación para designar a otro Revisor.
+                }
+              </p>
+              <button
+                type="button"
+                class="btn btn--danger"
+                [disabled]="revoking()"
+                (click)="revokeOpen.set(true)"
+              >
+                Revocar asignación
+              </button>
             } @else {
               <p>En revisión, a la espera de asignar un Revisor.</p>
+              @if (!pickerOpen()) {
+                <button type="button" class="btn btn--primary" (click)="pickerOpen.set(true)">
+                  Asignar Revisor
+                </button>
+              } @else {
+                <app-reviewer-picker
+                  [manuscriptId]="m.id"
+                  [area]="m.area"
+                  [disabled]="assigning()"
+                  (selected)="chooseReviewer($event)"
+                />
+                <button type="button" class="btn btn--ghost" (click)="pickerOpen.set(false)">
+                  Cerrar selector
+                </button>
+              }
             }
-          </div>
+          </section>
         }
 
         <section class="card" aria-labelledby="metadata-title">
@@ -245,6 +295,28 @@ const INSTITUTIONAL_OFFSET = '-0500';
           }
         </section>
 
+        <app-assign-reviewer-dialog
+          [open]="assignDialogOpen()"
+          [reviewer]="chosenReviewer()"
+          [manuscriptCode]="m.code"
+          [existing]="m.open_assignment"
+          [busy]="assigning()"
+          [error]="assignError()"
+          [assignment]="assigned()"
+          (confirmed)="confirmAssign()"
+          (cancelled)="closeAssignDialog()"
+          (finished)="finishAssign()"
+        />
+
+        <app-revoke-assignment-dialog
+          [open]="revokeOpen()"
+          [assignment]="m.open_assignment"
+          [busy]="revoking()"
+          [error]="revokeError()"
+          (confirmed)="confirmRevoke($event)"
+          (cancelled)="closeRevokeDialog()"
+        />
+
         <app-confirm-dialog
           title="Pasar a revisión"
           [message]="confirmMessage()"
@@ -369,6 +441,18 @@ export class SubmissionDetailComponent {
   protected readonly startError = signal('');
   protected readonly notice = signal('');
 
+  protected readonly pickerOpen = signal(false);
+  protected readonly chosenReviewer = signal<EligibleReviewer | null>(null);
+  protected readonly assignDialogOpen = signal(false);
+  protected readonly assigning = signal(false);
+  protected readonly assignError = signal('');
+  /** Resultado de la asignación: trae la fecha límite fijada por el servidor. */
+  protected readonly assigned = signal<Assignment | null>(null);
+
+  protected readonly revokeOpen = signal(false);
+  protected readonly revoking = signal(false);
+  protected readonly revokeError = signal('');
+
   protected readonly downloading = signal<string | null>(null);
   protected readonly downloadError = signal('');
 
@@ -426,6 +510,77 @@ export class SubmissionDetailComponent {
         this.starting.set(false);
         this.startError.set(error.userMessage);
         // Si otro Editor se adelantó, se muestra el estado real.
+        this.load(true);
+      },
+    });
+  }
+
+  protected chooseReviewer(reviewer: EligibleReviewer): void {
+    this.chosenReviewer.set(reviewer);
+    this.assignError.set('');
+    this.assigned.set(null);
+    this.assignDialogOpen.set(true);
+  }
+
+  protected closeAssignDialog(): void {
+    this.assignDialogOpen.set(false);
+    this.assignError.set('');
+  }
+
+  protected confirmAssign(): void {
+    const reviewer = this.chosenReviewer();
+    if (reviewer === null || this.assigning()) {
+      return;
+    }
+    this.assigning.set(true);
+    this.assignError.set('');
+    this.editor.assignReviewer(this.id, reviewer.id).subscribe({
+      next: (assignment) => {
+        this.assigning.set(false);
+        // El diálogo muestra la fecha límite que fijó el servidor.
+        this.assigned.set(assignment);
+      },
+      error: (error: ApiError) => {
+        this.assigning.set(false);
+        this.assignError.set(error.userMessage);
+        // Un 409 (otro Editor asignó antes) se explica y se muestra el estado real.
+        this.load(true);
+      },
+    });
+  }
+
+  /** Cierra el resultado de la asignación y vuelve a leer el detalle. */
+  protected finishAssign(): void {
+    this.assignDialogOpen.set(false);
+    this.pickerOpen.set(false);
+    this.chosenReviewer.set(null);
+    this.assigned.set(null);
+    this.notice.set('Revisor asignado.');
+    this.load(true);
+  }
+
+  protected closeRevokeDialog(): void {
+    this.revokeOpen.set(false);
+    this.revokeError.set('');
+  }
+
+  protected confirmRevoke(request: RevocationRequest): void {
+    const assignment = this.submission()?.open_assignment;
+    if (!assignment || this.revoking()) {
+      return;
+    }
+    this.revoking.set(true);
+    this.revokeError.set('');
+    this.editor.revokeAssignment(assignment.id, request.cause, request.reason).subscribe({
+      next: () => {
+        this.revoking.set(false);
+        this.revokeOpen.set(false);
+        this.notice.set('Asignación revocada. El manuscrito espera un nuevo Revisor.');
+        this.load(true);
+      },
+      error: (error: ApiError) => {
+        this.revoking.set(false);
+        this.revokeError.set(error.userMessage);
         this.load(true);
       },
     });

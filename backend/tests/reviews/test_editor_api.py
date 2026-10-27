@@ -718,3 +718,67 @@ class TestEligibleReviewers:
 
     def test_a_malformed_manuscript_id_answers_400(self, editor) -> None:
         assert client_for(editor).get(self.URL, {"manuscript_id": "x"}).status_code == 400
+
+    def test_an_empty_list_is_explained_by_the_rules_that_exclude_each_reviewer(
+        self, editor
+    ) -> None:
+        manuscript = submitted(status="UNDER_REVIEW")
+        make_reviewer(areas=("Medicina",))
+        make_reviewer(available=False)
+        coauthor = make_reviewer()
+        ManuscriptAuthorFactory(
+            manuscript=manuscript, user=coauthor, email="otro@x.edu", author_order=2
+        )
+        actor("REVIEWER")  # Cuenta con el rol pero sin perfil de revisor.
+        make_reviewer(is_active=False)  # Una cuenta inactiva no cuenta.
+
+        response = client_for(editor).get(self.URL, {"manuscript_id": str(manuscript.pk)})
+
+        body = response.json()
+        assert response.status_code == 200 and body["count"] == 0 and body["results"] == []
+        assert body["diagnosis"] == {
+            "reviewers": 4,
+            "conflict": 1,
+            "no_profile": 1,
+            "unavailable": 1,
+            "other_area": 1,
+        }
+
+    def test_without_any_reviewer_the_diagnosis_says_so(self, editor) -> None:
+        body = client_for(editor).get(self.URL).json()
+
+        assert body["diagnosis"] == {
+            "reviewers": 0,
+            "conflict": 0,
+            "no_profile": 0,
+            "unavailable": 0,
+            "other_area": 0,
+        }
+
+    def test_the_area_filter_is_part_of_the_diagnosis(self, editor) -> None:
+        make_reviewer(areas=("Medicina",))
+
+        body = client_for(editor).get(self.URL, {"area": AREA}).json()
+
+        assert body["diagnosis"]["reviewers"] == 1 and body["diagnosis"]["other_area"] == 1
+
+    def test_a_list_with_candidates_carries_no_diagnosis(self, editor) -> None:
+        make_reviewer()
+
+        body = client_for(editor).get(self.URL).json()
+
+        assert body["count"] == 1 and "diagnosis" not in body
+
+    def test_the_diagnosis_adds_up_with_the_eligible_reviewers(self, editor) -> None:
+        manuscript = submitted(status="UNDER_REVIEW")
+        make_reviewer(areas=("Medicina",))
+        make_reviewer(available=False)
+        eligible = make_reviewer()
+        from apps.reviews.services.eligibility import eligibility_breakdown, eligible_reviewers
+
+        breakdown = eligibility_breakdown(manuscript=manuscript, area=manuscript.area)
+
+        listed = eligible_reviewers(manuscript=manuscript, area=manuscript.area)
+        assert [user.pk for user in listed] == [eligible.pk]
+        causes = sum(value for key, value in breakdown.items() if key != "reviewers")
+        assert breakdown["reviewers"] == listed.count() + causes

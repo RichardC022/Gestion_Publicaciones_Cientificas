@@ -51,7 +51,7 @@ from apps.reviews.serializers import (
     VerdictSerializer,
 )
 from apps.reviews.services.assignments import assign_reviewer, revoke_assignment, start_review
-from apps.reviews.services.eligibility import eligible_reviewers
+from apps.reviews.services.eligibility import eligibility_breakdown, eligible_reviewers
 from apps.users.permissions import IsEditor
 from config.exceptions import DomainError, ErrorCode
 from config.request_context import audit_request_context
@@ -143,7 +143,12 @@ class StartReviewView(EditorBaseView):
 
 
 class EligibleReviewersView(EditorBaseView):
-    """``GET /api/editor/reviewers/``: available reviewers free of conflicts."""
+    """``GET /api/editor/reviewers/``: available reviewers free of conflicts.
+
+    When no reviewer is eligible the answer adds ``diagnosis``: how many
+    reviewer accounts exist and how many each rule excludes, so the empty
+    list is never left without an explanation.
+    """
 
     def get(self, request: Request) -> Response:
         params = ReviewerFilterSerializer(data=request.query_params)
@@ -155,7 +160,11 @@ class EligibleReviewersView(EditorBaseView):
 
         reviewers = eligible_reviewers(manuscript=manuscript, area=area)
         page = self.paginate_queryset(reviewers)
-        return self.get_paginated_response(EligibleReviewerSerializer(page, many=True).data)
+        response = self.get_paginated_response(EligibleReviewerSerializer(page, many=True).data)
+        if response.data["count"] == 0:
+            # Una lista vacía se explica: cuántos Revisores hay y qué regla los excluye.
+            response.data["diagnosis"] = eligibility_breakdown(manuscript=manuscript, area=area)
+        return response
 
 
 class ManuscriptAssignmentsView(EditorBaseView):

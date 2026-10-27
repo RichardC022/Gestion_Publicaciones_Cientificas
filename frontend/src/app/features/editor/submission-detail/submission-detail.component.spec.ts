@@ -7,7 +7,7 @@ import { RouterTestingHarness } from '@angular/router/testing';
 import { API_BASE_URL } from '../../../core/http/api-base-url.token';
 import { SubmissionDetail } from '../../../core/models/editor.model';
 import { errorEnvelope } from '../../author/testing/manuscript.fixtures';
-import { buildSubmissionDetail } from '../testing/editor.fixtures';
+import { buildAssignment, buildReviewer, buildSubmissionDetail } from '../testing/editor.fixtures';
 import { SubmissionDetailComponent } from './submission-detail.component';
 
 const DETAIL_URL = '/api/editor/submissions/s-1/';
@@ -63,7 +63,17 @@ describe('SubmissionDetailComponent', () => {
     return { harness, element, settle };
   };
 
-  const dialog = (element: HTMLElement) => element.querySelector('dialog') as HTMLDialogElement;
+  /** Diálogo de confirmación del paso a revisión (la página tiene tres diálogos). */
+  const dialog = (element: HTMLElement) =>
+    element.querySelector('app-confirm-dialog dialog') as HTMLDialogElement;
+  const assignDialog = (element: HTMLElement) =>
+    element.querySelector('app-assign-reviewer-dialog dialog') as HTMLDialogElement;
+  const revokeDialog = (element: HTMLElement) =>
+    element.querySelector('app-revoke-assignment-dialog dialog') as HTMLDialogElement;
+  const inDialog = (root: HTMLDialogElement, label: string) =>
+    Array.from(root.querySelectorAll('button')).find((b) => text(b).includes(label)) as
+      | HTMLButtonElement
+      | undefined;
   /** Botón de la página; el diálogo de confirmación siempre está en el DOM y no cuenta. */
   const button = (element: HTMLElement, label: string) =>
     Array.from(element.querySelectorAll('button')).find(
@@ -287,24 +297,243 @@ describe('SubmissionDetailComponent', () => {
       expect(text(element.querySelector('.detail-badges'))).toContain('En revisión');
       expect(button(element, 'Pasar a revisión')).toBeUndefined();
     });
+  });
 
-    it('un envío en revisión muestra al Revisor asignado y su plazo', async () => {
-      const { element } = await open({
-        status: 'UNDER_REVIEW',
-        open_assignment: {
-          id: 'a-1',
-          status: 'ACTIVE',
-          assigned_at: '2026-10-22T15:00:00Z',
-          due_at: '2026-11-11T15:00:00Z',
-          is_overdue: false,
-          reviewer: { id: 'r-1', full_name: 'Marta Ruiz', email: 'marta@unl.edu.ec' },
-        },
+  describe('Revisor', () => {
+    const REVIEWERS = '/api/editor/reviewers/';
+    const ASSIGN_URL = '/api/editor/manuscripts/s-1/assignments/';
+    const underReview = (overrides: Partial<SubmissionDetail> = {}) =>
+      open({ status: 'UNDER_REVIEW', ...overrides });
+
+    const reviewersRequest = () => http.expectOne((r) => r.url === REVIEWERS);
+    const page = (...reviewers: ReturnType<typeof buildReviewer>[]) => ({
+      count: reviewers.length,
+      next: null,
+      previous: null,
+      results: reviewers,
+    });
+
+    it('solo aparece con el envío en revisión', async () => {
+      const submitted = await open();
+      expect(submitted.element.querySelector('[aria-labelledby="reviewer-title"]')).toBeNull();
+    });
+
+    it('sin asignación invita a asignar y no consulta Revisores hasta que se pide', async () => {
+      const { element } = await underReview();
+
+      expect(text(element.querySelector('[aria-labelledby="reviewer-title"]'))).toContain(
+        'a la espera de asignar un Revisor',
+      );
+      expect(button(element, 'Asignar Revisor')).toBeDefined();
+      http.expectNone((r) => r.url === REVIEWERS);
+    });
+
+    it('con asignación muestra al Revisor y su plazo, y ofrece revocar en lugar de asignar', async () => {
+      const { element } = await underReview({ open_assignment: buildAssignment() });
+
+      const section = text(element.querySelector('[aria-labelledby="reviewer-title"]'));
+      expect(section).toContain('Marta Ruiz');
+      expect(section).toContain('marta@unl.edu.ec');
+      expect(section).toContain('Fecha límite: 11/11/2026 10:00');
+      expect(button(element, 'Revocar asignación')).toBeDefined();
+      expect(button(element, 'Asignar Revisor')).toBeUndefined();
+    });
+
+    it('una asignación vencida lo señala y pide revocarla', async () => {
+      const { element } = await underReview({
+        open_assignment: buildAssignment({ status: 'EXPIRED' }),
       });
 
-      const info = text(element.querySelector('.callout--info'));
-      expect(info).toContain('Marta Ruiz');
-      expect(info).toContain('marta@unl.edu.ec');
-      expect(info).toContain('11/11/2026 10:00');
+      const section = text(element.querySelector('[aria-labelledby="reviewer-title"]'));
+      expect(section).toContain('Vencida');
+      expect(section).toContain('revoque la asignación para designar a otro Revisor');
+    });
+
+    describe('asignar', () => {
+      it('abre el selector con los candidatos del manuscrito', async () => {
+        const { element, settle } = await underReview();
+        button(element, 'Asignar Revisor')!.click();
+        await settle();
+
+        const request = reviewersRequest();
+        expect(request.request.params.get('manuscript_id')).toBe('s-1');
+        request.flush(page(buildReviewer({ full_name: 'Marta Ruiz' })));
+        await settle();
+
+        expect(text(element.querySelector('app-reviewer-picker'))).toContain('Marta Ruiz');
+        expect(button(element, 'Asignar Revisor')).toBeUndefined();
+        expect(button(element, 'Cerrar selector')).toBeDefined();
+      });
+
+      it('al confirmar asigna, muestra la fecha límite del servidor y al cerrar refleja el estado', async () => {
+        const { element, settle } = await underReview();
+        button(element, 'Asignar Revisor')!.click();
+        await settle();
+        reviewersRequest().flush(page(buildReviewer({ id: 'r-1', full_name: 'Marta Ruiz' })));
+        await settle();
+
+        (element.querySelector('app-reviewer-picker .picker__item button') as HTMLButtonElement).click();
+        await settle();
+        expect(assignDialog(element).open).toBe(true);
+        expect(text(assignDialog(element))).toContain('Marta Ruiz');
+        http.expectNone(ASSIGN_URL);
+
+        inDialog(assignDialog(element), 'Confirmar asignación')!.click();
+        await settle();
+        const request = http.expectOne(ASSIGN_URL);
+        expect(request.request.method).toBe('POST');
+        expect(request.request.body).toEqual({ reviewer_id: 'r-1' });
+        request.flush(buildAssignment({ due_at: '2026-11-11T15:00:00Z' }), {
+          status: 201,
+          statusText: 'Created',
+        });
+        await settle();
+
+        // La fecha límite mostrada es la que fijó el servidor.
+        expect(text(assignDialog(element))).toContain('Fecha límite: 11/11/2026 10:00');
+
+        inDialog(assignDialog(element), 'Entendido')!.click();
+        await settle();
+        http
+          .expectOne(DETAIL_URL)
+          .flush(buildSubmissionDetail({ status: 'UNDER_REVIEW', open_assignment: buildAssignment() }));
+        await settle();
+
+        expect(assignDialog(element).open).toBe(false);
+        expect(text(element)).toContain('Revisor asignado.');
+        expect(button(element, 'Revocar asignación')).toBeDefined();
+        expect(element.querySelector('app-reviewer-picker')).toBeNull();
+      });
+
+      it('si otro Editor asignó antes (409) lo explica y muestra el estado real', async () => {
+        const { element, settle } = await underReview();
+        button(element, 'Asignar Revisor')!.click();
+        await settle();
+        reviewersRequest().flush(page(buildReviewer({ id: 'r-2', full_name: 'Luis Vega' })));
+        await settle();
+        (element.querySelector('app-reviewer-picker .picker__item button') as HTMLButtonElement).click();
+        await settle();
+
+        inDialog(assignDialog(element), 'Confirmar asignación')!.click();
+        await settle();
+        http.expectOne(ASSIGN_URL).flush(
+          errorEnvelope('ASSIGNMENT_CONFLICT', 'El manuscrito ya tiene un Revisor activo.'),
+          { status: 409, statusText: 'Conflict' },
+        );
+        await settle();
+        http
+          .expectOne(DETAIL_URL)
+          .flush(buildSubmissionDetail({ status: 'UNDER_REVIEW', open_assignment: buildAssignment() }));
+        await settle();
+
+        const dialogText = text(assignDialog(element));
+        expect(dialogText).toContain('Ya existe una asignación activa.');
+        // Con el estado real a la vista, el diálogo advierte y no deja confirmar.
+        expect(dialogText).toContain('ya tiene un Revisor activo (Marta Ruiz)');
+        expect(inDialog(assignDialog(element), 'Confirmar asignación')!.disabled).toBe(true);
+      });
+
+      it('cancelar no asigna', async () => {
+        const { element, settle } = await underReview();
+        button(element, 'Asignar Revisor')!.click();
+        await settle();
+        reviewersRequest().flush(page(buildReviewer()));
+        await settle();
+        (element.querySelector('app-reviewer-picker .picker__item button') as HTMLButtonElement).click();
+        await settle();
+
+        inDialog(assignDialog(element), 'Cancelar')!.click();
+        await settle();
+
+        expect(assignDialog(element).open).toBe(false);
+        http.expectNone(ASSIGN_URL);
+        expect(element.querySelector('app-reviewer-picker')).not.toBeNull();
+      });
+
+      it('sin Revisores elegibles explica la causa', async () => {
+        const { element, settle } = await underReview();
+        button(element, 'Asignar Revisor')!.click();
+        await settle();
+        reviewersRequest().flush({
+          count: 0,
+          next: null,
+          previous: null,
+          results: [],
+          diagnosis: { reviewers: 2, conflict: 0, no_profile: 0, unavailable: 0, other_area: 2 },
+        });
+        await settle();
+
+        expect(text(element.querySelector('app-reviewer-picker'))).toContain(
+          '2 no declaran el área «Agronomía».',
+        );
+      });
+    });
+
+    describe('revocar', () => {
+      const REVOKE_URL = '/api/editor/assignments/a-1/revoke/';
+
+      it('pide causa y motivo, revoca y refleja el estado', async () => {
+        const { element, settle } = await underReview({ open_assignment: buildAssignment() });
+        button(element, 'Revocar asignación')!.click();
+        await settle();
+        expect(revokeDialog(element).open).toBe(true);
+
+        // Sin causa ni motivo no llama a la API.
+        inDialog(revokeDialog(element), 'Revocar asignación')!.click();
+        await settle();
+        http.expectNone(REVOKE_URL);
+
+        (revokeDialog(element).querySelector('input[type="radio"]') as HTMLInputElement).click();
+        const area = revokeDialog(element).querySelector('textarea') as HTMLTextAreaElement;
+        area.value = 'Es coautor de un trabajo previo.';
+        area.dispatchEvent(new Event('input'));
+        await settle();
+        inDialog(revokeDialog(element), 'Revocar asignación')!.click();
+        await settle();
+
+        const request = http.expectOne(REVOKE_URL);
+        expect(request.request.body).toEqual({
+          cause: 'CONFLICT_OF_INTEREST',
+          reason: 'Es coautor de un trabajo previo.',
+        });
+        request.flush(buildAssignment({ status: 'REVOKED' }));
+        await settle();
+        http
+          .expectOne(DETAIL_URL)
+          .flush(buildSubmissionDetail({ status: 'UNDER_REVIEW', open_assignment: null }));
+        await settle();
+
+        expect(revokeDialog(element).open).toBe(false);
+        expect(text(element)).toContain('Asignación revocada.');
+        expect(button(element, 'Asignar Revisor')).toBeDefined();
+        expect(button(element, 'Revocar asignación')).toBeUndefined();
+      });
+
+      it('un error del servidor se muestra en el diálogo', async () => {
+        const { element, settle } = await underReview({ open_assignment: buildAssignment() });
+        button(element, 'Revocar asignación')!.click();
+        await settle();
+        (revokeDialog(element).querySelector('input[type="radio"]') as HTMLInputElement).click();
+        const area = revokeDialog(element).querySelector('textarea') as HTMLTextAreaElement;
+        area.value = 'Motivo.';
+        area.dispatchEvent(new Event('input'));
+        await settle();
+        inDialog(revokeDialog(element), 'Revocar asignación')!.click();
+        await settle();
+
+        http.expectOne(REVOKE_URL).flush(
+          errorEnvelope('STATE_CONFLICT', 'Solo una asignación activa o vencida puede revocarse.'),
+          { status: 409, statusText: 'Conflict' },
+        );
+        await settle();
+        http.expectOne(DETAIL_URL).flush(buildSubmissionDetail({ status: 'UNDER_REVIEW' }));
+        await settle();
+
+        expect(revokeDialog(element).open).toBe(true);
+        expect(text(revokeDialog(element))).toContain(
+          'La acción no es válida en el estado actual.',
+        );
+      });
     });
   });
 
