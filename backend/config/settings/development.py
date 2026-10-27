@@ -16,3 +16,4 @@ CSRF_TRUSTED_ORIGINS = env_list(
 )
 
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+
