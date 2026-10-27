@@ -10,11 +10,16 @@ They follow the implementation plan (sections 1.8-1.11 and 1.16):
   submission: exact PDF hashes plus a canonical snapshot of the metadata.
 * ``CorrectionRound`` tracks rounds 0, 1, 2, ...
 * ``StatusEvent`` is the append-only history of status transitions.
+* ``Verdict`` is the append-only editorial decision over an evaluated
+  version; a correction never edits it, it adds a row that points back to
+  the one it replaces (``previous_verdict``).
+* ``CatalogEntry`` is the public copy of an accepted version, active at
+  most once per manuscript.
 
 The integrity layer lives in the database (TSK-31): B-tree and GIN
 indexes, the generated ``search_vector`` column, the partial unique index
 of the corresponding author and the triggers that reject ``DELETE`` over
-manuscripts and any mutation of versions and status events.
+manuscripts and any mutation of versions, status events and verdicts.
 """
 
 from __future__ import annotations
@@ -389,8 +394,10 @@ class CorrectionRound(models.Model):
     """Review round 0, 1, 2, ... of a manuscript.
 
     Round 0 opens with the first submission and closes with v1; each
-    ``REQUIRES_CORRECTIONS`` verdict opens the next one. The reference to
-    the verdict that opened it is added with the verdict model (TSK-50).
+    ``REQUIRES_CORRECTIONS`` verdict opens the next one and keeps its
+    reference in ``opened_by_verdict``. PostgreSQL creates the foreign
+    key ``DEFERRABLE INITIALLY DEFERRED``, so the round and the verdict
+    that opens it can be written in the same transaction in any order.
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4)
@@ -400,6 +407,14 @@ class CorrectionRound(models.Model):
         related_name="rounds",
     )
     round_number = models.PositiveSmallIntegerField()
+    # NULL en la ronda 0, que nace del envío inicial y no de un veredicto.
+    opened_by_verdict = models.ForeignKey(
+        "Verdict",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="opened_rounds",
+    )
     opened_at = models.DateTimeField(default=timezone.now)
     closed_by_version = models.ForeignKey(
         ManuscriptVersion,
@@ -460,6 +475,154 @@ class StatusEvent(AppendOnlyModel):
 
     def __str__(self) -> str:
         return f"{self.manuscript_id}: {self.from_status} → {self.to_status}"
+
+
+class Verdict(AppendOnlyModel):
+    """Immutable editorial decision over an evaluated version (plan section 1.15).
+
+    ``REJECTED`` requires a justification and ``REQUIRES_CORRECTIONS``
+    requires observations. In the normal flow a version has a single
+    verdict; the only exception is an administrative correction, which
+    adds a new row whose ``previous_verdict`` is the one it replaces and
+    never updates it. The database trigger rejects ``UPDATE`` and
+    ``DELETE``.
+    """
+
+    class Decision(models.TextChoices):
+        ACCEPTED = "ACCEPTED", "Aceptado"
+        REJECTED = "REJECTED", "Rechazado"
+        REQUIRES_CORRECTIONS = "REQUIRES_CORRECTIONS", "Requiere correcciones"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4)
+    manuscript = models.ForeignKey(
+        Manuscript,
+        on_delete=models.PROTECT,
+        related_name="verdicts",
+    )
+    version = models.ForeignKey(
+        ManuscriptVersion,
+        on_delete=models.PROTECT,
+        related_name="verdicts",
+    )
+    # Referencia diferida por texto: `reviews` ya depende de `publications`.
+    evaluation = models.ForeignKey(
+        "reviews.Evaluation",
+        on_delete=models.PROTECT,
+        related_name="verdicts",
+    )
+    editor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="issued_verdicts",
+    )
+    decision = models.CharField(max_length=24, choices=Decision.choices)
+    justification = models.TextField(null=True, blank=True)
+    observations = models.TextField(null=True, blank=True)
+    # Solo una corrección administrativa enlaza con el veredicto que sustituye.
+    previous_verdict = models.ForeignKey(
+        "self",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="corrections",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "publications_verdict"
+        ordering = ("created_at", "id")
+        indexes = [
+            models.Index(
+                fields=("manuscript", "created_at"),
+                name="idx_verdict_manuscript_date",
+            ),
+            models.Index(fields=("previous_verdict",), name="idx_verdict_previous"),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(decision__in=("ACCEPTED", "REJECTED", "REQUIRES_CORRECTIONS")),
+                name="ck_verdict_decision",
+            ),
+            models.CheckConstraint(
+                condition=~Q(decision="REJECTED") | Q(justification__isnull=False),
+                name="ck_verdict_rejected_justification",
+            ),
+            models.CheckConstraint(
+                condition=~Q(decision="REQUIRES_CORRECTIONS") | Q(observations__isnull=False),
+                name="ck_verdict_corrections_observations",
+            ),
+            # Un solo veredicto normal por versión; la corrección lo enlaza.
+            models.UniqueConstraint(
+                fields=("version",),
+                condition=Q(previous_verdict__isnull=True),
+                name="uq_verdict_normal_per_version",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.manuscript_id} · {self.decision}"
+
+
+class CatalogEntry(models.Model):
+    """Public copy of the accepted version (plan sections 1.12 and 4.7).
+
+    ``public_file_path`` points to its own sanitized file under
+    ``public/catalog``, relative to that directory: it is a copy, never a
+    link to the private original, so deactivating the entry leaves the
+    original intact. At most one entry is active per manuscript; the
+    logical withdrawal deactivates it and sets ``unpublished_at``.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4)
+    manuscript = models.ForeignKey(
+        Manuscript,
+        on_delete=models.PROTECT,
+        related_name="catalog_entries",
+    )
+    version = models.ForeignKey(
+        ManuscriptVersion,
+        on_delete=models.PROTECT,
+        related_name="catalog_entries",
+    )
+    public_file_path = models.CharField(max_length=500)
+    published_at = models.DateTimeField(default=timezone.now)
+    unpublished_at = models.DateTimeField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "publications_catalog_entry"
+        ordering = ("-published_at", "id")
+        constraints = [
+            # Una sola entrada activa por manuscrito.
+            models.UniqueConstraint(
+                fields=("manuscript",),
+                condition=Q(is_active=True),
+                name="uq_catalog_active",
+            ),
+            # Activa sin fecha de retiro, o retirada con ella.
+            models.CheckConstraint(
+                condition=(
+                    Q(is_active=True, unpublished_at__isnull=True)
+                    | Q(is_active=False, unpublished_at__isnull=False)
+                ),
+                name="ck_catalog_unpublish",
+            ),
+            # La copia vive bajo `public/catalog`: nunca apunta al árbol privado.
+            models.CheckConstraint(
+                condition=(
+                    ~Q(public_file_path="")
+                    & ~Q(public_file_path__startswith="/")
+                    & ~Q(public_file_path__startswith="manuscripts/")
+                    & ~Q(public_file_path__contains="..")
+                ),
+                name="ck_catalog_public_path",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        state = "activa" if self.is_active else "retirada"
+        return f"{self.manuscript_id} · catálogo ({state})"
 
 
 class IdempotencyKey(models.Model):
