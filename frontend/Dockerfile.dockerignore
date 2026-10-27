@@ -1,0 +1,25 @@
+# Exclusiones efectivas del contexto RAÍZ para `dockerfile: frontend/Dockerfile`
+# (mecanismo per-Dockerfile de BuildKit: este archivo se usa en lugar del
+# `.dockerignore` de la raíz del contexto). Mantener sincronizado con
+# `frontend/.dockerignore`.
+#
+# La imagen no incluye node_modules, secretos ni archivos .env.
+**/node_modules
+**/dist
+**/.angular
+**/coverage
+.git
+**/.git
+.env
+.env.*
+**/.env
+**/.env.*
+**/__pycache__
+**/*.pyc
+
+# Directorios que el Dockerfile del frontend no necesita copiar.
+backend/
+scripts/
+.spec-kit/
+.github/
+nginx/certs/
