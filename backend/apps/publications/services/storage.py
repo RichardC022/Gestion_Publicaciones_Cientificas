@@ -49,6 +49,24 @@ def private_path(relative: str | PurePosixPath) -> Path:
     return private_root() / relative
 
 
+def catalog_root() -> Path:
+    """``<MEDIA_ROOT>/public/catalog``: the root every public copy path is relative to.
+
+    It is the directory Nginx exposes as ``/_catalog/`` (plan section 4.6).
+    """
+    return Path(settings.MEDIA_ROOT) / "public" / "catalog"
+
+
+def catalog_relative_path(manuscript_id: UUID, version_id: UUID) -> PurePosixPath:
+    """``<manuscript_uuid>/<version_uuid>.pdf`` under the catalog root (plan section 4.7)."""
+    return PurePosixPath(str(manuscript_id), f"{version_id}.pdf")
+
+
+def catalog_path(relative: str | PurePosixPath) -> Path:
+    """Absolute path of a path stored relative to the public catalog."""
+    return catalog_root() / relative
+
+
 def version_relative_dir(manuscript_id: UUID, version_number: int) -> PurePosixPath:
     """``manuscripts/<manuscript_uuid>/v0001``."""
     return PurePosixPath("manuscripts", str(manuscript_id), f"v{version_number:04d}")

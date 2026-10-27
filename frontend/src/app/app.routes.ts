@@ -141,7 +141,7 @@ export const routes: Routes = [
       },
       {
         path: 'editor/assignments/expired',
-        title: 'Plazos vencidos',
+        title: 'Asignaciones vencidas',
         canActivate: [rolesGuard],
         data: { roles: ['EDITOR'] as Role[] },
         loadComponent: () =>
