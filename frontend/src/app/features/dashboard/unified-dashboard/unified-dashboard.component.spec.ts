@@ -82,6 +82,47 @@ describe('UnifiedDashboardComponent', () => {
     httpMock.verify();
   });
 
+  it('el nombre de cada rol aparece una sola vez en su tarjeta, no duplicado', async () => {
+    const fixture = await render();
+    flush(
+      dashboardOf(['AUTHOR', 'REVIEWER', 'EDITOR', 'ADMIN'], {
+        author: ok({ manuscripts: 3 }),
+        reviewer: ok({ pending: 1 }),
+        editor: ok({ new_submissions: 7 }),
+        admin: ok({ audit_events: 42 }),
+      }),
+    );
+    await fixture.whenStable();
+
+    const element = fixture.nativeElement as HTMLElement;
+    const names = { author: 'Autor', reviewer: 'Revisor', editor: 'Editor', admin: 'Administrador' };
+    for (const [key, name] of Object.entries(names)) {
+      const card = element.querySelector(`[data-section="${key}"]`) as HTMLElement;
+      const headings = Array.from(card.querySelectorAll('h1, h2, h3, h4')).map((h) =>
+        h.textContent?.trim(),
+      );
+      expect(headings, `tarjeta ${key}`).toEqual([name]);
+    }
+  });
+
+  it('una sección fallida conserva el nombre del rol, porque no hay tarjeta resumen que lo muestre', async () => {
+    const fixture = await render();
+    flush(
+      dashboardOf(['AUTHOR', 'EDITOR'], {
+        author: ok({ manuscripts: 5 }),
+        editor: failed('No se pudo cargar esta sección. Intente de nuevo.'),
+      }),
+    );
+    await fixture.whenStable();
+
+    const element = fixture.nativeElement as HTMLElement;
+    const card = element.querySelector('[data-section="editor"]') as HTMLElement;
+    expect(Array.from(card.querySelectorAll('h1, h2, h3, h4')).map((h) => h.textContent?.trim())).toEqual(
+      ['Editor'],
+    );
+    expect(card.querySelector('app-error-state')).not.toBeNull();
+  });
+
   it('un solo rol ve únicamente su sección, sin apartados vacíos de roles inexistentes', async () => {
     const fixture = await render();
     flush(

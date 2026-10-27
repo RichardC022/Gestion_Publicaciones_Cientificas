@@ -63,8 +63,8 @@ import { AdminSummaryComponent } from '../admin-summary/admin-summary.component'
           @for (key of sectionKeys; track key) {
             @if (section(key); as current) {
               <div class="dashboard__section" [attr.data-section]="key">
-                <h2 class="dashboard__section-title">{{ sectionLabels[key] }}</h2>
                 @if (current.status === 'ok') {
+                  <!-- La tarjeta resumen ya lleva el nombre del rol: no se repite aquí. -->
                   @switch (key) {
                     @case ('author') {
                       <app-author-summary [data]="current.data" />
@@ -80,7 +80,9 @@ import { AdminSummaryComponent } from '../admin-summary/admin-summary.component'
                     }
                   }
                 } @else {
-                  <!-- La sección falló, las demás siguen visibles. -->
+                  <!-- La sección falló, las demás siguen visibles. Sin tarjeta resumen,
+                       este título es lo único que nombra el rol. -->
+                  <h3 class="dashboard__section-title">{{ sectionLabels[key] }}</h3>
                   <app-error-state
                     [message]="current.message ?? 'No se pudo cargar esta sección.'"
                     retryLabel="Reintentar"
@@ -121,9 +123,8 @@ import { AdminSummaryComponent } from '../admin-summary/admin-summary.component'
       border-radius: var(--gpc-radius-lg);
     }
     .dashboard__section-title {
-      margin: 0;
-      font-size: 1rem;
-      color: var(--gpc-primary-900);
+      margin: 0 0 0.25rem;
+      font-size: 0.95rem;
     }
     .dashboard__errors {
       margin: 0;
