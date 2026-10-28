@@ -113,3 +113,9 @@ docker compose exec backend python manage.py send_pending_notifications
 docker compose exec backend python manage.py cleanup_idempotency_keys
 docker compose exec backend python manage.py verify_integrity
 ```
+
+## Respaldo y privilegios de base de datos (TSK-72)
+
+- El respaldo diario de las 02:15 usa `pg_dump` con el administrador (`POSTGRES_USER`), que puede leer todo, incluida la auditoría; las restricciones del rol de aplicación (`APP_DB_USER`) no lo afectan.
+- Los respaldos se toman y se restauran con `--no-privileges`: no guardan los permisos del rol de aplicación. Tras una restauración, `pg_restore --clean` recrea las tablas con los permisos por defecto, incluida `audit_audit_log`. Al levantar `backend`, el entrypoint ejecuta `migrate` y `apply_db_privileges` con el administrador y vuelve a quitar `UPDATE`/`DELETE`/`TRUNCATE` sobre la auditoría. No arranques ni expongas la aplicación por otra vía antes de ese paso.
+- Comprueba el respaldo con `scripts/verify_integrity.sh` y, tras restaurar, el `DELETE` sobre la auditoría descrito en el README §3.6.1.
