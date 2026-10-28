@@ -224,6 +224,72 @@ describe('ReviewerService', () => {
     });
   });
 
+  describe('conflicto y reporte confidencial', () => {
+    it('declara el conflicto con POST y entrega la evaluación bloqueada con su ETag', () => {
+      let snapshot: { evaluation: { conflict_declared: boolean }; etag: string | null } | undefined;
+      service.declareConflict('a-1', 'Fui su director.').subscribe((value) => (snapshot = value));
+
+      const request = http.expectOne('/api/reviewer/assignments/a-1/conflict/');
+      expect(request.request.method).toBe('POST');
+      expect(request.request.body).toEqual({ reason: 'Fui su director.' });
+      request.flush(buildReviewerEvaluation({ id: 'ev-1', conflict_declared: true }), {
+        headers: { ETag: '"2"' },
+      });
+
+      expect(snapshot?.evaluation.conflict_declared).toBe(true);
+      expect(snapshot?.etag).toBe('"2"');
+    });
+
+    it('sin motivo el cuerpo va vacío', () => {
+      service.declareConflict('a-1', null).subscribe();
+
+      const request = http.expectOne('/api/reviewer/assignments/a-1/conflict/');
+      expect(request.request.body).toEqual({});
+      request.flush(buildReviewerEvaluation({ conflict_declared: true }));
+    });
+
+    it('reporta la fuga con tipo y descripción y devuelve solo el acuse', () => {
+      const receipt = {
+        id: 'i-1',
+        assignment: 'a-1',
+        report_type: 'IDENTITY_LEAK',
+        status: 'OPEN',
+        created_at: '2026-10-27T15:00:00Z',
+      };
+      let result: unknown;
+      service
+        .reportIdentityLeak('a-1', 'IDENTITY_LEAK', 'La portada trae un nombre.')
+        .subscribe((value) => (result = value));
+
+      const request = http.expectOne('/api/reviewer/assignments/a-1/identity-leak/');
+      expect(request.request.method).toBe('POST');
+      expect(request.request.body).toEqual({
+        report_type: 'IDENTITY_LEAK',
+        description: 'La portada trae un nombre.',
+      });
+      request.flush(receipt, { status: 201, statusText: 'Created' });
+
+      expect(result).toEqual(receipt);
+    });
+
+    it('un segundo reporte abierto responde 409', () => {
+      let error: ApiError | undefined;
+      service
+        .reportIdentityLeak('a-1', 'OTHER', 'Otro')
+        .subscribe({ error: (e: ApiError) => (error = e) });
+
+      http
+        .expectOne('/api/reviewer/assignments/a-1/identity-leak/')
+        .flush(errorEnvelope('STATE_CONFLICT', 'Ya existe un reporte abierto.'), {
+          status: 409,
+          statusText: 'Conflict',
+        });
+
+      expect(error?.status).toBe(409);
+      expect(error?.message).toBe('Ya existe un reporte abierto.');
+    });
+  });
+
   describe('downloadDocument', () => {
     const PDF = new Blob(['%PDF-1.7'], { type: 'application/pdf' });
 

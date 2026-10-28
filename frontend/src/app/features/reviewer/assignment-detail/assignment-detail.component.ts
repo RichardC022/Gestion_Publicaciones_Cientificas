@@ -12,6 +12,7 @@ import { RoundCounterComponent } from '../../../shared/components/round-counter.
 import { StatusBadgeComponent } from '../../../shared/components/status-badge.component';
 import { saveBlob } from '../../../shared/utils/save-blob';
 import { DeadlineCountdownComponent } from '../deadline-countdown/deadline-countdown.component';
+import { IdentityLeakDialogComponent } from '../identity-leak-dialog/identity-leak-dialog.component';
 
 /** Fechas y horas se muestran en la zona institucional (UTC-5, sin horario de verano). */
 const INSTITUTIONAL_OFFSET = '-0500';
@@ -44,6 +45,7 @@ const INSTITUTIONAL_OFFSET = '-0500';
     RoundCounterComponent,
     PdfViewerComponent,
     DeadlineCountdownComponent,
+    IdentityLeakDialogComponent,
   ],
   template: `
     <section aria-labelledby="assignment-detail-title">
@@ -172,7 +174,23 @@ const INSTITUTIONAL_OFFSET = '-0500';
           } @else {
             <a class="btn btn--ghost" routerLink="/app/reviewer/history">Ver mi historial</a>
           }
+          @if (a.status === 'ACTIVE') {
+            <button type="button" class="btn btn--ghost" (click)="leakOpen.set(true)">
+              Reportar posible fuga de identidad
+            </button>
+          }
         </div>
+
+        @if (leakNotice()) {
+          <p class="callout callout--success" role="status">{{ leakNotice() }}</p>
+        }
+
+        <app-identity-leak-dialog
+          [assignmentId]="a.id"
+          [open]="leakOpen()"
+          (reported)="onLeakReported()"
+          (cancelled)="leakOpen.set(false)"
+        />
       }
     </section>
   `,
@@ -290,8 +308,18 @@ export class AssignmentDetailComponent {
   /** El documento que se renderiza en el visor. */
   protected readonly document = computed(() => (this.shown() ? this.fetched() : null));
 
+  protected readonly leakOpen = signal(false);
+  protected readonly leakNotice = signal('');
+
   constructor() {
     this.load();
+  }
+
+  protected onLeakReported(): void {
+    this.leakOpen.set(false);
+    this.leakNotice.set(
+      'Reporte confidencial enviado. Solo el Editor lo verá y su evaluación no cambió.',
+    );
   }
 
   protected load(): void {
