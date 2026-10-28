@@ -8,6 +8,9 @@ import {
   Assignment,
   EditorEvaluation,
   EligibleReviewersPage,
+  Incident,
+  IncidentFilter,
+  IncidentResolution,
   RevocationCause,
   StartReviewResult,
   SubmissionDetail,
@@ -156,6 +159,33 @@ export class EditorService {
   ): Observable<Assignment> {
     return this.http
       .post<Assignment>(`${this.url}assignments/${assignmentId}/revoke/`, { cause, reason })
+      .pipe(catchError((error) => throwError(() => toApiError(error))));
+  }
+
+  /**
+   * Reportes confidenciales de los Revisores, los abiertos primero
+   * (`GET .../incidents/`). `ALL` no filtra por estado.
+   */
+  listIncidents(filter: IncidentFilter, page = 1, pageSize = 20): Observable<Paginated<Incident>> {
+    return this.http
+      .get<Paginated<Incident>>(`${this.url}incidents/`, {
+        params: toHttpParams({
+          status: filter === 'ALL' ? undefined : filter,
+          page: page > 1 ? page : undefined,
+          page_size: pageSize,
+        }),
+      })
+      .pipe(catchError((error) => throwError(() => toApiError(error))));
+  }
+
+  /**
+   * Resuelve un reporte (`POST .../resolve/`). Solo se resuelve una vez: un
+   * segundo intento responde `409`. Las dos primeras resoluciones revocan la
+   * asignación y exigen el manuscrito en revisión.
+   */
+  resolveIncident(id: string, resolution: IncidentResolution): Observable<Incident> {
+    return this.http
+      .post<Incident>(`${this.url}incidents/${id}/resolve/`, { resolution })
       .pipe(catchError((error) => throwError(() => toApiError(error))));
   }
 }
