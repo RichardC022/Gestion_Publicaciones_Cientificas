@@ -22,13 +22,14 @@ from django.http import HttpResponse
 
 from apps.audit.models import AuditLog
 from apps.audit.services import AuditService, AuditUnavailable
-from apps.publications.models import Manuscript, ManuscriptVersion
-from apps.publications.services.storage import private_path, version_relative_dir
+from apps.publications.models import CatalogEntry, Manuscript, ManuscriptVersion
+from apps.publications.services.storage import catalog_path, private_path, version_relative_dir
 from apps.users.models import Role, User
 from apps.users.services.auth import AUDIT_UNAVAILABLE_MESSAGE
 from config.exceptions import DomainError, ErrorCode
 
 INTERNAL_PREFIX = "/_protected/"
+CATALOG_INTERNAL_PREFIX = "/_catalog/"
 FILE_UNAVAILABLE_MESSAGE = "El PDF de esta versión no está disponible por ahora."
 
 
@@ -95,12 +96,45 @@ def _authorize_download(
     return f"{INTERNAL_PREFIX}{relative}"
 
 
-def xaccel_response(internal_uri: str, filename: str) -> HttpResponse:
-    """Empty ``200`` that tells Nginx to serve ``internal_uri`` as an attachment."""
+def authorize_public_download(*, entry: CatalogEntry, context: dict) -> str:
+    """Audit an anonymous catalog download and return the ``/_catalog/`` URI.
+
+    The internal path comes from the entry's stored ``<manuscript>/<version>.pdf``
+    (UUIDs only), never from the request. The visitor has no account, so the
+    event carries no actor; it keeps the request id, address and agent that
+    every audited event records. As with every download, the audit comes
+    first and a failure answers ``503`` without a redirect.
+    """
+    if not catalog_path(entry.public_file_path).is_file():
+        raise DomainError(FILE_UNAVAILABLE_MESSAGE, code=ErrorCode.STORAGE_UNAVAILABLE)
+    try:
+        with transaction.atomic():
+            AuditService.record(
+                action="CATALOG_DOCUMENT_DOWNLOADED",
+                entity_type="MANUSCRIPT_VERSION",
+                entity_id=entry.version_id,
+                result=AuditLog.Result.SUCCESS,
+                details={
+                    "manuscript_id": str(entry.manuscript_id),
+                    "code": entry.manuscript.code,
+                    "version_number": entry.version.version_number,
+                    "kind": "public",
+                },
+                **context,
+            )
+    except AuditUnavailable as exc:
+        raise DomainError(AUDIT_UNAVAILABLE_MESSAGE, code=ErrorCode.AUDIT_UNAVAILABLE) from exc
+    return f"{CATALOG_INTERNAL_PREFIX}{entry.public_file_path}"
+
+
+def xaccel_response(
+    internal_uri: str, filename: str, *, disposition: str = "attachment"
+) -> HttpResponse:
+    """Empty ``200`` that tells Nginx to serve ``internal_uri`` (an attachment by default)."""
     response = HttpResponse(status=200)
     response["X-Accel-Redirect"] = internal_uri
     response["Content-Type"] = "application/pdf"
-    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    response["Content-Disposition"] = f'{disposition}; filename="{filename}"'
     response["X-Content-Type-Options"] = "nosniff"
     response["Cache-Control"] = "private, no-store"
     return response

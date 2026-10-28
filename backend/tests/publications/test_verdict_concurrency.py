@@ -153,13 +153,6 @@ class TestWithdrawalRacingAVerdict:
             assert attempt.result == "FAILURE"
         assert_audit_chain_intact()
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "D-10: la baja lógica aún no desactiva la entrada del catálogo ni elimina "
-            "la copia pública (plan 4.8, pasos 5 y 7). Quitar este xfail al implementarlo."
-        ),
-    )
     def test_withdrawing_an_accepted_manuscript_retires_it_from_the_catalog(self) -> None:
         owner, editor = actor("AUTHOR"), actor("EDITOR")
         manuscript = reviewed(editor, owner=owner)
@@ -174,3 +167,4 @@ class TestWithdrawalRacingAVerdict:
         assert response.status_code == 200
         entry = CatalogEntry.objects.get(manuscript=manuscript)
         assert entry.is_active is False and entry.unpublished_at is not None
+        assert public_files() == []

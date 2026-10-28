@@ -11,12 +11,14 @@ version pipelines take, so a withdrawal that races with them never
 leaves a partial version: whoever gets the lock first wins and the
 other one answers ``409``.
 
-Revoking the active assignment and deactivating the catalog entry
-belong to other apps. They plug in through the in-transaction signal
-:data:`~apps.publications.signals.manuscript_withdrawing`; the committed
-withdrawal is announced with ``manuscript_withdrawn``. Until those
-listeners exist, the immediate effect on the catalog and on the
-reviewer comes from ``is_active=False``, which both listings filter.
+The active catalog entry is deactivated in the same transaction (plan
+section 4.8, step 5) and its public copy is deleted after the commit
+(step 7); the public queries also filter ``is_active=False``, so the
+article disappears even if the file removal fails. Revoking the active
+assignment belongs to the reviews app: it plugs in through the
+in-transaction signal
+:data:`~apps.publications.signals.manuscript_withdrawing`, and the
+committed withdrawal is announced with ``manuscript_withdrawn``.
 """
 
 from __future__ import annotations
@@ -29,6 +31,7 @@ from django.utils import timezone
 
 from apps.audit.services import AuditUnavailable
 from apps.publications.models import Manuscript, StatusEvent
+from apps.publications.services.catalog import remove_public_copy, retire_entry
 from apps.publications.services.versions import record_audit
 from apps.publications.signals import manuscript_withdrawing, manuscript_withdrawn
 from apps.users.models import User
@@ -120,6 +123,9 @@ def withdraw_manuscript(
                 previous_status=previous_status,
                 withdrawn_at=now,
             )
+            public_copy = retire_entry(manuscript.pk, now=now)
+            if public_copy:
+                transaction.on_commit(lambda path=public_copy: remove_public_copy(path))
             record_audit(
                 "MANUSCRIPT_WITHDRAWN",
                 manuscript.pk,
