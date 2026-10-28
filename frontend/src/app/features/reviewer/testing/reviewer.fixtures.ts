@@ -3,6 +3,8 @@ import {
   ReviewerAssignmentDetail,
   ReviewerAssignmentRow,
   ReviewerEvaluation,
+  ReviewerHistoryDetail,
+  ReviewerHistoryRow,
 } from '../../../core/models/reviewer.model';
 
 /** Datos de ejemplo del módulo Revisor para las pruebas. */
@@ -92,4 +94,43 @@ export function buildCompleteEvaluation(
     confidential_comments: 'Revisar la muestra.',
     ...overrides,
   });
+}
+
+/** Fila del historial propio: una evaluación enviada sin decisión editorial todavía. */
+export function buildHistoryRow(overrides: Partial<ReviewerHistoryRow> = {}): ReviewerHistoryRow {
+  return {
+    id: 'ev-1',
+    assignment: 'a-1',
+    manuscript_code: 'GPC-2026-000001',
+    manuscript_title: 'Efecto del clima en cultivos andinos',
+    area: 'Agronomía',
+    version_number: 1,
+    round_number: 0,
+    recommendation: 'REQUIRES_CORRECTIONS',
+    submitted_at: '2026-10-25T20:00:00Z',
+    editorial_result: null,
+    ...overrides,
+  };
+}
+
+export function buildHistoryPage(
+  results: ReviewerHistoryRow[],
+  count: number = results.length,
+): Paginated<ReviewerHistoryRow> {
+  return { count, next: null, previous: null, results };
+}
+
+export function buildHistoryDetail(
+  overrides: Partial<ReviewerHistoryDetail> = {},
+): ReviewerHistoryDetail {
+  return {
+    ...buildHistoryRow(),
+    originality_score: 4,
+    methodology_score: 3,
+    clarity_score: 5,
+    relevance_score: 4,
+    ethics_score: 5,
+    comments_for_author: 'Aclarar la metodología.',
+    ...overrides,
+  };
 }

@@ -7,6 +7,9 @@ import {
   buildAssignmentPage,
   buildAssignmentRow,
   buildCompleteEvaluation,
+  buildHistoryDetail,
+  buildHistoryPage,
+  buildHistoryRow,
   buildReviewerEvaluation,
 } from '../../features/reviewer/testing/reviewer.fixtures';
 import { errorEnvelope } from '../../features/author/testing/manuscript.fixtures';
@@ -287,6 +290,56 @@ describe('ReviewerService', () => {
 
       expect(error?.status).toBe(409);
       expect(error?.message).toBe('Ya existe un reporte abierto.');
+    });
+  });
+
+  describe('historial', () => {
+    it('pide la página del historial propio', () => {
+      const page = buildHistoryPage([buildHistoryRow()]);
+      let result: unknown;
+      service.listHistory(3, 20).subscribe((value) => (result = value));
+
+      const request = http.expectOne((r) => r.url === '/api/reviewer/evaluations/');
+      expect(request.request.method).toBe('GET');
+      expect(request.request.params.get('page')).toBe('3');
+      expect(request.request.params.get('page_size')).toBe('20');
+      request.flush(page);
+
+      expect(result).toEqual(page);
+    });
+
+    it('en la primera página no envía page', () => {
+      service.listHistory().subscribe();
+
+      const request = http.expectOne((r) => r.url === '/api/reviewer/evaluations/');
+      expect(request.request.params.has('page')).toBe(false);
+      request.flush(buildHistoryPage([]));
+    });
+
+    it('lee una evaluación enviada', () => {
+      const detail = buildHistoryDetail();
+      let result: unknown;
+      service.getHistoryEntry('ev-1').subscribe((value) => (result = value));
+
+      const request = http.expectOne('/api/reviewer/evaluations/ev-1/');
+      expect(request.request.method).toBe('GET');
+      request.flush(detail);
+
+      expect(result).toEqual(detail);
+    });
+
+    it('una evaluación ajena responde 404', () => {
+      let error: ApiError | undefined;
+      service.getHistoryEntry('ajena').subscribe({ error: (e: ApiError) => (error = e) });
+
+      http
+        .expectOne('/api/reviewer/evaluations/ajena/')
+        .flush(errorEnvelope('NOT_FOUND', 'No encontrado.'), {
+          status: 404,
+          statusText: 'Not Found',
+        });
+
+      expect(error?.status).toBe(404);
     });
   });
 

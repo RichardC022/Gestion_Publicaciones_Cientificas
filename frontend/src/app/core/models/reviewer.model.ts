@@ -8,7 +8,7 @@
  * declara, la interfaz no lo puede renderizar.
  */
 
-import { Recommendation } from './editor.model';
+import { Recommendation, VerdictDecision } from './editor.model';
 
 /** Estado de la asignación en la bandeja (derivado en el servidor, HU-14). */
 export type InboxState = 'PENDING' | 'ON_TIME' | 'OVERDUE' | 'EVALUATED' | 'REVOKED';
@@ -205,4 +205,39 @@ export interface IncidentReceipt {
   report_type: IncidentReportType;
   status: string;
   created_at: string;
+}
+
+/** Resultado editorial de una evaluación: solo la decisión y su fecha, nunca el texto del Editor. */
+export interface EditorialResult {
+  decision: VerdictDecision;
+  decided_at: string;
+}
+
+/** Fila del historial propio (`GET /api/reviewer/evaluations/`): solo evaluaciones enviadas. */
+export interface ReviewerHistoryRow {
+  id: string;
+  assignment: string;
+  manuscript_code: string;
+  manuscript_title: string;
+  area: string;
+  version_number: number;
+  round_number: number;
+  recommendation: Recommendation;
+  submitted_at: string;
+  /** `null` mientras el Editor no ha decidido. */
+  editorial_result: EditorialResult | null;
+}
+
+/**
+ * Evaluación enviada, completa y de solo lectura
+ * (`GET /api/reviewer/evaluations/{id}/`). No declara los comentarios
+ * confidenciales: el backend no los devuelve en ninguna lectura del historial.
+ */
+export interface ReviewerHistoryDetail extends ReviewerHistoryRow {
+  originality_score: number;
+  methodology_score: number;
+  clarity_score: number;
+  relevance_score: number;
+  ethics_score: number;
+  comments_for_author: string;
 }
