@@ -1,9 +1,10 @@
 import { DatePipe } from '@angular/common';
 import { Component, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { ActivatedRoute, ParamMap, Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { BehaviorSubject, catchError, combineLatest, map, of, switchMap, tap } from 'rxjs';
 
+import { toPage } from '../../../core/http/query-params';
 import { ApiError, toApiError } from '../../../core/models/api-error.model';
 import { Assignment } from '../../../core/models/editor.model';
 import { Paginated } from '../../../core/models/paginated.model';
@@ -17,6 +18,8 @@ import {
   RevocationRequest,
   RevokeAssignmentDialogComponent,
 } from '../revoke-assignment-dialog/revoke-assignment-dialog.component';
+
+export { toPage };
 
 /** Tamaño de página de la vista (la API admite hasta 100). */
 export const PAGE_SIZE = 20;
@@ -318,10 +321,4 @@ export class ExpiredAssignmentsComponent {
       },
     });
   }
-}
-
-/** Página de la URL; un valor que no es un entero mayor que 1 se ignora. */
-export function toPage(params: ParamMap): number {
-  const page = Number.parseInt(params.get('page') ?? '', 10);
-  return Number.isInteger(page) && page > 1 ? page : 1;
 }

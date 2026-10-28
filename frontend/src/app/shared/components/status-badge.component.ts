@@ -22,6 +22,9 @@ export const STATUS_LABELS: Record<string, string> = {
   SENT: 'Enviado',
   FAILED: 'Fallido',
   FINAL: 'Final',
+  ON_TIME: 'En plazo',
+  OVERDUE: 'Vencida',
+  EVALUATED: 'Evaluada',
 };
 
 /** Tono visual de cada estado según la paleta institucional. */
@@ -43,6 +46,9 @@ const STATUS_TONES: Record<string, BadgeTone> = {
   SENT: 'success',
   FAILED: 'danger',
   FINAL: 'success',
+  ON_TIME: 'info',
+  OVERDUE: 'danger',
+  EVALUATED: 'success',
 };
 
 /**
