@@ -2,6 +2,7 @@ import { Paginated } from '../../../core/models/paginated.model';
 import {
   ReviewerAssignmentDetail,
   ReviewerAssignmentRow,
+  ReviewerEvaluation,
 } from '../../../core/models/reviewer.model';
 
 /** Datos de ejemplo del módulo Revisor para las pruebas. */
@@ -52,4 +53,43 @@ export function buildAssignmentDetail(
     document_url: '/api/reviewer/assignments/a-1/document/',
     ...overrides,
   };
+}
+
+/** Evaluación propia del Revisor; por defecto, el borrador vacío anterior al primer guardado. */
+export function buildReviewerEvaluation(
+  overrides: Partial<ReviewerEvaluation> = {},
+): ReviewerEvaluation {
+  return {
+    id: null,
+    status: 'DRAFT',
+    originality_score: null,
+    methodology_score: null,
+    clarity_score: null,
+    relevance_score: null,
+    ethics_score: null,
+    recommendation: null,
+    comments_for_author: null,
+    confidential_comments: null,
+    conflict_declared: false,
+    submitted_at: null,
+    ...overrides,
+  };
+}
+
+/** Borrador con todo lo que exige el envío final. */
+export function buildCompleteEvaluation(
+  overrides: Partial<ReviewerEvaluation> = {},
+): ReviewerEvaluation {
+  return buildReviewerEvaluation({
+    id: 'ev-1',
+    originality_score: 4,
+    methodology_score: 3,
+    clarity_score: 5,
+    relevance_score: 4,
+    ethics_score: 5,
+    recommendation: 'REQUIRES_CORRECTIONS',
+    comments_for_author: 'Aclarar la metodología.',
+    confidential_comments: 'Revisar la muestra.',
+    ...overrides,
+  });
 }

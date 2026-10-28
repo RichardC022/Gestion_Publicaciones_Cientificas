@@ -9,8 +9,11 @@ import { toApiError } from '../models/api-error.model';
 import { Paginated } from '../models/paginated.model';
 import {
   AssignmentSnapshot,
+  EvaluationDraft,
+  EvaluationSnapshot,
   ReviewerAssignmentDetail,
   ReviewerAssignmentRow,
+  ReviewerEvaluation,
   genericDocumentName,
 } from '../models/reviewer.model';
 
@@ -61,6 +64,60 @@ export class ReviewerService {
   }
 
   /**
+   * Borrador o evaluación final propia (`GET .../evaluation/`). Antes del
+   * primer guardado llega vacía y con `ETag` `"0"`.
+   */
+  getEvaluation(assignmentId: string): Observable<EvaluationSnapshot> {
+    return this.http
+      .get<ReviewerEvaluation>(`${this.url}assignments/${assignmentId}/evaluation/`, {
+        observe: 'response',
+      })
+      .pipe(
+        map(toEvaluationSnapshot),
+        catchError((error) => throwError(() => toApiError(error))),
+      );
+  }
+
+  /**
+   * Guarda el borrador (`PUT .../evaluation/`). `etag` es el de la última
+   * lectura (`If-Match`): si otro guardado se adelantó el servidor responde
+   * `409`. Con el plazo vencido responde `410` y el borrador previo se conserva.
+   */
+  saveDraft(
+    assignmentId: string,
+    draft: EvaluationDraft,
+    etag: string,
+  ): Observable<EvaluationSnapshot> {
+    return this.http
+      .put<ReviewerEvaluation>(`${this.url}assignments/${assignmentId}/evaluation/`, draft, {
+        observe: 'response',
+        headers: { 'If-Match': etag },
+      })
+      .pipe(
+        map(toEvaluationSnapshot),
+        catchError((error) => throwError(() => toApiError(error))),
+      );
+  }
+
+  /**
+   * Envío final e irreversible (`POST .../evaluation/submit/`). Exige los
+   * cinco puntajes, la recomendación y los comentarios para el Autor ya
+   * guardados con ese `ETag`.
+   */
+  submitEvaluation(assignmentId: string, etag: string): Observable<EvaluationSnapshot> {
+    return this.http
+      .post<ReviewerEvaluation>(
+        `${this.url}assignments/${assignmentId}/evaluation/submit/`,
+        {},
+        { observe: 'response', headers: { 'If-Match': etag } },
+      )
+      .pipe(
+        map(toEvaluationSnapshot),
+        catchError((error) => throwError(() => toApiError(error))),
+      );
+  }
+
+  /**
    * Descarga el PDF sanitizado (`GET .../document/`). Con una asignación
    * que ya no está `ACTIVE` el servidor responde `410`; el cuerpo del
    * error también llega como `Blob` y se convierte al envelope estándar.
@@ -83,6 +140,10 @@ export class ReviewerService {
         catchError((error) => blobErrorToApiError(error)),
       );
   }
+}
+
+function toEvaluationSnapshot(response: HttpResponse<ReviewerEvaluation>): EvaluationSnapshot {
+  return { evaluation: response.body as ReviewerEvaluation, etag: response.headers.get('ETag') };
 }
 
 function toSnapshot(response: HttpResponse<ReviewerAssignmentDetail>): AssignmentSnapshot {

@@ -8,6 +8,8 @@
  * declara, la interfaz no lo puede renderizar.
  */
 
+import { Recommendation } from './editor.model';
+
 /** Estado de la asignación en la bandeja (derivado en el servidor, HU-14). */
 export type InboxState = 'PENDING' | 'ON_TIME' | 'OVERDUE' | 'EVALUATED' | 'REVOKED';
 
@@ -86,4 +88,84 @@ export function hasDetail(row: Pick<ReviewerAssignmentRow, 'status'>): boolean {
 /** Nombre genérico del PDF sanitizado: nunca el del archivo original del Autor. */
 export function genericDocumentName(code: string, versionNumber: number): string {
   return `manuscript-${code}-v${versionNumber}.pdf`;
+}
+
+/** Puntaje mínimo y máximo de cada criterio (el servidor también lo exige). */
+export const MIN_SCORE = 1;
+export const MAX_SCORE = 5;
+
+/** Largo máximo de cada comentario (el servidor rechaza más). */
+export const COMMENT_MAX_LENGTH = 10000;
+
+export type ScoreField =
+  'originality_score' | 'methodology_score' | 'clarity_score' | 'relevance_score' | 'ethics_score';
+
+/** Criterios de la evaluación estructurada, en el orden del formulario. */
+export const SCORE_CRITERIA: readonly { field: ScoreField; label: string; hint: string }[] = [
+  {
+    field: 'originality_score',
+    label: 'Originalidad',
+    hint: 'Aporte nuevo frente a lo ya publicado.',
+  },
+  {
+    field: 'methodology_score',
+    label: 'Metodología',
+    hint: 'Rigor y adecuación del método.',
+  },
+  { field: 'clarity_score', label: 'Claridad', hint: 'Redacción y organización del texto.' },
+  {
+    field: 'relevance_score',
+    label: 'Relevancia',
+    hint: 'Importancia para el área de estudio.',
+  },
+  {
+    field: 'ethics_score',
+    label: 'Ética',
+    hint: 'Cumplimiento de normas éticas de investigación.',
+  },
+];
+
+/** Opciones de recomendación, en el orden del formulario. */
+export const RECOMMENDATION_OPTIONS: readonly { value: Recommendation; label: string }[] = [
+  { value: 'ACCEPT', label: 'Aceptar' },
+  { value: 'REQUIRES_CORRECTIONS', label: 'Requiere correcciones' },
+  { value: 'REJECT', label: 'Rechazar' },
+];
+
+/**
+ * Evaluación propia del Revisor (`GET .../evaluation/`): el borrador privado
+ * o la final. Antes del primer guardado llega vacía, con `id` nulo.
+ */
+export interface ReviewerEvaluation {
+  id: string | null;
+  status: 'DRAFT' | 'FINAL';
+  originality_score: number | null;
+  methodology_score: number | null;
+  clarity_score: number | null;
+  relevance_score: number | null;
+  ethics_score: number | null;
+  recommendation: Recommendation | null;
+  comments_for_author: string | null;
+  confidential_comments: string | null;
+  /** El Revisor declaró un conflicto de interés: la evaluación está bloqueada. */
+  conflict_declared: boolean;
+  submitted_at: string | null;
+}
+
+/** Cuerpo de `PUT .../evaluation/`: todos los campos son opcionales en un borrador. */
+export interface EvaluationDraft {
+  originality_score: number | null;
+  methodology_score: number | null;
+  clarity_score: number | null;
+  relevance_score: number | null;
+  ethics_score: number | null;
+  recommendation: Recommendation | null;
+  comments_for_author: string | null;
+  confidential_comments: string | null;
+}
+
+/** Una evaluación junto con su `ETag` vigente (bloqueo optimista, `"0"` si aún no existe). */
+export interface EvaluationSnapshot {
+  evaluation: ReviewerEvaluation;
+  etag: string | null;
 }
