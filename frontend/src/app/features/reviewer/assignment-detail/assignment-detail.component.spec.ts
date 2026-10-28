@@ -292,6 +292,100 @@ describe('AssignmentDetailComponent', () => {
     });
   });
 
+  describe('reporte confidencial', () => {
+    const leakDialog = (element: HTMLElement) =>
+      element.querySelector('app-identity-leak-dialog dialog') as HTMLDialogElement;
+
+    beforeAll(() => {
+      // jsdom no implementa el ciclo abierto/cerrado del diálogo nativo.
+      if (typeof HTMLDialogElement.prototype.showModal !== 'function') {
+        HTMLDialogElement.prototype.showModal = function (this: HTMLDialogElement) {
+          this.setAttribute('open', '');
+        };
+      }
+      if (typeof HTMLDialogElement.prototype.close !== 'function') {
+        HTMLDialogElement.prototype.close = function (this: HTMLDialogElement) {
+          this.removeAttribute('open');
+        };
+      }
+    });
+
+    it('ofrece reportar una posible fuga con la asignación activa', async () => {
+      const { element } = await open();
+
+      expect(button(element, 'Reportar posible fuga de identidad')).toBeDefined();
+    });
+
+    it('no lo ofrece con la asignación completada', async () => {
+      const { element } = await open(
+        buildAssignmentDetail({
+          status: 'COMPLETED',
+          state: 'EVALUATED',
+          completed_at: '2026-10-25T20:00:00Z',
+          document_url: null,
+        }),
+      );
+
+      expect(button(element, 'Reportar posible fuga de identidad')).toBeUndefined();
+    });
+
+    it('al enviarlo avisa y no cambia nada más', async () => {
+      const { element, settle } = await open();
+      button(element, 'Reportar posible fuga de identidad')!.click();
+      await settle();
+      const dialog = leakDialog(element);
+      expect(dialog.hasAttribute('open')).toBe(true);
+      const area = dialog.querySelector('textarea')!;
+      area.value = 'El PDF trae un nombre en la cabecera.';
+      area.dispatchEvent(new Event('input', { bubbles: true }));
+      await settle();
+
+      Array.from(dialog.querySelectorAll<HTMLButtonElement>('button'))
+        .find((b) => text(b) === 'Enviar reporte confidencial')!
+        .click();
+      await settle();
+      http.expectOne('/api/reviewer/assignments/a-1/identity-leak/').flush(
+        {
+          id: 'i-1',
+          assignment: 'a-1',
+          report_type: 'IDENTITY_LEAK',
+          status: 'OPEN',
+          created_at: '2026-10-27T15:00:00Z',
+        },
+        { status: 201, statusText: 'Created' },
+      );
+      await settle();
+
+      expect(dialog.hasAttribute('open')).toBe(false);
+      expect(text(element)).toContain('Reporte confidencial enviado');
+      expect(evaluateLink(element)).toBeDefined();
+    });
+
+    it('un error de red no lo muestra como enviado', async () => {
+      const { element, settle } = await open();
+      button(element, 'Reportar posible fuga de identidad')!.click();
+      await settle();
+      const dialog = leakDialog(element);
+      const area = dialog.querySelector('textarea')!;
+      area.value = 'Texto';
+      area.dispatchEvent(new Event('input', { bubbles: true }));
+      await settle();
+
+      Array.from(dialog.querySelectorAll<HTMLButtonElement>('button'))
+        .find((b) => text(b) === 'Enviar reporte confidencial')!
+        .click();
+      await settle();
+      http
+        .expectOne('/api/reviewer/assignments/a-1/identity-leak/')
+        .error(new ProgressEvent('error'));
+      await settle();
+
+      expect(dialog.hasAttribute('open')).toBe(true);
+      expect(text(element)).not.toContain('Reporte confidencial enviado');
+      expect(text(dialog)).toContain('El reporte NO se envió');
+    });
+  });
+
   describe('plazo y evaluación', () => {
     it('con plazo vigente enlaza a la evaluación', async () => {
       const { element } = await open();

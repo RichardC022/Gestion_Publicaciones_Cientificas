@@ -169,3 +169,40 @@ export interface EvaluationSnapshot {
   evaluation: ReviewerEvaluation;
   etag: string | null;
 }
+
+/** Máximo que acepta la API en la descripción de un reporte confidencial. */
+export const INCIDENT_DESCRIPTION_MAX_LENGTH = 5000;
+
+/** Máximo del motivo opcional al declarar un conflicto de interés. */
+export const CONFLICT_REASON_MAX_LENGTH = 2000;
+
+export type IncidentReportType = 'IDENTITY_LEAK' | 'OTHER';
+
+export const INCIDENT_REPORT_TYPES: readonly {
+  value: IncidentReportType;
+  label: string;
+  hint: string;
+}[] = [
+  {
+    value: 'IDENTITY_LEAK',
+    label: 'Posible fuga de identidad',
+    hint: 'El texto o el PDF deja ver quién escribió el manuscrito.',
+  },
+  {
+    value: 'OTHER',
+    label: 'Otro',
+    hint: 'Otro problema que el Editor deba conocer.',
+  },
+];
+
+/**
+ * Acuse de un reporte confidencial (`POST .../identity-leak/`): solo el
+ * recibo, nunca el texto ni nada editorial.
+ */
+export interface IncidentReceipt {
+  id: string;
+  assignment: string;
+  report_type: IncidentReportType;
+  status: string;
+  created_at: string;
+}

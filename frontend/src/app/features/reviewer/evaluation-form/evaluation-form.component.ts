@@ -21,7 +21,9 @@ import { ReviewerService } from '../../../core/services/reviewer.service';
 import { ConfirmDialogComponent } from '../../../shared/components/confirm-dialog.component';
 import { ErrorStateComponent } from '../../../shared/components/error-state.component';
 import { LoadingSpinnerComponent } from '../../../shared/components/loading-spinner.component';
+import { ConflictDialogComponent } from '../conflict-dialog/conflict-dialog.component';
 import { DeadlineCountdownComponent } from '../deadline-countdown/deadline-countdown.component';
+import { IdentityLeakDialogComponent } from '../identity-leak-dialog/identity-leak-dialog.component';
 import {
   EMPTY_VALUES,
   EvaluationErrors,
@@ -74,6 +76,8 @@ let nextId = 0;
     ErrorStateComponent,
     ConfirmDialogComponent,
     DeadlineCountdownComponent,
+    ConflictDialogComponent,
+    IdentityLeakDialogComponent,
   ],
   template: `
     <section aria-labelledby="evaluation-form-title">
@@ -300,6 +304,39 @@ let nextId = 0;
           </div>
         </form>
 
+        @if (canReport()) {
+          <section class="special" aria-labelledby="special-title">
+            <h2 id="special-title">Situaciones especiales</h2>
+            @if (leakNotice()) {
+              <p class="callout callout--success" role="status">{{ leakNotice() }}</p>
+            }
+            <div class="actions">
+              @if (canDeclareConflict()) {
+                <button type="button" class="btn btn--ghost" (click)="conflictOpen.set(true)">
+                  Declarar conflicto de interés
+                </button>
+              }
+              <button type="button" class="btn btn--ghost" (click)="leakOpen.set(true)">
+                Reportar posible fuga de identidad
+              </button>
+            </div>
+          </section>
+        }
+
+        <app-conflict-dialog
+          [assignmentId]="a.id"
+          [open]="conflictOpen()"
+          [unsavedChanges]="dirty()"
+          (declared)="onConflictDeclared($event)"
+          (cancelled)="conflictOpen.set(false)"
+        />
+        <app-identity-leak-dialog
+          [assignmentId]="a.id"
+          [open]="leakOpen()"
+          (reported)="onLeakReported()"
+          (cancelled)="leakOpen.set(false)"
+        />
+
         <app-confirm-dialog
           title="Enviar la evaluación"
           message="El envío es definitivo: no podrá modificar la evaluación después y la asignación quedará completada. El Autor recibirá sus comentarios de forma anónima."
@@ -418,6 +455,11 @@ let nextId = 0;
       gap: 0.75rem;
       margin: 1rem 0;
     }
+    .special {
+      margin-top: 2rem;
+      padding-top: 0.5rem;
+      border-top: 1px solid var(--gpc-border);
+    }
   `,
 })
 export class EvaluationFormComponent implements UnsavedChangesAware {
@@ -503,6 +545,19 @@ export class EvaluationFormComponent implements UnsavedChangesAware {
   protected readonly canSave = computed(() => !this.readOnly() && !this.stale() && this.dirty());
 
   protected readonly canSubmit = computed(() => !this.readOnly() && !this.stale());
+
+  /** Solo una asignación activa y aún sin enviar admite conflicto o reporte (lo exige el servidor). */
+  protected readonly canReport = computed(
+    () => this.assignment()?.status === 'ACTIVE' && !this.submitted() && !this.busy(),
+  );
+
+  protected readonly canDeclareConflict = computed(
+    () => this.canReport() && !this.evaluation().conflict_declared,
+  );
+
+  protected readonly conflictOpen = signal(false);
+  protected readonly leakOpen = signal(false);
+  protected readonly leakNotice = signal('');
 
   private readonly localErrors = computed<EvaluationErrors>(() =>
     this.attempted() ? submitErrors(this.values(), this.declared()) : {},
@@ -669,6 +724,26 @@ export class EvaluationFormComponent implements UnsavedChangesAware {
           this.onWriteError(error);
         },
       });
+  }
+
+  /**
+   * El servidor confirmó el conflicto: la evaluación queda bloqueada. El
+   * texto escrito sigue a la vista (solo lectura) y no se descarta.
+   */
+  protected onConflictDeclared(snapshot: EvaluationSnapshot): void {
+    this.conflictOpen.set(false);
+    this.evaluation.set(snapshot.evaluation);
+    this.etag.set(snapshot.etag);
+    this.stale.set(false);
+    this.actionError.set('');
+    this.savedNotice.set('');
+  }
+
+  protected onLeakReported(): void {
+    this.leakOpen.set(false);
+    this.leakNotice.set(
+      'Reporte confidencial enviado. Solo el Editor lo verá y su evaluación no cambió.',
+    );
   }
 
   /** «Conservar mi texto»: toma el `ETag` vigente y deja que el Revisor vuelva a guardar. */

@@ -129,7 +129,7 @@ describe('EvaluationFormComponent', () => {
     )!;
 
   const confirmDialog = (element: HTMLElement) =>
-    element.querySelector('dialog') as HTMLDialogElement;
+    element.querySelector('app-confirm-dialog dialog') as HTMLDialogElement;
 
   const flushSave = (
     expectedEtag: string,
@@ -146,7 +146,7 @@ describe('EvaluationFormComponent', () => {
     it('muestra los criterios, la recomendación y los comentarios', async () => {
       const { element } = await open();
 
-      const legends = Array.from(element.querySelectorAll('legend')).map((l) => text(l));
+      const legends = Array.from(element.querySelectorAll('form legend')).map((l) => text(l));
       expect(legends).toEqual([
         'Originalidad',
         'Metodología',
@@ -155,8 +155,8 @@ describe('EvaluationFormComponent', () => {
         'Ética',
         'Recomendación al Editor',
       ]);
-      expect(element.querySelectorAll('input[type="radio"]').length).toBe(5 * 5 + 3);
-      expect(element.querySelectorAll('textarea').length).toBe(2);
+      expect(element.querySelectorAll('form input[type="radio"]').length).toBe(5 * 5 + 3);
+      expect(element.querySelectorAll('form textarea').length).toBe(2);
       expect(text(element)).toContain('Evaluación: Efecto del clima en cultivos andinos');
       expect(text(element)).toContain('Su borrador es privado');
       expect(element.querySelector('app-deadline-countdown')).not.toBeNull();
@@ -649,6 +649,151 @@ describe('EvaluationFormComponent', () => {
       expect(button(view.element, 'Enviar evaluación').disabled).toBe(true);
       expect(view.element.querySelectorAll<HTMLTextAreaElement>('textarea')[0].value).toBe(
         'Aclarar la metodología.',
+      );
+    });
+  });
+
+  describe('conflicto de interés y fuga de identidad', () => {
+    const dialogOf = (element: HTMLElement, selector: string) =>
+      element.querySelector(`${selector} dialog`) as HTMLDialogElement;
+    const inDialog = (dialog: HTMLDialogElement, label: string) =>
+      Array.from(dialog.querySelectorAll<HTMLButtonElement>('button')).find(
+        (b) => text(b) === label,
+      )!;
+
+    it('ofrece declarar el conflicto y reportar una fuga mientras la asignación está activa', async () => {
+      const { element } = await open();
+
+      expect(text(element.querySelector('.special'))).toContain('Declarar conflicto de interés');
+      expect(text(element.querySelector('.special'))).toContain(
+        'Reportar posible fuga de identidad',
+      );
+    });
+
+    it('no los ofrece con la evaluación ya enviada', async () => {
+      const { element } = await open(
+        buildCompleteEvaluation({ status: 'FINAL', submitted_at: '2026-10-25T20:00:00Z' }),
+        '"5"',
+        buildAssignmentDetail({ status: 'COMPLETED', state: 'EVALUATED', document_url: null }),
+      );
+
+      expect(element.querySelector('.special')).toBeNull();
+    });
+
+    it('con el conflicto ya declarado solo queda el reporte de fuga', async () => {
+      const { element } = await open(buildCompleteEvaluation({ conflict_declared: true }), '"2"');
+
+      expect(text(element.querySelector('.special'))).not.toContain(
+        'Declarar conflicto de interés',
+      );
+      expect(text(element.querySelector('.special'))).toContain(
+        'Reportar posible fuga de identidad',
+      );
+    });
+
+    it('declarar el conflicto bloquea el formulario y deja el texto a la vista', async () => {
+      const view = await open(buildCompleteEvaluation(), '"2"');
+      await type(view, 0, 'Texto sin guardar');
+      button(view.element, 'Declarar conflicto de interés').click();
+      await view.settle();
+      const dialog = dialogOf(view.element, 'app-conflict-dialog');
+      expect(dialog.hasAttribute('open')).toBe(true);
+      expect(text(dialog)).toContain('cambios sin guardar');
+
+      inDialog(dialog, 'Declarar conflicto').click();
+      await view.settle();
+      http
+        .expectOne((r) => r.url === '/api/reviewer/assignments/a-1/conflict/')
+        .flush(buildCompleteEvaluation({ conflict_declared: true }), { headers: { ETag: '"3"' } });
+      await view.settle();
+
+      expect(dialog.hasAttribute('open')).toBe(false);
+      expect(text(view.element)).toContain('Declaró un conflicto de interés');
+      const area = view.element.querySelector('textarea')!;
+      expect(area.readOnly).toBe(true);
+      expect(area.value).toBe('Texto sin guardar');
+      expect(radio(view.element, 'clarity_score', '5').disabled).toBe(true);
+      expect(button(view.element, 'Guardar borrador').disabled).toBe(true);
+      expect(button(view.element, 'Enviar evaluación').disabled).toBe(true);
+      expect(text(view.element.querySelector('.special'))).not.toContain(
+        'Declarar conflicto de interés',
+      );
+    });
+
+    it('si el servidor no lo confirma, el formulario sigue editable', async () => {
+      const view = await open(buildCompleteEvaluation(), '"2"');
+      button(view.element, 'Declarar conflicto de interés').click();
+      await view.settle();
+      const dialog = dialogOf(view.element, 'app-conflict-dialog');
+
+      inDialog(dialog, 'Declarar conflicto').click();
+      await view.settle();
+      http
+        .expectOne((r) => r.url === '/api/reviewer/assignments/a-1/conflict/')
+        .error(new ProgressEvent('error'));
+      await view.settle();
+
+      expect(dialog.hasAttribute('open')).toBe(true);
+      expect(text(dialog)).toContain('No fue posible conectar');
+      expect(view.element.querySelector('textarea')!.readOnly).toBe(false);
+      expect(text(view.element)).not.toContain('Declaró un conflicto de interés');
+    });
+
+    it('reportar una fuga avisa al Revisor sin tocar la evaluación', async () => {
+      const view = await open(buildCompleteEvaluation(), '"2"');
+      button(view.element, 'Reportar posible fuga de identidad').click();
+      await view.settle();
+      const dialog = dialogOf(view.element, 'app-identity-leak-dialog');
+      const area = dialog.querySelector('textarea')!;
+      area.value = 'La portada trae un nombre.';
+      area.dispatchEvent(new Event('input', { bubbles: true }));
+      await view.settle();
+
+      inDialog(dialog, 'Enviar reporte confidencial').click();
+      await view.settle();
+      http
+        .expectOne((r) => r.url === '/api/reviewer/assignments/a-1/identity-leak/')
+        .flush(
+          {
+            id: 'i-1',
+            assignment: 'a-1',
+            report_type: 'IDENTITY_LEAK',
+            status: 'OPEN',
+            created_at: '2026-10-27T15:00:00Z',
+          },
+          { status: 201, statusText: 'Created' },
+        );
+      await view.settle();
+
+      expect(dialog.hasAttribute('open')).toBe(false);
+      expect(text(view.element.querySelector('.special'))).toContain(
+        'Reporte confidencial enviado',
+      );
+      expect(view.element.querySelector('textarea')!.readOnly).toBe(false);
+      expect(view.component.hasUnsavedChanges()).toBe(false);
+    });
+
+    it('un error de red no muestra el reporte como enviado', async () => {
+      const view = await open(buildCompleteEvaluation(), '"2"');
+      button(view.element, 'Reportar posible fuga de identidad').click();
+      await view.settle();
+      const dialog = dialogOf(view.element, 'app-identity-leak-dialog');
+      const area = dialog.querySelector('textarea')!;
+      area.value = 'Texto';
+      area.dispatchEvent(new Event('input', { bubbles: true }));
+      await view.settle();
+
+      inDialog(dialog, 'Enviar reporte confidencial').click();
+      await view.settle();
+      http
+        .expectOne((r) => r.url === '/api/reviewer/assignments/a-1/identity-leak/')
+        .error(new ProgressEvent('error'));
+      await view.settle();
+
+      expect(dialog.hasAttribute('open')).toBe(true);
+      expect(text(dialog)).toContain('El reporte NO se envió');
+      expect(text(view.element.querySelector('.special'))).not.toContain(
+        'Reporte confidencial enviado',
       );
     });
   });

@@ -11,6 +11,8 @@ import {
   AssignmentSnapshot,
   EvaluationDraft,
   EvaluationSnapshot,
+  IncidentReceipt,
+  IncidentReportType,
   ReviewerAssignmentDetail,
   ReviewerAssignmentRow,
   ReviewerEvaluation,
@@ -115,6 +117,41 @@ export class ReviewerService {
         map(toEvaluationSnapshot),
         catchError((error) => throwError(() => toApiError(error))),
       );
+  }
+
+  /**
+   * Declara un conflicto de interés (`POST .../conflict/`). Bloquea la
+   * evaluación y avisa al Editor; la asignación no se revoca sola. El
+   * motivo es opcional y solo queda en la auditoría.
+   */
+  declareConflict(assignmentId: string, reason: string | null): Observable<EvaluationSnapshot> {
+    return this.http
+      .post<ReviewerEvaluation>(
+        `${this.url}assignments/${assignmentId}/conflict/`,
+        reason ? { reason } : {},
+        { observe: 'response' },
+      )
+      .pipe(
+        map(toEvaluationSnapshot),
+        catchError((error) => throwError(() => toApiError(error))),
+      );
+  }
+
+  /**
+   * Reporte confidencial al Editor (`POST .../identity-leak/`). No cambia
+   * la evaluación, el PDF ni el manuscrito, y el Autor nunca se entera.
+   */
+  reportIdentityLeak(
+    assignmentId: string,
+    reportType: IncidentReportType,
+    description: string,
+  ): Observable<IncidentReceipt> {
+    return this.http
+      .post<IncidentReceipt>(`${this.url}assignments/${assignmentId}/identity-leak/`, {
+        report_type: reportType,
+        description,
+      })
+      .pipe(catchError((error) => throwError(() => toApiError(error))));
   }
 
   /**
