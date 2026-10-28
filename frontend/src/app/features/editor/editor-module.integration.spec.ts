@@ -76,6 +76,7 @@ describe('Módulo Editor: integración con las rutas reales', () => {
   const inbox = () => http.expectOne((r) => r.url === '/api/editor/submissions/');
   const detail = () => http.expectOne('/api/editor/submissions/s-1/');
   const expired = () => http.expectOne((r) => r.url === '/api/editor/assignments/expired/');
+  const incidents = () => http.expectOne((r) => r.url === '/api/editor/incidents/');
 
   /** Abre una URL; `settle` además responde lo que el formulario de veredicto pide al montarse. */
   const open = async (url: string) => {
@@ -109,6 +110,7 @@ describe('Módulo Editor: integración con las rutas reales', () => {
         if (selector === 'app-submission-inbox') inbox().flush(emptyPage);
         else if (selector === 'app-submission-detail') detail().flush(buildSubmissionDetail());
         else if (selector === 'app-expired-assignments') expired().flush(emptyPage);
+        else if (selector === 'app-incident-list') incidents().flush(emptyPage);
         await settle();
 
         expect(element.querySelector(selector)).not.toBeNull();
