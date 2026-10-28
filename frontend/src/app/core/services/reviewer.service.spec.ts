@@ -6,6 +6,8 @@ import {
   buildAssignmentDetail,
   buildAssignmentPage,
   buildAssignmentRow,
+  buildCompleteEvaluation,
+  buildReviewerEvaluation,
 } from '../../features/reviewer/testing/reviewer.fixtures';
 import { errorEnvelope } from '../../features/author/testing/manuscript.fixtures';
 import { API_BASE_URL } from '../http/api-base-url.token';
@@ -111,6 +113,114 @@ describe('ReviewerService', () => {
 
       expect(error?.status).toBe(404);
       expect(error?.userMessage).toContain('no existe o no está disponible');
+    });
+  });
+
+  describe('evaluación', () => {
+    const URL = '/api/reviewer/assignments/a-1/evaluation/';
+    const draft = {
+      originality_score: 4,
+      methodology_score: null,
+      clarity_score: null,
+      relevance_score: null,
+      ethics_score: null,
+      recommendation: null,
+      comments_for_author: null,
+      confidential_comments: null,
+    };
+
+    it('lee el borrador propio con su ETag', () => {
+      const evaluation = buildCompleteEvaluation();
+      let snapshot: unknown;
+      service.getEvaluation('a-1').subscribe((value) => (snapshot = value));
+
+      const request = http.expectOne(URL);
+      expect(request.request.method).toBe('GET');
+      request.flush(evaluation, { headers: { ETag: '"3"' } });
+
+      expect(snapshot).toEqual({ evaluation, etag: '"3"' });
+    });
+
+    it('antes del primer guardado llega vacío con ETag "0"', () => {
+      let snapshot: { evaluation: { id: string | null }; etag: string | null } | undefined;
+      service.getEvaluation('a-1').subscribe((value) => (snapshot = value));
+
+      http.expectOne(URL).flush(buildReviewerEvaluation(), { headers: { ETag: '"0"' } });
+
+      expect(snapshot?.evaluation.id).toBeNull();
+      expect(snapshot?.etag).toBe('"0"');
+    });
+
+    it('guarda el borrador con PUT y el ETag leído en If-Match', () => {
+      let snapshot: { etag: string | null } | undefined;
+      service.saveDraft('a-1', draft, '"0"').subscribe((value) => (snapshot = value));
+
+      const request = http.expectOne(URL);
+      expect(request.request.method).toBe('PUT');
+      expect(request.request.headers.get('If-Match')).toBe('"0"');
+      expect(request.request.body).toEqual(draft);
+      request.flush(buildReviewerEvaluation({ id: 'ev-1', originality_score: 4 }), {
+        headers: { ETag: '"1"' },
+      });
+
+      expect(snapshot?.etag).toBe('"1"');
+    });
+
+    it('un guardado desfasado responde 409 VERSION_CONFLICT', () => {
+      let error: ApiError | undefined;
+      service.saveDraft('a-1', draft, '"1"').subscribe({ error: (e: ApiError) => (error = e) });
+
+      http
+        .expectOne(URL)
+        .flush(errorEnvelope('VERSION_CONFLICT', 'Desfasado.', { lock_version: 2 }), {
+          status: 409,
+          statusText: 'Conflict',
+        });
+
+      expect(error?.status).toBe(409);
+      expect(error?.code).toBe('VERSION_CONFLICT');
+    });
+
+    it('con el plazo vencido el guardado responde 410', () => {
+      let error: ApiError | undefined;
+      service.saveDraft('a-1', draft, '"1"').subscribe({ error: (e: ApiError) => (error = e) });
+
+      http.expectOne(URL).flush(errorEnvelope('STATE_CONFLICT', 'Plazo vencido.'), {
+        status: 410,
+        statusText: 'Gone',
+      });
+
+      expect(error?.status).toBe(410);
+    });
+
+    it('envía la evaluación con POST, cuerpo vacío y el ETag en If-Match', () => {
+      let snapshot: { evaluation: { status: string } } | undefined;
+      service.submitEvaluation('a-1', '"4"').subscribe((value) => (snapshot = value));
+
+      const request = http.expectOne(`${URL}submit/`);
+      expect(request.request.method).toBe('POST');
+      expect(request.request.headers.get('If-Match')).toBe('"4"');
+      expect(request.request.body).toEqual({});
+      request.flush(buildCompleteEvaluation({ status: 'FINAL' }), { headers: { ETag: '"5"' } });
+
+      expect(snapshot?.evaluation.status).toBe('FINAL');
+    });
+
+    it('un envío incompleto devuelve los campos que faltan', () => {
+      let error: ApiError | undefined;
+      service.submitEvaluation('a-1', '"1"').subscribe({ error: (e: ApiError) => (error = e) });
+
+      http.expectOne(`${URL}submit/`).flush(
+        errorEnvelope('VALIDATION_ERROR', 'Complete la evaluación.', {
+          clarity_score: ['Este campo es obligatorio para enviar la evaluación.'],
+        }),
+        { status: 400, statusText: 'Bad Request' },
+      );
+
+      expect(error?.status).toBe(400);
+      expect(error?.details).toEqual({
+        clarity_score: ['Este campo es obligatorio para enviar la evaluación.'],
+      });
     });
   });
 
