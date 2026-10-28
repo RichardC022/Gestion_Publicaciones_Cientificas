@@ -25,4 +25,5 @@ urlpatterns = [
     path("manuscripts/", include("apps.publications.urls")),
     path("editor/", include("apps.reviews.urls")),
     path("reviewer/", include("apps.reviews.reviewer_urls")),
+    path("admin/audit/", include("apps.audit.urls")),
 ]
