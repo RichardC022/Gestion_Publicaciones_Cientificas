@@ -30,7 +30,8 @@ services:
       sh -c "umask 0027 &&
              /app/scripts/check_env.sh &&
              /app/scripts/init_media.sh &&
-             python manage.py migrate --noinput &&
+             DB_USE_ADMIN=1 python manage.py migrate --noinput &&
+             DB_USE_ADMIN=1 python manage.py apply_db_privileges &&
              python manage.py collectstatic --noinput &&
              exec gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3 --timeout 120 --access-logfile -"
     volumes:

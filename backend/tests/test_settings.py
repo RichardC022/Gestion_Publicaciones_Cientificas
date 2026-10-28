@@ -65,6 +65,8 @@ def test_production_forces_secure_cookies(monkeypatch: pytest.MonkeyPatch) -> No
         ("POSTGRES_PASSWORD", "gpc_ci_password"),
         ("POSTGRES_HOST", "127.0.0.1"),
         ("POSTGRES_PORT", "5432"),
+        ("APP_DB_USER", "gpc_runtime"),
+        ("APP_DB_PASSWORD", "ci-runtime-password"),
         ("ALLOWED_HOSTS", "localhost"),
         ("CSRF_TRUSTED_ORIGINS", "http://localhost"),
         ("EMAIL_HOST", "smtp.example.com"),
@@ -80,3 +82,61 @@ def test_production_forces_secure_cookies(monkeypatch: pytest.MonkeyPatch) -> No
     from config.settings import production
 
     assert production.COOKIE_SECURE is True
+
+
+def _import_production(monkeypatch: pytest.MonkeyPatch, **extra: str):
+    import importlib
+
+    monkeypatch.delenv("DB_USE_ADMIN", raising=False)
+    for name, value in {
+        "DJANGO_SECRET_KEY": "dummy-key",
+        "POSTGRES_DB": "gpc_ci",
+        "POSTGRES_USER": "gpc_admin",
+        "POSTGRES_PASSWORD": "ci-admin-password",
+        "POSTGRES_HOST": "127.0.0.1",
+        "POSTGRES_PORT": "5432",
+        "APP_DB_USER": "gpc_runtime",
+        "APP_DB_PASSWORD": "ci-runtime-password",
+        "ALLOWED_HOSTS": "localhost",
+        "CSRF_TRUSTED_ORIGINS": "http://localhost",
+        "EMAIL_HOST": "smtp.example.com",
+        "EMAIL_PORT": "587",
+        "EMAIL_HOST_USER": "ci@example.com",
+        "EMAIL_HOST_PASSWORD": "ci-password",
+        "DEFAULT_FROM_EMAIL": "ci@example.com",
+        **extra,
+    }.items():
+        monkeypatch.setenv(name, value)
+    from config.settings import production
+
+    return importlib.reload(production)
+
+
+def test_production_connects_as_the_restricted_role(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Runtime uses APP_DB_USER, not the administrator (TSK-72)."""
+    production = _import_production(monkeypatch)
+
+    assert production.DATABASES["default"]["USER"] == "gpc_runtime"
+    assert production.DATABASES["default"]["PASSWORD"] == "ci-runtime-password"
+
+
+def test_production_uses_the_administrator_only_when_asked(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``DB_USE_ADMIN=1`` (migrate and privileges) switches to POSTGRES_USER."""
+    production = _import_production(monkeypatch, DB_USE_ADMIN="1")
+
+    assert production.DATABASES["default"]["USER"] == "gpc_admin"
+    assert production.DATABASES["default"]["PASSWORD"] == "ci-admin-password"
+
+
+def test_production_requires_the_restricted_role(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Without APP_DB_USER the settings refuse to load (no silent superuser)."""
+    from django.core.exceptions import ImproperlyConfigured
+
+    _import_production(monkeypatch)
+    monkeypatch.delenv("APP_DB_USER")
+    with pytest.raises(ImproperlyConfigured, match="APP_DB_USER"):
+        import importlib
+
+        from config.settings import production
+
+        importlib.reload(production)

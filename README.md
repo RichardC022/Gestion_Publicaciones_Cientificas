@@ -98,6 +98,7 @@ Edita `.env` y cambia al menos:
 
 - `DJANGO_SECRET_KEY`
 - `POSTGRES_PASSWORD`
+- `APP_DB_PASSWORD`
 - `EMAIL_HOST_PASSWORD`
 - `ALLOWED_HOSTS`
 - `CSRF_TRUSTED_ORIGINS`
@@ -152,10 +153,34 @@ docker compose ps db
 ### 3.6 Aplicar migraciones
 
 ```bash
-docker compose run --rm backend python manage.py migrate --noinput
+docker compose run --rm -e DB_USE_ADMIN=1 backend python manage.py migrate --noinput
+docker compose run --rm -e DB_USE_ADMIN=1 backend python manage.py apply_db_privileges
 ```
 
+`DB_USE_ADMIN=1` hace que el comando use el administrador de la base (`POSTGRES_USER`) en lugar del rol de aplicación (§3.6.1). El contenedor `backend` ya ejecuta ambos pasos al arrancar.
+
 Las migraciones se aplican sobre PostgreSQL 16. No existe ningún paso de MySQL y no se admiten bases SQLite en ejecución.
+
+
+### 3.6.1 Privilegios de base de datos (TSK-72)
+
+Hay dos usuarios de PostgreSQL con funciones distintas:
+
+| Variable | Rol | Qué puede hacer |
+|---|---|---|
+| `POSTGRES_USER` (`gpc_app`) | Administrador y dueño del esquema | Migrar, respaldar y restaurar. Superusuario del contenedor `db`; **no lo usa la aplicación** en ejecución. |
+| `APP_DB_USER` (`gpc_runtime`) | Rol de aplicación | `SELECT`/`INSERT`/`UPDATE`/`DELETE` en las tablas operativas; en `audit_audit_log` solo `SELECT` e `INSERT`. Sin superusuario, sin `CREATEDB`, sin `CREATE` en el esquema. |
+
+El rol de aplicación no puede alterar ni borrar la auditoría aunque alguien intente deshabilitar el trigger (un superusuario ignoraría `GRANT`/`REVOKE`, por eso la aplicación no se conecta como tal). `apply_db_privileges` es idempotente y el contenedor `backend` lo ejecuta después de cada `migrate`: sirve para una base nueva, una existente y una restaurada (los respaldos se toman con `--no-privileges`, así que los permisos se reaplican en el arranque).
+
+Para una base ya existente basta con añadir `APP_DB_USER` y `APP_DB_PASSWORD` al `.env` (distintos de `POSTGRES_USER` y sin `change-me`) y reiniciar `backend`. Para comprobarlo, el backend corre con el rol de aplicación, así que un `DELETE` sobre la auditoría debe fallar:
+
+```bash
+docker compose exec backend python manage.py shell -c \
+  "from django.db import connection; connection.cursor().execute('DELETE FROM audit_audit_log')"
+```
+
+Debe terminar con `permission denied for table audit_audit_log`.
 
 ### 3.7 Sembrar los roles institucionales
 
@@ -289,7 +314,7 @@ docker compose exec backend python manage.py makemigrations
 Aplicar migraciones:
 
 ```bash
-docker compose exec backend python manage.py migrate --noinput
+docker compose exec -e DB_USE_ADMIN=1 backend python manage.py migrate --noinput
 ```
 
 ### 5.5 Archivos estáticos
