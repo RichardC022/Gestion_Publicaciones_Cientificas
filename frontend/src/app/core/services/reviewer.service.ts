@@ -16,6 +16,8 @@ import {
   ReviewerAssignmentDetail,
   ReviewerAssignmentRow,
   ReviewerEvaluation,
+  ReviewerHistoryDetail,
+  ReviewerHistoryRow,
   genericDocumentName,
 } from '../models/reviewer.model';
 
@@ -49,6 +51,22 @@ export class ReviewerService {
       .get<Paginated<ReviewerAssignmentRow>>(`${this.url}assignments/`, {
         params: toHttpParams({ page: page > 1 ? page : undefined, page_size: pageSize }),
       })
+      .pipe(catchError((error) => throwError(() => toApiError(error))));
+  }
+
+  /** Historial propio: evaluaciones enviadas, de la más reciente a la más antigua. */
+  listHistory(page = 1, pageSize = 20): Observable<Paginated<ReviewerHistoryRow>> {
+    return this.http
+      .get<Paginated<ReviewerHistoryRow>>(`${this.url}evaluations/`, {
+        params: toHttpParams({ page: page > 1 ? page : undefined, page_size: pageSize }),
+      })
+      .pipe(catchError((error) => throwError(() => toApiError(error))));
+  }
+
+  /** Una evaluación enviada, solo lectura y sin comentarios confidenciales. */
+  getHistoryEntry(id: string): Observable<ReviewerHistoryDetail> {
+    return this.http
+      .get<ReviewerHistoryDetail>(`${this.url}evaluations/${id}/`)
       .pipe(catchError((error) => throwError(() => toApiError(error))));
   }
 
