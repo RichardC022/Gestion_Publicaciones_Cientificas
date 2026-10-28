@@ -416,6 +416,27 @@ La plantilla incluye también la expiración de asignaciones (TSK-45 y TSK-49): 
 docker compose exec backend python manage.py mark_expired_assignments
 ```
 
+La plantilla incluye además las tareas de la Fase 5 (TSK-71 y TSK-76), todas dentro del contenedor `backend` y con un `flock` propio cada una:
+
+| Tarea | Comando | Frecuencia | Log |
+|---|---|---|---|
+| Avisos por correo | `send_pending_notifications` | Cada minuto | `/var/log/gpc-notify.log` |
+| Limpieza de idempotencia | `cleanup_idempotency_keys` | Diaria, 03:00 | `/var/log/gpc-cleanup.log` |
+| Verificación de integridad | `verify_integrity` | Día 1 de cada mes, 03:30 | `/var/log/gpc-integrity.log` |
+
+- **Reintentos de avisos:** un aviso de correo fallido queda en `FAILED` y se reintenta tras 1 min, 5 min, 15 min, 1 h y 4 h; tras el sexto intento fallido deja de reintentarse y permanece `FAILED` con su `last_error`. Un aviso `SENT` no se reenvía y el aviso del panel no depende del correo. `EMAIL_TIMEOUT` (10 s por defecto) limita la espera al SMTP.
+- **Limpieza:** solo elimina las claves con `expires_at` vencido (24 h tras guardarse); las vigentes no se tocan.
+- **Verificación:** solo lee. Si encuentra discrepancias de hash en PDFs o en la cadena de auditoría las lista en el log y termina con código distinto de cero; no corrige nada.
+- Los logs registran conteos y códigos de error, nunca el contenido de los avisos, correos ni credenciales.
+
+Para probarlas a mano:
+
+```bash
+docker compose exec backend python manage.py send_pending_notifications
+docker compose exec backend python manage.py cleanup_idempotency_keys
+docker compose exec backend python manage.py verify_integrity
+```
+
 ### 8.3 Restauración
 
 ```bash
@@ -439,7 +460,7 @@ La restauración:
 7. Levanta los servicios.
 8. Ejecuta `manage.py check`.
 
-> **Nota de fase:** el comando de gestión `verify_integrity` se implementa en `TSK-76`. Hasta esa tarea, la prueba de restauración se realiza en un entorno aislado y se registra manualmente según `scripts/BACKUP.md`.
+> **Nota:** el comando `verify_integrity` existe desde la `TSK-76`; la prueba de restauración se realiza en un entorno aislado y se registra según `scripts/BACKUP.md`.
 
 ### 8.4 Prueba mensual
 

@@ -13,3 +13,19 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 # flock -n evita ejecuciones solapadas y usa un lock propio para no bloquear el respaldo.
 # -T desactiva el pseudo-TTY, que cron no tiene.
 * * * * * root cd /opt/gpc && /usr/bin/flock -n /var/lock/gpc-expire.lock /usr/bin/docker compose exec -T backend python manage.py mark_expired_assignments >> /var/log/gpc-expire.log 2>&1
+
+# Envío y reintento de avisos por correo (TSK-71, TSK-76), cada minuto.
+# Procesa los avisos EMAIL en PENDING o FAILED con su backoff (1, 5, 15 min, 1 h y 4 h);
+# un aviso enviado no se reenvía y el panel funciona aunque el SMTP falle.
+# Solo escribe en el log si hubo envíos o errores, y nunca el contenido ni el correo del aviso.
+# El timeout SMTP (EMAIL_TIMEOUT) evita que un servidor colgado retenga el lock.
+* * * * * root cd /opt/gpc && /usr/bin/flock -n /var/lock/gpc-notify.lock /usr/bin/docker compose exec -T backend python manage.py send_pending_notifications >> /var/log/gpc-notify.log 2>&1
+
+# Limpieza de claves de idempotencia (TSK-71, TSK-76), diaria a las 03:00.
+# Elimina solo las claves con expires_at vencido; las vigentes no se tocan.
+0 3 * * * root cd /opt/gpc && /usr/bin/flock -n /var/lock/gpc-cleanup.lock /usr/bin/docker compose exec -T backend python manage.py cleanup_idempotency_keys >> /var/log/gpc-cleanup.log 2>&1
+
+# Verificación de integridad (TSK-71, TSK-76), el día 1 de cada mes a las 03:30.
+# Recalcula hashes de PDFs y la cadena de auditoría; solo lee, no modifica archivos ni auditoría.
+# Si hay discrepancias las lista en el log y el comando sale con código distinto de cero.
+30 3 1 * * root cd /opt/gpc && /usr/bin/flock -n /var/lock/gpc-integrity.lock /usr/bin/docker compose exec -T backend python manage.py verify_integrity >> /var/log/gpc-integrity.log 2>&1

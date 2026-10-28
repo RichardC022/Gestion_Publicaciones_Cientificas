@@ -82,3 +82,4 @@ EMAIL_USE_TLS = os.environ.get("EMAIL_USE_TLS", "1") == "1"
 EMAIL_HOST_USER = required_env("EMAIL_HOST_USER")
 EMAIL_HOST_PASSWORD = required_env("EMAIL_HOST_PASSWORD")
 DEFAULT_FROM_EMAIL = required_env("DEFAULT_FROM_EMAIL")
+EMAIL_TIMEOUT = int(os.environ.get("EMAIL_TIMEOUT", "10"))
