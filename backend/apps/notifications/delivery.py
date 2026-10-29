@@ -69,8 +69,14 @@ def _compose(notification: Notification) -> tuple[str, str]:
     """Subject and body from the sanitized payload; nothing else is mailed."""
     payload = notification.payload if isinstance(notification.payload, dict) else {}
     subject = str(payload.get("title") or notification.event_type)
-    body = str(payload.get("message") or "")
-    return subject, body
+    lines = [str(payload.get("message") or "")]
+    if payload.get("manuscript_code"):
+        lines.append(f"Manuscrito: {payload['manuscript_code']} - {payload.get('manuscript_title') or ''}")
+    if payload.get("action"):
+        lines.append(f"Acción esperada: {payload['action']}")
+    if payload.get("due_at"):
+        lines.append(f"Fecha límite: {payload['due_at']}")
+    return subject, "\n".join(line for line in lines if line.strip())
 
 
 def send_pending_notifications(now=None) -> DeliveryResult:
