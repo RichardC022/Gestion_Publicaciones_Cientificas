@@ -77,6 +77,20 @@ def compute_entry_hash(canonical_json: str, previous_hash: str | None) -> str:
     return digest.hexdigest()
 
 
+def _canonical_address(address: str | None) -> str | None:
+    """The address as PostgreSQL stores and returns it (``inet`` text form).
+
+    The hash is computed over what ``verify_integrity`` will read back, so a
+    proxy header such as ``2001:DB8:0:0::1`` or ``::FFFF:10.0.0.1`` must be
+    hashed in its canonical form, not as received.
+    """
+    if not address:
+        return None
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT host(%s::inet)", [address])
+        return cursor.fetchone()[0]
+
+
 class AuditService:
     """Append a chained, immutable audit event to the current transaction."""
 
@@ -110,6 +124,7 @@ class AuditService:
                     [AUDIT_LOCK_KEY],
                 )
 
+            ip_address = _canonical_address(ip_address)
             latest = (
                 AuditLog.objects.order_by("-id")
                 .values_list("entry_hash", flat=True)
