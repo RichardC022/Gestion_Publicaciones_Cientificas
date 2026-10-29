@@ -35,6 +35,7 @@ from apps.publications.signals import (
     manuscript_submitted,
     manuscript_withdrawn,
     new_version_submitted,
+    verdict_correction_authorized,
     verdict_registered,
 )
 from apps.reviews.models import Assignment, IncidentReport
@@ -309,4 +310,24 @@ def on_incident_resolved(sender, incident_id, manuscript_id, resolution, **kwarg
         message="El Editor solicita una versión anonimizada del manuscrito.",
         action="Envíe una nueva versión sin datos que identifiquen a los autores.",
         link=_author_link(manuscript),
+    )
+
+
+@receiver(verdict_correction_authorized, dispatch_uid="notifications-correction-authorized")
+def on_correction_authorized(sender, manuscript_id, verdict_id, correction_id, **kwargs) -> None:
+    # Se avisa al Editor que emitió el veredicto, o a los elegibles si ya no puede actuar.
+    manuscript = _manuscript(manuscript_id)
+    eligible = editors_for(manuscript)
+    issuer = Verdict.objects.get(pk=verdict_id).editor_id
+    recipients = [user for user in eligible if user.pk == issuer] or eligible
+    notify_each(
+        recipients,
+        event_type="VERDICT_CORRECTION_AUTHORIZED",
+        subject_id=correction_id,
+        role=EDITOR,
+        manuscript=manuscript,
+        title="Corrección de veredicto habilitada",
+        message="Un Administrador habilitó una nueva decisión sobre el veredicto registrado.",
+        action="Registre la nueva decisión.",
+        link=_editor_link(manuscript),
     )

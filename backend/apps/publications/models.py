@@ -563,6 +563,75 @@ class Verdict(AppendOnlyModel):
         return f"{self.manuscript_id} · {self.decision}"
 
 
+class VerdictCorrection(models.Model):
+    """Administrative authorization to decide again over a verdict (plan section 1.15.1).
+
+    It exists for CA-HU-13-12 only: an administrator enables ONE new
+    decision over the latest verdict when it contains an error. It never
+    edits the verdict (which is append-only) and never gives the
+    administrator access to the manuscript. The editor consumes it by
+    registering the new decision (TSK-78): ``is_active`` turns false and
+    ``consumed_at``/``consumed_by_verdict`` are filled together. At most
+    one authorization is active per original verdict.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4)
+    manuscript = models.ForeignKey(
+        Manuscript,
+        on_delete=models.PROTECT,
+        related_name="verdict_corrections",
+    )
+    original_verdict = models.ForeignKey(
+        Verdict,
+        on_delete=models.PROTECT,
+        related_name="correction_authorizations",
+    )
+    authorized_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="authorized_verdict_corrections",
+    )
+    reason = models.TextField()
+    authorized_at = models.DateTimeField(default=timezone.now)
+    consumed_at = models.DateTimeField(null=True, blank=True)
+    consumed_by_verdict = models.ForeignKey(
+        Verdict,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="consumed_authorizations",
+    )
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        db_table = "publications_verdict_correction"
+        ordering = ("-authorized_at", "id")
+        indexes = [
+            models.Index(
+                fields=("manuscript", "authorized_at"),
+                name="idx_verdict_correction_ms",
+            ),
+        ]
+        constraints = [
+            # Una sola autorización activa por veredicto original.
+            models.UniqueConstraint(
+                fields=("original_verdict",),
+                condition=Q(is_active=True),
+                name="uq_verdict_correction_active",
+            ),
+            # Inactiva solo si fue consumida por una nueva decisión.
+            models.CheckConstraint(
+                condition=Q(is_active=True)
+                | Q(consumed_at__isnull=False, consumed_by_verdict__isnull=False),
+                name="ck_verdict_correction_consumed",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        state = "activa" if self.is_active else "consumida"
+        return f"{self.original_verdict_id} · corrección {state}"
+
+
 class CatalogEntry(models.Model):
     """Public copy of the accepted version (plan sections 1.12 and 4.7).
 

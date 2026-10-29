@@ -296,12 +296,17 @@ class TestDetail:
         assert queries() == []
 
     def test_detail_does_not_infer_write_permissions(self, client) -> None:
-        entry = record("VERDICT_REGISTERED", "VERDICT", entity_id=uuid4())
+        # TSK-77: el detalle solo calcula el permiso para eventos de veredicto y
+        # nunca lo da por cierto sin el veredicto real (aquí no existe: false).
+        unproven = record("VERDICT_REGISTERED", "MANUSCRIPT", entity_id=uuid4(), details={"verdict_id": str(uuid4())})
+        ordinary = record("LOGIN")
 
-        body = client.get(f"{LIST_URL}{entry.event_id}/").json()
+        unproven_body = client.get(f"{LIST_URL}{unproven.event_id}/").json()
+        ordinary_body = client.get(f"{LIST_URL}{ordinary.event_id}/").json()
 
-        assert "can_authorize_correction" not in body
-        assert not any(key.startswith("can_") for key in body)
+        assert unproven_body["can_authorize_correction"] is False
+        assert "verdict" not in unproven_body
+        assert not any(key.startswith("can_") for key in ordinary_body)
 
     def test_the_integer_primary_key_is_not_exposed(self, client) -> None:
         entry = record()

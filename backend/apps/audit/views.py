@@ -21,7 +21,7 @@ from rest_framework.response import Response
 
 from apps.audit.filters import apply_filters, audited_filters, validated_filters
 from apps.audit.models import AuditLog
-from apps.audit.serializers import AdminAuditSerializer, manuscript_id_of
+from apps.audit.serializers import AdminAuditDetailSerializer, AdminAuditSerializer, manuscript_id_of
 from apps.audit.services import AuditService, AuditUnavailable
 from apps.publications.models import Manuscript
 from apps.users.models import Role
@@ -98,7 +98,7 @@ class AuditDetailView(AdminAuditBaseView):
         entry = get_object_or_404(AuditLog, event_id=pk)
         with transaction.atomic():
             self.audit_read("AUDIT_DETAIL_VIEWED", entity_id=entry.event_id)
-        data = AdminAuditSerializer(
+        data = AdminAuditDetailSerializer(
             entry, context={"manuscript_codes": self.manuscript_codes([entry])}
         ).data
         return Response(data)
