@@ -8,15 +8,18 @@ or an e-mail. ``details`` goes through an allowlist of scalar keys, so a
 future event cannot leak a field nobody reviewed, and the reviewer id some
 assignment events store is left out.
 
-The correction eligibility (``can_authorize_correction``) is *not* here: it
-is computed and exposed by TSK-77, so this detail never implies a write
-permission.
+The list never computes a write permission. The detail
+(:class:`AdminAuditDetailSerializer`, TSK-77) adds ``can_authorize_correction``
+and a minimal ``verdict`` block (code, decision, date) ONLY for the events
+that are about a verdict; the flag comes from the same rule the
+authorization endpoint applies, so the SPA never infers it.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
+from django.core.exceptions import ValidationError
 from rest_framework import serializers
 
 from apps.audit.models import AuditLog
@@ -28,6 +31,7 @@ DETAILS_ALLOWLIST = frozenset(
         "assignment_revoked",
         "cause",
         "code",
+        "decision",
         "due_at",
         "is_active",
         "lock_version",
@@ -37,8 +41,13 @@ DETAILS_ALLOWLIST = frozenset(
         "resolution",
         "round_number",
         "status",
+        "verdict_id",
         "version_number",
     }
+)
+#: Events whose detail tells whether the verdict can be corrected.
+VERDICT_ACTIONS = frozenset(
+    {"VERDICT_REGISTERED", "VERDICT_CORRECTED", "VERDICT_CORRECTION_AUTHORIZED"}
 )
 MANUSCRIPT_ENTITY = "MANUSCRIPT"
 
@@ -105,3 +114,37 @@ class AdminAuditSerializer(serializers.ModelSerializer):
 
     def get_details(self, entry: AuditLog) -> dict[str, Any]:
         return safe_details(entry.details)
+
+
+class AdminAuditDetailSerializer(AdminAuditSerializer):
+    """The detail of an event; for verdict events it adds the correction flag."""
+
+    class Meta(AdminAuditSerializer.Meta):
+        pass
+
+    def to_representation(self, entry: AuditLog) -> dict[str, Any]:
+        data = super().to_representation(entry)
+        if entry.action not in VERDICT_ACTIONS:
+            return data
+        # Import tardío: `audit` no depende de `publications` al cargar.
+        from apps.publications.models import Verdict
+        from apps.publications.services.corrections import can_authorize_correction
+
+        verdict = None
+        raw = entry.details.get("verdict_id") if isinstance(entry.details, dict) else None
+        if isinstance(raw, str):
+            try:
+                verdict = (
+                    Verdict.objects.select_related("manuscript", "version").filter(pk=raw).first()
+                )
+            except (ValueError, ValidationError):
+                verdict = None
+        data["can_authorize_correction"] = bool(verdict) and can_authorize_correction(verdict)
+        if verdict is not None:
+            data["verdict"] = {
+                "id": str(verdict.pk),
+                "manuscript_code": verdict.manuscript.code,
+                "decision": verdict.decision,
+                "decided_at": serializers.DateTimeField().to_representation(verdict.created_at),
+            }
+        return data
