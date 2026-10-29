@@ -46,8 +46,13 @@ ALREADY_AUTHORIZED_MESSAGE = "Este veredicto ya tiene una autorización de corre
 NOT_FOUND_MESSAGE = "Veredicto no encontrado."
 
 
-def eligibility_problem(verdict: Verdict) -> str | None:
-    """Why a correction cannot be authorized over ``verdict``, or ``None`` if it can."""
+def consumption_problem(verdict: Verdict) -> str | None:
+    """Why ``verdict`` can no longer be corrected, ignoring any authorization.
+
+    The same three rules gate the creation of the authorization (TSK-77)
+    and its consumption by the editor's new decision (TSK-78): a withdrawn
+    manuscript, a verdict that is not the latest, or a later version.
+    """
     if not Manuscript.objects.filter(pk=verdict.manuscript_id, is_active=True).exists():
         return WITHDRAWN_MESSAGE
     latest = (
@@ -63,6 +68,14 @@ def eligibility_problem(verdict: Verdict) -> str | None:
         version_number__gt=verdict.version.version_number,
     ).exists():
         return LATER_VERSION_MESSAGE
+    return None
+
+
+def eligibility_problem(verdict: Verdict) -> str | None:
+    """Why a correction cannot be authorized over ``verdict``, or ``None`` if it can."""
+    problem = consumption_problem(verdict)
+    if problem is not None:
+        return problem
     if VerdictCorrection.objects.filter(original_verdict=verdict, is_active=True).exists():
         return ALREADY_AUTHORIZED_MESSAGE
     return None

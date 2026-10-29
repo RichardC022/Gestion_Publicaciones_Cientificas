@@ -132,10 +132,27 @@ class SubmissionDetailSerializer(EditorManuscriptSerializer):
     versions = EditorVersionSerializer(many=True, read_only=True)
     history = serializers.SerializerMethodField()
     open_assignment = serializers.SerializerMethodField()
+    correction_authorization = serializers.SerializerMethodField()
 
     class Meta(EditorManuscriptSerializer.Meta):
-        fields = (*EditorManuscriptSerializer.Meta.fields, "history", "open_assignment")
+        fields = (
+            *EditorManuscriptSerializer.Meta.fields,
+            "history",
+            "open_assignment",
+            "correction_authorization",
+        )
         read_only_fields = fields
+
+    def get_correction_authorization(self, obj: Manuscript) -> dict | None:
+        """The active administrative authorization to decide again, if any (CA-HU-13-12)."""
+        authorization = obj.verdict_corrections.filter(is_active=True).first()
+        if authorization is None:
+            return None
+        return {
+            "id": str(authorization.pk),
+            "verdict_id": str(authorization.original_verdict_id),
+            "authorized_at": authorization.authorized_at,
+        }
 
     def get_history(self, obj: Manuscript) -> list[dict]:
         return HistoryEntrySerializer(build_history(obj), many=True).data
