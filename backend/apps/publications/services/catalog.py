@@ -102,6 +102,33 @@ def retire_entry(manuscript_id: UUID, *, now=None) -> str | None:
     return entry.public_file_path
 
 
+def ensure_public_copy(
+    entry: CatalogEntry, version: ManuscriptVersion, *, pdf: PdfService, rollback: Rollback
+) -> None:
+    """Regenerate the public copy of an active entry whose file is missing.
+
+    Used when a correction re-accepts a manuscript (plan section 2.4). A
+    copy that exists is left alone; a regenerated one is registered in
+    ``rollback`` so a failing transaction removes it.
+    """
+    destination = catalog_path(entry.public_file_path)
+    if destination.is_file():
+        return
+    destination.parent.mkdir(mode=DIRECTORY_MODE, parents=True, exist_ok=True)
+    pdf.sanitize(private_path(version.original_file_path), destination)
+    rollback.files.append(destination)
+
+
+def discard_leftover_copy(manuscript_id: UUID, version_id: UUID) -> None:
+    """Delete a public copy left behind by a retired entry, before publishing again.
+
+    Retiring deletes the file after the commit and only logs a failure, so a
+    stale file can survive; publishing writes with ``O_EXCL`` and would
+    refuse it. The entry that owned it is inactive, so removing it is safe.
+    """
+    catalog_path(catalog_relative_path(manuscript_id, version_id)).unlink(missing_ok=True)
+
+
 def remove_public_copy(relative_path: str) -> None:
     """Delete a retired public copy; a failure is logged, never raised.
 

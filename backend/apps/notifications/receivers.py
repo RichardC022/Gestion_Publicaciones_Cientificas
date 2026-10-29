@@ -130,7 +130,9 @@ def on_new_version_submitted(sender, manuscript_id, version_id, **kwargs) -> Non
 
 
 @receiver(verdict_registered, dispatch_uid="notifications-verdict-registered")
-def on_verdict_registered(sender, manuscript_id, verdict_id, decision, **kwargs) -> None:
+def on_verdict_registered(
+    sender, manuscript_id, verdict_id, decision, previous_verdict_id=None, **kwargs
+) -> None:
     manuscript = _manuscript(manuscript_id)
     messages = {
         Verdict.Decision.ACCEPTED: (
@@ -150,6 +152,10 @@ def on_verdict_registered(sender, manuscript_id, verdict_id, decision, **kwargs)
         ),
     }
     title, message, action = messages[decision]
+    if previous_verdict_id is not None:
+        # Corrección habilitada por un Administrador: la nueva decisión sustituye a la anterior.
+        title = f"Decisión corregida: {title.lower()}"
+        message = f"El Editor corrigió su decisión sobre el manuscrito. {message}"
     notify_each(
         authors_of(manuscript),
         event_type="VERDICT_REGISTERED",

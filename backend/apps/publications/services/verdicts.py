@@ -12,8 +12,18 @@ manuscript to its new state and, by decision:
 
 If the public copy, the storage or the audit fail, nothing is kept: the
 database rolls back and the copy this call wrote is removed. A version
-has a single normal verdict (second one: ``VERDICT_CONFLICT``); the
-administrative correction that replaces a verdict is another flow.
+has a single normal verdict (second one: ``VERDICT_CONFLICT``).
+
+The administrative correction (CA-HU-13-12, TSK-78) goes through the same
+function: if the manuscript has an ACTIVE :class:`VerdictCorrection` (TSK-77),
+the new verdict links to the one it replaces (``previous_verdict`` comes from
+the authorization, never from the client), the authorization is consumed in
+the same transaction and the catalog follows the new decision: an accepted
+manuscript is published (or its entry and copy restored), a rejected one or
+one that requires corrections leaves the catalog. The original verdict and
+``current_version`` are never touched; the audit event is ``VERDICT_CORRECTED``.
+If any step fails the authorization stays active. Without an active
+authorization a second verdict is still a ``409``.
 """
 
 from __future__ import annotations
@@ -32,8 +42,16 @@ from apps.publications.models import (
     Manuscript,
     StatusEvent,
     Verdict,
+    VerdictCorrection,
 )
-from apps.publications.services.catalog import publish_version
+from apps.publications.services.catalog import (
+    discard_leftover_copy,
+    ensure_public_copy,
+    publish_version,
+    remove_public_copy,
+    retire_entry,
+)
+from apps.publications.services.corrections import consumption_problem
 from apps.publications.services.idempotency import IdempotencyScope
 from apps.publications.services.pdf import PdfService
 from apps.publications.services.versions import (
@@ -51,6 +69,7 @@ from config.exceptions import DomainError, ErrorCode
 logger = logging.getLogger(__name__)
 
 ACTION = "VERDICT_REGISTERED"
+CORRECTED_ACTION = "VERDICT_CORRECTED"
 
 CONFLICT_MESSAGE = "Un Editor con conflicto de interés no puede registrar el veredicto."
 WITHDRAWN_MESSAGE = "El manuscrito fue dado de baja; no admite veredicto."
@@ -88,6 +107,7 @@ class VerdictResult:
     verdict: Verdict
     catalog_entry: CatalogEntry | None
     opened_round: CorrectionRound | None
+    correction: VerdictCorrection | None = None
 
 
 class _Refusal(DomainError):
@@ -120,13 +140,23 @@ def _check_decision(decision: str, justification: str | None, observations: str 
         raise _validation_error("observations", OBSERVATIONS_REQUIRED_MESSAGE)
 
 
-def _announce(manuscript_id: UUID, verdict_id: UUID, decision: str, editor_id: UUID) -> None:
+def _announce(
+    manuscript_id: UUID,
+    verdict_id: UUID,
+    decision: str,
+    editor_id: UUID,
+    previous_verdict_id: UUID | None = None,
+) -> None:
+    # `previous_verdict_id` viaja solo en una corrección: el contrato del veredicto
+    # normal no cambia.
+    extra = {} if previous_verdict_id is None else {"previous_verdict_id": previous_verdict_id}
     for receiver, error in verdict_registered.send_robust(
         sender=Manuscript,
         manuscript_id=manuscript_id,
         verdict_id=verdict_id,
         decision=decision,
         editor_id=editor_id,
+        **extra,
     ):
         if isinstance(error, Exception):
             logger.error("Un receptor del veredicto falló (%s): %s", receiver, error)
@@ -166,26 +196,46 @@ def register_verdict(
                 details={"status": manuscript.status, "is_active": False},
                 audit_result=AuditLog.Result.FAILURE,
             )
-        version = manuscript.versions.get(version_number=manuscript.current_version)
-        if Verdict.objects.filter(version=version, previous_verdict__isnull=True).exists():
-            raise DomainError(DUPLICATE_MESSAGE, code=ErrorCode.VERDICT_CONFLICT)
-        if manuscript.status != Manuscript.Status.UNDER_REVIEW:
-            raise DomainError(
-                NOT_UNDER_REVIEW_MESSAGE,
-                code=ErrorCode.STATE_CONFLICT,
-                details={"status": manuscript.status},
-            )
-        evaluation = (
-            Evaluation.objects.select_for_update()
-            .filter(version=version, status=Evaluation.Status.FINAL)
+        # Una autorización activa del Administrador (CA-HU-13-12) es la única forma de
+        # decidir de nuevo; el cliente no puede declararla (el cuerpo no tiene
+        # `previous_verdict_id`): se deriva de la autorización, bloqueada aquí.
+        correction = (
+            VerdictCorrection.objects.select_for_update()
+            .select_related("original_verdict__version", "original_verdict__evaluation")
+            .filter(manuscript=manuscript, is_active=True)
             .first()
         )
-        if evaluation is None:
-            raise DomainError(
-                NO_FINAL_EVALUATION_MESSAGE,
-                code=ErrorCode.STATE_CONFLICT,
-                details={"status": manuscript.status},
+        previous = correction.original_verdict if correction else None
+        if correction is None:
+            version = manuscript.versions.get(version_number=manuscript.current_version)
+            if Verdict.objects.filter(version=version, previous_verdict__isnull=True).exists():
+                raise DomainError(DUPLICATE_MESSAGE, code=ErrorCode.VERDICT_CONFLICT)
+            if manuscript.status != Manuscript.Status.UNDER_REVIEW:
+                raise DomainError(
+                    NOT_UNDER_REVIEW_MESSAGE,
+                    code=ErrorCode.STATE_CONFLICT,
+                    details={"status": manuscript.status},
+                )
+            evaluation = (
+                Evaluation.objects.select_for_update()
+                .filter(version=version, status=Evaluation.Status.FINAL)
+                .first()
             )
+            if evaluation is None:
+                raise DomainError(
+                    NO_FINAL_EVALUATION_MESSAGE,
+                    code=ErrorCode.STATE_CONFLICT,
+                    details={"status": manuscript.status},
+                )
+        else:
+            problem = consumption_problem(previous)
+            if problem is not None:
+                raise DomainError(
+                    problem,
+                    code=ErrorCode.CORRECTION_NOT_AUTHORIZED,
+                    details={"verdict_id": str(previous.pk)},
+                )
+            version, evaluation = previous.version, previous.evaluation
         if expected_lock_version is not None and manuscript.lock_version != expected_lock_version:
             raise DomainError(
                 STALE_MESSAGE,
@@ -206,24 +256,60 @@ def register_verdict(
             decision=decision,
             justification=justification,
             observations=observations,
+            previous_verdict=previous,
         )
+        if correction is not None:
+            correction.is_active = False
+            correction.consumed_at = now
+            correction.consumed_by_verdict = verdict
+            correction.save(update_fields=("is_active", "consumed_at", "consumed_by_verdict"))
 
-        catalog_entry = opened_round = None
+        catalog_entry = opened_round = retired_copy = None
         event_metadata = {"verdict_id": str(verdict.pk), "version_number": version.version_number}
+        if correction is not None:
+            event_metadata.update(
+                previous_verdict_id=str(previous.pk), correction_id=str(correction.pk)
+            )
         if decision == Verdict.Decision.ACCEPTED:
             manuscript.accepted_at = now
-            catalog_entry = publish_version(
-                manuscript=manuscript, version=version, pdf=pdf, rollback=rollback
+            active = (
+                CatalogEntry.objects.select_for_update()
+                .filter(manuscript=manuscript, is_active=True)
+                .first()
+                if correction is not None
+                else None
             )
-        elif decision == Verdict.Decision.REQUIRES_CORRECTIONS:
-            manuscript.current_round += 1
-            opened_round = CorrectionRound.objects.create(
-                manuscript=manuscript,
-                round_number=manuscript.current_round,
-                opened_by_verdict=verdict,
-                opened_at=now,
-            )
-            event_metadata["round_number"] = opened_round.round_number
+            if active is not None:
+                catalog_entry = active
+                ensure_public_copy(active, version, pdf=pdf, rollback=rollback)
+            else:
+                if correction is not None:
+                    discard_leftover_copy(manuscript.pk, version.pk)
+                catalog_entry = publish_version(
+                    manuscript=manuscript, version=version, pdf=pdf, rollback=rollback
+                )
+        else:
+            if correction is not None:
+                # La decisión ya no es "aceptado": el artículo sale del catálogo y
+                # la copia pública se borra tras el commit (plan sección 4.8, paso 7).
+                manuscript.accepted_at = None
+                retired_copy = retire_entry(manuscript.pk, now=now)
+                if retired_copy:
+                    transaction.on_commit(lambda path=retired_copy: remove_public_copy(path))
+            if decision == Verdict.Decision.REQUIRES_CORRECTIONS and not (
+                correction is not None
+                and CorrectionRound.objects.filter(
+                    manuscript=manuscript, closed_at__isnull=True
+                ).exists()
+            ):
+                manuscript.current_round += 1
+                opened_round = CorrectionRound.objects.create(
+                    manuscript=manuscript,
+                    round_number=manuscript.current_round,
+                    opened_by_verdict=verdict,
+                    opened_at=now,
+                )
+                event_metadata["round_number"] = opened_round.round_number
 
         manuscript.status = STATUS_BY_DECISION[decision]
         manuscript.lock_version += 1
@@ -243,31 +329,40 @@ def register_verdict(
             actor=editor,
             metadata=event_metadata,
         )
+        audit_details = {
+            "code": manuscript.code,
+            "verdict_id": str(verdict.pk),
+            "decision": decision,
+            "version_number": version.version_number,
+            "evaluation_id": str(evaluation.pk),
+            "round_opened": opened_round.round_number if opened_round else None,
+            "catalog_entry_id": str(catalog_entry.pk) if catalog_entry else None,
+            "departs_from_recommendation": departs,
+        }
+        if correction is not None:
+            audit_details.update(
+                previous_verdict_id=str(previous.pk),
+                previous_decision=previous.decision,
+                correction_id=str(correction.pk),
+            )
         record_audit(
-            ACTION,
+            CORRECTED_ACTION if correction is not None else ACTION,
             manuscript.pk,
             editor,
             context,
             actor_role=Role.Code.EDITOR,
-            details={
-                "code": manuscript.code,
-                "verdict_id": str(verdict.pk),
-                "decision": decision,
-                "version_number": version.version_number,
-                "evaluation_id": str(evaluation.pk),
-                "round_opened": opened_round.round_number if opened_round else None,
-                "catalog_entry_id": str(catalog_entry.pk) if catalog_entry else None,
-                "departs_from_recommendation": departs,
-            },
+            details=audit_details,
         )
+        previous_id = previous.pk if previous is not None else None
         transaction.on_commit(
-            lambda: _announce(manuscript.pk, verdict.pk, decision, editor.pk)
+            lambda: _announce(manuscript.pk, verdict.pk, decision, editor.pk, previous_id)
         )
         return VerdictResult(
             manuscript=manuscript,
             verdict=verdict,
             catalog_entry=catalog_entry,
             opened_round=opened_round,
+            correction=correction,
         )
 
     try:
