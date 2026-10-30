@@ -6,6 +6,7 @@ import { RouterTestingHarness } from '@angular/router/testing';
 import { vi } from 'vitest';
 
 import { routes } from '../../app.routes';
+import { NOTIFICATION_SERVICE_STUB } from '../../core/testing/notification.service.stub';
 import { AuthStore } from '../../core/auth/auth.store';
 import { API_BASE_URL } from '../../core/http/api-base-url.token';
 import { Role } from '../../core/models/role.model';
@@ -77,6 +78,7 @@ describe('Módulo Revisor: integración con las rutas reales', () => {
     TestBed.configureTestingModule({
       providers: [
         provideRouter(routes),
+        NOTIFICATION_SERVICE_STUB,
         provideHttpClient(),
         provideHttpClientTesting(),
         { provide: API_BASE_URL, useValue: '/api/' },

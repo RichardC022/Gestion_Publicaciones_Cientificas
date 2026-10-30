@@ -1,66 +1,70 @@
-# HANDOFF — 27/10/2026
+# HANDOFF — 29/10/2026
 
-**Estado:** Fases 0–4 completas (Fase 4: TSK-58 a TSK-70 ✅) · **siguiente: Fase 5, TSK-71** · rama `dev/jostin-setup`, árbol limpio, 0 commits sin subir.
-**Detalle solo si hace falta:** `.spec-kit/compliance.md` (matriz, §2.5 Revisor, §3 deuda con D-20 a D-22, §4 siguiente paso): ya recoge la Fase 4. Código: `graphify query "<pregunta>"` antes de leer archivos.
+**Estado:** Fases 0–4 completas · Fase 5: **TSK-71 a TSK-83 hechas** (TSK-83 sin commit todavía) · **siguiente: TSK-84** (pruebas de frontend de la Fase 5) y después la Fase 6 (TSK-85 en adelante) · rama `dev/jostin-setup`.
+**Detalle solo si hace falta:** `.spec-kit/compliance.md` (matriz de 57 filas, §2.6 Fase 5, §3 deuda, §4 siguiente paso). Código: `graphify query "<pregunta>"` antes de leer archivos.
 
-## Últimos commits (Fase 4)
+## Últimos commits (Fase 5)
 ```
-5a27a9b TSK 70 bandeja de incidentes confidenciales del Editor        eb3bbce TSK 66 bandeja, detalle y descarga del Revisor
-f3cc4c1 TSK 69 historial del Revisor e integración con rutas reales   df75135 TSK 65 doble ciego E2E, concurrencia, inmutabilidad
-628181f TSK 68 diálogos de conflicto y fuga de identidad              24bee83 TSK 64 · 962329e TSK 63 · 2b05c99 TSK 62
-32d65fd TSK 67 formulario de evaluación                               172cc81 TSK 60+61 · 9a96a14 TSK 59
+f3d47ca TSK 82 diálogo de corrección y veredicto corregido   9a3db07 TSK 81 auditoría global del Administrador
+f1c206e TSK 80 catálogo público (búsqueda, listado, ficha)    d665766 TSK 79 pruebas de ciclo completo
+d2d5f3d TSK 78 el veredicto del Editor consume la corrección  aa05996 TSK 77 autorización administrativa de corrección
+639cabe TSK 75 notificaciones de panel y correo               fd65399 TSK 74 catálogo público (rotulado «TSK 73» por error)
+a7c261e TSK 73 consulta administrativa de auditoría           af289de TSK 72 rol de aplicación sin UPDATE/DELETE en auditoría
+fd87eaf TSK 71 cron de avisos, limpieza e integridad          e686f7b TSK 76 comandos de avisos, limpieza e integridad
 ```
+**Sin commit:** TSK-83 (avisos en el frontend) y esta actualización de `HANDOFF.md`/`compliance.md`.
 
 ## Pruebas (último resultado)
 | Suite | Resultado | Comando |
 |---|---|---|
-| Backend | 1312 ✅ · 8 omitidas · 1 `xfail` (D-10) — corrida completa repetida hoy tras la TSK-70 | `docker compose run --rm --no-deps -v "$PWD/backend:/app" backend sh -c "python -m pip install --quiet --user -r requirements/development.txt; python -m pytest -q -p no:cacheprovider"` (~12 min; añade `tests/reviews` para acotar) |
-| Frontend | 1045 ✅ (57 archivos) · `ng build` OK (solo el aviso NG8113, D-13) | `cd frontend && npx ng test --watch=false` · `npx ng build --configuration production` |
-| Volumen | ✅ (TSK-58, no repetido hoy) | `./scripts/smoke_media_isolation.sh` |
-| Migraciones | sin pendientes (`reviews/0003_incident_report` es la última) | mismo `docker compose run … python manage.py makemigrations --check --dry-run` |
+| Backend | 1580 ✅ · 11 omitidas · 0 `xfail` (antes 1312 · 8 · 1; el `xfail` de D-10 se cerró) — corrida completa del 29/10 | `docker compose run --rm --no-deps -v "$PWD/backend:/app" backend sh -c "python -m pip install --quiet --user -r requirements/development.txt; python -m pytest -q -p no:cacheprovider"` (≈ 42 min; añade una carpeta de `tests/` para acotar) |
+| Frontend | 1282 ✅ (74 archivos) · `ng build --configuration production` OK (solo el aviso NG8113, D-13) | `cd frontend && npx ng test --watch=false` · `npx ng build --configuration production` |
+| Volumen | ✅ (TSK-58, no repetido) | `./scripts/smoke_media_isolation.sh` |
+| Migraciones | sin pendientes (`publications/0009_verdict_correction` y `notifications/0001_initial` son las nuevas de la Fase 5) | `docker compose run --rm --no-deps -v "$PWD/backend:/app" backend python manage.py makemigrations --check --dry-run` |
 
-Docker (tras cambios): `docker compose up -d --build backend web` · apagar: `docker compose stop`.
+Docker (tras cambios): `docker compose up -d --build backend web` · apagar: `docker compose stop`. El `backend` aplica solo `apply_db_privileges` tras cada `migrate` (TSK-72).
 
 ## 🔴 D-01 — credencial publicada (único crítico)
-`credentials.txt` ya no se versiona ni está en el índice, pero **sigue en el historial**: `ad22b2c` está en `origin/dev/jostin-setup`, `origin/develop`, `personal/develop`, `personal/main`. **Rotar esa credencial** (no depende de código). Reescribir el historial exige `push --force` y tu aprobación explícita. No se ha leído su contenido.
+`credentials.txt` ya no se versiona, pero **sigue en el historial**: `ad22b2c` está en `origin/dev/jostin-setup`, `origin/develop`, `personal/develop`, `personal/main`. **Rotar esa credencial** (no depende de código). Reescribir el historial exige `push --force` y tu aprobación explícita. No se ha leído su contenido.
 
-## Qué entregó la Fase 4 (hoy)
-**Backend (TSK-59 a 65)** — `backend/apps/reviews/`, API en `/api/reviewer/**` (`reviewer_urls.py`) y `/api/editor/incidents/**`:
-- **59** `IncidentReport` + `uq_incident_open` + CHECK de resuelto · **60/61** `Assignment.objects.for_reviewer`, serializadores de lista blanca, bandeja y detalle, PDF sanitizado (`410` si no `ACTIVE`, nombre genérico, `X-Accel-Redirect`, auditoría previa → `503` si falla).
-- **62** `GET/PUT …/evaluation/` (ETag = `lock_version`, nace en **1**; el borrador vacío es `"0"`) y `POST …/evaluation/submit/`; corte por `due_at` con el reloj de la BD (`410`), `FINAL` inmutable (trigger `0002`), asignación → `COMPLETED`, auditoría y señal `evaluation_submitted`.
-- **63** `POST …/conflict/` (bloquea la evaluación, no revoca) e historial `GET /api/reviewer/evaluations/[{id}/]` (solo `FINAL`, sin `confidential_comments`, resultado editorial = decisión + fecha).
-- **64** `POST …/identity-leak/` (un `OPEN` por asignación → `409`) y Editor `GET incidents/?status=` + `POST incidents/{id}/resolve/` (una sola vez; `REQUEST_ANONYMIZED_VERSION` abre ronda sin veredicto y revoca; `REASSIGN` revoca; `DISMISS` solo cierra).
-- **65** +40 pruebas: ciclo completo con PDFs reales y recorrido recursivo del grafo del PDF (sin `/Info`, XMP, `/EmbeddedFiles`, JS, `/OpenAction`, `/AA`, `/Launch`), señales solo con identificadores, 404 uniforme en 8 endpoints, concurrencia con dos conexiones (estable en 5 corridas), `FINAL` intocable por API, trigger y SQL crudo.
+## Qué entregó la Fase 5
+**DevOps** — **71** `scripts/cron/gpc.cron` programa, además de respaldo y expiración, `send_pending_notifications` (cada minuto), `cleanup_idempotency_keys` (03:00) y `verify_integrity` (día 1, 03:30), cada uno con su `flock` y su log. **72** `apply_db_privileges` (`apps/audit/privileges.py`): el rol de la aplicación no tiene `UPDATE`/`DELETE` sobre la auditoría; se aplica tras cada `migrate`; el rol administrador se usa solo con `DB_USE_ADMIN=1` (README §3.6.1).
 
-**Frontend (TSK-66 a 70)** — `features/reviewer/**`, `ReviewerService`, `reviewer.model.ts`:
-- **66** bandeja (página en URL), detalle anonimizado, descarga del PDF **bajo demanda** (cada lectura se audita; se cachea en memoria), nombre `manuscript-<código>-v<n>.pdf` ignorando `Content-Disposition`, `deadline-countdown` (cuenta contra `due_at` con el desfase de la cabecera `Date`; emite `expired`).
-- **67** formulario: 5 puntajes, recomendación, comentarios, declaración «sin conflicto» (solo en pantalla, no se persiste); guardar borrador / enviar (guarda primero si hay cambios; confirmación); `If-Match`; `409` versión → «conservar mi texto» / «usar lo guardado»; `410` y `409` de estado → solo lectura **con el texto a la vista**; `UnsavedChangesAware`.
-- **68** `conflict-dialog` e `identity-leak-dialog` autónomos (llaman al servicio, no dan nada por enviado hasta el `2xx`); en el formulario ambos, en el detalle solo la fuga.
-- **69** `evaluation-history` (solo lectura, detalle en la misma fila), `reviewer-module.integration.spec.ts` (rutas reales, roles, 404 ajeno, vencimiento, 409/410, guard de cambios) y `no-authorship.spec.ts` (lee el código fuente: ningún archivo del Revisor referencia campos de autoría ni del Editor).
-- **70** `incident-list` del Editor: filtro `Abiertos` (def.) / `Resueltos` / `Todos` y `page` en la URL; tres resoluciones con efectos explicados y confirmación; `409` → mensaje y relectura.
-- Refactors compartidos: `core/http/blob-download.ts` (`filenameFrom`, error en `Blob`; `manuscript.service` los reexporta) y `toPage` en `core/http/query-params.ts` (`expired-assignments` lo reexporta); `status-badge` con `ON_TIME`/`OVERDUE`/`EVALUATED`.
+**Backend**
+- **73** `GET /api/admin/audit/` y `{id}/` (`apps/audit/`): solo `ADMIN`, filtros por fecha, actor, acción, manuscrito y resultado; cada consulta se audita (`AUDIT_QUERIED`, `AUDIT_DETAIL_VIEWED`); el detalle de un evento de veredicto lleva `can_authorize_correction`.
+- **74** `GET /api/catalog/`, `{code}/`, `{code}/document/` (`catalog_*.py`): públicos, solo `ACCEPTED` y activos; `404` si no es público, `410` si el PDF se retiró; entrega por `X-Accel-Redirect` a `/_catalog/` y descarga auditada. **La baja lógica ahora retira el artículo del catálogo** (cierra el `xfail` de D-10).
+- **75** `apps/notifications/`: receptores de las **doce** señales (once anteriores + `verdict_correction_authorized`); un aviso por destinatario y evento (`uq_notification_recipient_event`); `payloads.py` es una lista blanca de siete campos de texto (la no fuga es estructural); `GET /api/notifications/` (`?read=true|false`, `unread_count`), `PATCH …/{id}/read/`, `POST …/read-all/`; el aviso ajeno responde `404`. El correo es un gemelo `EMAIL` que entrega `send_pending_notifications` con reintentos; el panel no depende del SMTP.
+- **76** los tres comandos de gestión; `verify_integrity` solo lee y sale distinto de cero si hay discrepancias.
+- **77** `VerdictCorrection` + `POST /api/admin/verdicts/{id}/authorize-correction/` (motivo 10–1000, `Idempotency-Key`, `409` si el veredicto no es el último, hay versión posterior o ya hay una autorización activa). **78** el veredicto del Editor consume la autorización (deriva `previous_verdict`, ignora cualquier valor del cliente), registra `VERDICT_CORRECTED` y actualiza estado, catálogo y ronda en una transacción. **79** pruebas de ciclo completo (`tests/phase5.py`, `test_phase5_*`); corrigió que la auditoría normalice la IP antes de encadenar el hash.
+
+**Frontend**
+- **80** `/catalog` y `/catalog/:code` sin guard ni JWT, filtros combinados, paginación en la URL, ficha con visor de PDF; sin evaluaciones, revisores ni historial.
+- **81** `/app/admin/audit` (tabla paginada, filtros en la URL) y `/audit/:id` (hashes, datos de lista blanca, sin PII).
+- **82** `features/admin/verdict-correction-dialog/` (motivo 10–1000, avisa que la decisión anterior se conserva); el botón «Habilitar corrección» aparece solo si `can_authorize_correction` es `true` y desaparece al confirmar. `VerdictFormComponent` recibe `correction` (`SubmissionDetail.correction_authorization`): muestra el veredicto que sustituiría, nace vacío, nunca envía `previous_verdict_id` y el historial marca ambas decisiones.
+- **83** (sin commit) `core/models/notification.model.ts`, `core/services/notification.service.ts` (guarda el contador de no leídos en una señal), `features/notifications/notification-item/` y `notification-list/` (filtro Todos/No leídos y página en la URL, marcar uno o todos, el enlace solo se activa si es `/app/…`), y `ShellComponent` pasa el contador real a la campana. Para las pruebas que montan el shell real existe `core/testing/notification.service.stub.ts`.
 
 ## Pendiente / decisiones abiertas
-- **`compliance.md` actualizado con la Fase 4** (44 filas, ≈ 94,8 % global; nuevas deudas D-20 `resolve_assignment` latente, D-21 descarga del Revisor sin probar a través de Nginx, D-22 precisión del reloj del contador). Backend re-ejecutado hoy: 1312 ✅ · 8 omitidas · 1 `xfail`; migraciones sin cambios.
-- **Notificaciones (TSK-75):** `notifications` está vacía; las señales `evaluation_submitted`, `reviewer_conflict_declared`, `incident_reported`, `incident_resolved` ya existen. Al llegar la TSK-75 añadir la comprobación de no fuga **sobre la notificación construida** (plan §2.9 punto 3); hoy solo se prueba el contrato del payload.
-- **Reloj del contador (D-22):** el desfase sale de la cabecera `Date` (precisión de segundos). Si se quiere exactitud absoluta, añadir `server_now` al detalle del Revisor.
-- **D-11:** no se verificó si la sección `reviewer` del panel se llena con datos reales; no se tocó.
-- Latente (D-20): `resolve_assignment` (`reviews/permissions.py`) trata como asignación cualquier objeto con `reviewer_id` (p. ej. `Evaluation`); no usar `IsAssignedReviewer` sobre evaluaciones.
-
-## Siguiente: Fase 5 (catálogo, auditoría y avisos)
-Orden de `tasks.md`: DevOps **71** cron de avisos/limpieza/integridad, **72** privilegios de BD sobre auditoría · Backend **73** consulta de auditoría, **74** catálogo público, **75** notificaciones, **76** comandos `send_pending_notifications`/`cleanup_idempotency_keys`/`verify_integrity`, **77–79** corrección de veredicto y pruebas · Frontend **80–84** · DevOps **85–86**. Ojo: el cron de la 71 invoca comandos que crea la 76 (D-09, `verify_integrity` aún no existe); valorar hacer 76 antes o programarlos sin habilitar.
+- **TSK-84** consolida pruebas que ya existen por tarea (catálogo, filtros de auditoría, diálogo de corrección, veredicto con autorización, avisos con `403/404/409/410`); revisar qué falta contra sus tres criterios antes de escribir de nuevo. Nombra Jasmine/Karma pero el proyecto usa Vitest (D-12).
+- **Contador de la campana (D-23):** se lee al entrar al área autenticada y se ajusta al marcar; no hay sondeo, así que un aviso que llega mientras se navega no aparece hasta recargar o abrir la lista.
+- **Avisos del Autor/Revisor** nunca llevan identidades cruzadas por construcción (`payloads.py`); `test_notifications.py` y `test_phase5_notifications.py` lo prueban sobre la notificación construida (cierra el pendiente de la Fase 4).
+- **D-11:** las cuatro secciones del panel siguen devolviendo `{}`.
+- **D-21:** la descarga real del Revisor y del catálogo a través de Nginx sigue sin probarse en navegador; el humo del volumen solo prueba el control positivo del catálogo.
+- Latente (D-20): `resolve_assignment` (`reviews/permissions.py`).
 
 ## Trampas ya conocidas
 - `docker compose run` usa el código de la **imagen**: monta `-v "$PWD/backend:/app"`; `makemigrations` igual. Nombres de índice ≤ 30 caracteres. `ruff` no está (D-16).
-- `Now()` en PostgreSQL es `STATEMENT_TIMESTAMP()` (avanza dentro de una transacción): para probar el borde de `due_at` se congela `evaluations.Now`. Baja lógica = `is_active=False` + `withdrawn_at`. El helper `submitted()` de `test_editor_api` no crea `StatusEvent`.
-- Angular: `http.expectOne('/url')` compara con los query params → `expectOne((r) => r.url === '/url')`. Varios `<dialog>`: acota por componente (`app-confirm-dialog dialog`). `RouterTestingHarness.create()` solo una vez por prueba (para varias rutas usa `it.each`). `forkJoin` cancela la petición hermana ante el primer error (no la vuelvas a esperar).
-- Un `effect` que **lee** la señal que él mismo escribe se reinicia en cada cambio (`deadline-countdown`): usa `untracked`.
+- `Now()` en PostgreSQL es `STATEMENT_TIMESTAMP()`: para probar el borde de `due_at` se congela `evaluations.Now`. Baja lógica = `is_active=False` + `withdrawn_at`.
+- Angular: `http.expectOne('/url')` compara con los query params → `expectOne((r) => r.url === '/url')`. Varios `<dialog>`: acota por componente. `RouterTestingHarness.create()` solo una vez por prueba. `forkJoin` cancela la petición hermana ante el primer error.
+- Un `effect` que **lee** la señal que él mismo escribe se reinicia en cada cambio: usa `untracked`.
+- **Si un componente dispara una petición al crearse y existe un spec que monta `routes` reales**, esas pruebas fallan con «Expected no open requests» (y los siguientes archivos del mismo hilo arrastran «Cannot configure the test module…»): proporciona el stub o responde la petición.
+- Un enlace de prueba que navega a una ruta que no existe en `provideRouter([...])` lanza `NG04002` asíncrono y contamina las pruebas siguientes: registra la ruta destino.
+- En diálogos con `[ngModel]` el valor y el `disabled` se aplican de forma asíncrona: espera `fixture.whenStable()` antes de afirmar.
 - Respuestas de error: `userMessage` sale del **código** (`api-error.model.ts`); para el motivo concreto de un `409` usa `error.message`.
-- **No** ejecutes `prettier --write` sobre carpetas enteras (reformatea archivos ajenos): solo los archivos tocados. `editor.model.ts` y `expired-assignments.component.ts` ya incumplían Prettier antes de la Fase 4.
+- **No** ejecutes `prettier --write` sobre carpetas ni con globs amplios (reformatea archivos ajenos): comprueba antes con `git show HEAD:<ruta> | npx prettier --stdin-filepath <ruta> --check` y formatea solo los que estaban limpios. Ya incumplían Prettier: `editor.model.ts`, `expired-assignments.component.ts`, `verdict-form.component.ts` (+spec), `submission-detail.component.ts` (+spec), `shell.component.spec.ts`, `audit.service.spec.ts`, `audit-log-detail.component.spec.ts`.
 - Pruebas que leen código fuente (`no-authorship.spec.ts`) usan `node:fs` por import dinámico (no hay `@types/node`).
 
 ## Reglas de trabajo
 Constitución: código en inglés; comentarios, docs y commits en español; SOLID/KISS/DRY/YAGNI; doble ciego estricto. **Sin commits ni push salvo orden** (entregar resultados de pruebas + sugerencia de commit + comandos Docker si aplican). Antes de explorar código: `graphify query`; al terminar: `graphify update .` y actualizar `compliance.md` solo si cambia el estado de la deuda.
 
 ## Deuda abierta (una línea)
-D-02 TLS · D-03 `adminer` publicado en `0.0.0.0:8888` · D-09 `verify_integrity` inexistente (TSK-76) · D-10 baja lógica no retira el catálogo y señales sin receptores · D-11 panel con 4 secciones `{}` · D-17 sin catálogo público (TSK-74) · D-07/D-16/D-18 CI, linter, logrotate · D-04/D-12/D-13/D-14/D-15 menores · D-20/D-21/D-22 (Fase 4) bajas.
+D-02 TLS · D-03 `db` (5432) y `adminer` (8888) publicados · D-11 panel con 4 secciones `{}` · D-07/D-16/D-18 CI (tolera «sin pruebas», sin pruebas del frontend), linter, logrotate (ahora 5 logs de cron) · D-04/D-12/D-13/D-14/D-15 menores · D-20/D-21/D-22/D-23 bajas. **Resueltas en la Fase 5:** D-09 (`verify_integrity`), D-10 (retirada del catálogo y receptores de las señales), D-17 (catálogo público).
