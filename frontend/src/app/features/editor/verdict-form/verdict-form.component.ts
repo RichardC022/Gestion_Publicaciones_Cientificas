@@ -6,7 +6,9 @@ import { BehaviorSubject, catchError, combineLatest, forkJoin, map, of, switchMa
 
 import { newIdempotencyKey } from '../../../core/http/idempotency-key';
 import { ApiError, toApiError } from '../../../core/models/api-error.model';
+import { DECISION_LABELS } from '../../../core/models/audit.model';
 import {
+  CorrectionAuthorization,
   EditorEvaluation,
   RECOMMENDATION_LABELS,
   Recommendation,
@@ -29,7 +31,12 @@ export const VERDICT_TEXT_MAX_LENGTH = 5000;
 const INSTITUTIONAL_OFFSET = '-0500';
 
 /** Códigos de conflicto tras los cuales lo que el Editor ve ya no es lo vigente. */
-const STALE_CODES = ['STATE_CONFLICT', 'VERSION_CONFLICT', 'VERDICT_CONFLICT'];
+const STALE_CODES = [
+  'STATE_CONFLICT',
+  'VERSION_CONFLICT',
+  'VERDICT_CONFLICT',
+  'CORRECTION_NOT_AUTHORIZED',
+];
 
 let nextId = 0;
 
@@ -127,6 +134,13 @@ export function verdictFormErrors(
  * * Los veredictos registrados se listan **solo en lectura**: no hay forma
  *   de editarlos ni de sobrescribirlos desde la interfaz, y con la versión
  *   ya juzgada el formulario desaparece.
+ * * Con una autorización de corrección activa (CA-HU-13-12) muestra el
+ *   veredicto que sustituiría, con su fecha, y habilita el formulario aunque
+ *   la versión ya esté juzgada. El formulario nace vacío: el veredicto
+ *   original no se precarga ni se modifica, y la nueva decisión se suma al
+ *   historial. Al registrarla la autorización se consume y la acción
+ *   desaparece. El cliente nunca envía el veredicto anterior: el servidor lo
+ *   deriva de la autorización.
  * * Envía `If-Match` con el `ETag` del manuscrito e `Idempotency-Key`: un
  *   reintento tras un corte de red devuelve lo ya registrado, y la clave
  *   cambia si el Editor modifica el contenido.
@@ -191,6 +205,25 @@ export function verdictFormErrors(
             </p>
           }
 
+          @if (activeCorrection(); as authorization) {
+            <section class="verdict__correction" role="status" aria-label="Corrección autorizada">
+              <h3>Corrección autorizada</h3>
+              <p>
+                El Administrador habilitó una nueva decisión el
+                {{ authorization.authorized_at | date: 'dd/MM/yyyy HH:mm' : offset }}.
+                @if (originalVerdict(); as original) {
+                  Sustituirá a la decisión
+                  <app-status-badge [status]="original.decision" />
+                  registrada el {{ original.created_at | date: 'dd/MM/yyyy HH:mm' : offset }}.
+                }
+              </p>
+              <p class="verdict__hint">
+                La decisión anterior se conserva en el historial; la nueva se suma a ella. Solo se
+                puede registrar una vez.
+              </p>
+            </section>
+          }
+
           @if (verdicts().length > 0) {
             <section class="verdict__history" [attr.aria-labelledby]="historyId">
               <h3 [id]="historyId">Veredictos registrados</h3>
@@ -206,7 +239,9 @@ export function verdictFormErrors(
                     <app-status-badge [status]="verdict.decision" />
                     versión v{{ verdict.version_number }} · {{ verdict.editor.full_name }}
                     @if (verdict.previous_verdict) {
-                      <span class="verdict__hint">(sustituye a un veredicto anterior)</span>
+                      <span class="verdict__hint">(decisión corregida: sustituye a la anterior)</span>
+                    } @else if (superseded().has(verdict.id)) {
+                      <span class="verdict__hint">(sustituida por una decisión posterior)</span>
                     }
                     @if (verdict.justification) {
                       <p class="verdict__prose">Justificación: {{ verdict.justification }}</p>
@@ -306,15 +341,21 @@ export function verdictFormErrors(
               }
 
               <button type="submit" class="btn btn--primary" [disabled]="busy()">
-                {{ busy() ? 'Registrando…' : 'Registrar veredicto' }}
+                {{
+                  busy()
+                    ? 'Registrando…'
+                    : activeCorrection()
+                      ? 'Registrar decisión corregida'
+                      : 'Registrar veredicto'
+                }}
               </button>
             </form>
           }
 
           <app-confirm-dialog
-            title="Registrar veredicto"
+            [title]="activeCorrection() ? 'Registrar decisión corregida' : 'Registrar veredicto'"
             [message]="confirmMessage()"
-            confirmLabel="Registrar veredicto"
+            [confirmLabel]="activeCorrection() ? 'Registrar decisión corregida' : 'Registrar veredicto'"
             [destructive]="decision() === 'REJECTED'"
             [open]="confirmOpen()"
             (confirmed)="send()"
@@ -364,6 +405,16 @@ export function verdictFormErrors(
       background: var(--gpc-primary-50);
       border: 1px solid var(--gpc-primary-700);
       border-radius: var(--gpc-radius);
+    }
+    .verdict__correction {
+      margin: 0 0 1rem;
+      padding: 0.75rem 1rem;
+      background: var(--gpc-warning-100);
+      border: 1px solid var(--gpc-warning-800);
+      border-radius: var(--gpc-radius);
+    }
+    .verdict__correction p {
+      margin: 0.25rem 0;
     }
     .verdict__history ol {
       margin: 0;
@@ -460,6 +511,9 @@ export class VerdictFormComponent {
   /** El manuscrito está en revisión y activo: solo entonces se puede registrar. */
   readonly canRegister = input(false);
 
+  /** Autorización administrativa activa para decidir de nuevo, si la hay (CA-HU-13-12). */
+  readonly correction = input<CorrectionAuthorization | null>(null);
+
   /** Se dispara cuando el veredicto quedó registrado. */
   readonly registered = output<VerdictRegistered>();
 
@@ -517,13 +571,37 @@ export class VerdictFormComponent {
     ];
   });
 
+  /**
+   * La autorización que aún se puede usar: deja de serlo en cuanto el historial
+   * contiene la decisión que sustituye al veredicto autorizado, aunque el
+   * contenedor todavía no haya releído el detalle.
+   */
+  protected readonly activeCorrection = computed(() => {
+    const authorization = this.correction();
+    const consumed = this.verdicts().some((v) => v.previous_verdict === authorization?.verdict_id);
+    return authorization !== null && !consumed ? authorization : null;
+  });
+
+  /** El veredicto que la corrección sustituiría. */
+  protected readonly originalVerdict = computed(
+    () => this.verdicts().find((v) => v.id === this.activeCorrection()?.verdict_id) ?? null,
+  );
+
+  /** Veredictos ya sustituidos por una decisión corregida (siguen en el historial, solo lectura). */
+  protected readonly superseded = computed(
+    () => new Set(this.verdicts().flatMap((v) => (v.previous_verdict ? [v.previous_verdict] : []))),
+  );
+
   /** Ya existe el veredicto normal de la versión vigente: no se vuelve a juzgar. */
   private readonly judged = computed(() =>
     this.verdicts().some((v) => v.version_number === this.version() && v.previous_verdict === null),
   );
 
   protected readonly showForm = computed(
-    () => this.canRegister() && this.evaluation() !== null && !this.judged(),
+    () =>
+      this.canRegister() &&
+      this.evaluation() !== null &&
+      (this.activeCorrection() !== null || !this.judged()),
   );
 
   protected readonly departs = computed(() => {
@@ -554,7 +632,11 @@ export class VerdictFormComponent {
   );
 
   protected readonly confirmMessage = computed(() => {
-    const base = 'El veredicto no se puede editar ni sobrescribir una vez registrado. ';
+    const original = this.originalVerdict();
+    const base = original
+      ? `Sustituirá a la decisión «${DECISION_LABELS[original.decision]}», que se conserva en el historial. ` +
+        'La nueva decisión no se puede editar ni sobrescribir una vez registrada. '
+      : 'El veredicto no se puede editar ni sobrescribir una vez registrado. ';
     switch (this.decision()) {
       case 'ACCEPTED':
         return `${base}El manuscrito pasará a «Aceptado» y se publicará de inmediato en el catálogo público.`;

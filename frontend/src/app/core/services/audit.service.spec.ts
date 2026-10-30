@@ -100,4 +100,55 @@ describe('AuditService', () => {
 
     expect(error?.status).toBe(404);
   });
+
+  describe('authorizeCorrection', () => {
+    const authorized = {
+      id: 'co-1',
+      verdict_id: 'vd-1',
+      manuscript_code: 'GPC-2026-000001',
+      decision: 'ACCEPTED',
+      decided_at: '2026-10-22T15:00:00Z',
+      reason: 'Error de captura en la decisión.',
+      authorized_at: '2026-10-23T15:00:00Z',
+      is_active: true,
+    };
+
+    it('envía solo el motivo con la clave de idempotencia', () => {
+      let result: unknown;
+      service
+        .authorizeCorrection('vd-1', 'Error de captura en la decisión.', 'key-1')
+        .subscribe((value) => (result = value));
+
+      const request = http.expectOne('/api/admin/verdicts/vd-1/authorize-correction/');
+      expect(request.request.method).toBe('POST');
+      expect(request.request.headers.get('Idempotency-Key')).toBe('key-1');
+      expect(request.request.body).toEqual({ reason: 'Error de captura en la decisión.' });
+      request.flush(authorized, { status: 201, statusText: 'Created' });
+      expect(result).toEqual(authorized);
+    });
+
+    it('codifica el identificador en la ruta', () => {
+      service.authorizeCorrection('a/b', 'Motivo suficiente.', 'key-1').subscribe();
+
+      http.expectOne('/api/admin/verdicts/a%2Fb/authorize-correction/').flush(authorized);
+    });
+
+    it.each([
+      [403, 'FORBIDDEN'],
+      [404, 'NOT_FOUND'],
+      [409, 'CORRECTION_NOT_AUTHORIZED'],
+    ])('normaliza el error %i', (status, code) => {
+      let failure: ApiError | undefined;
+      service
+        .authorizeCorrection('vd-1', 'Motivo suficiente.', 'key-1')
+        .subscribe({ error: (error: ApiError) => (failure = error) });
+
+      http
+        .expectOne('/api/admin/verdicts/vd-1/authorize-correction/')
+        .flush({ error: { code, message: 'Rechazado.' } }, { status, statusText: 'Error' });
+
+      expect(failure?.status).toBe(status);
+      expect(failure?.code).toBe(code);
+    });
+  });
 });

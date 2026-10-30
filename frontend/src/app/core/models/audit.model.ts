@@ -49,6 +49,22 @@ export interface AuditEventDetail extends AuditEvent {
   verdict?: AuditVerdict;
 }
 
+/** Máximos del motivo con que el Administrador habilita una corrección (el servidor aplica los mismos). */
+export const CORRECTION_REASON_MIN_LENGTH = 10;
+export const CORRECTION_REASON_MAX_LENGTH = 1000;
+
+/** Respuesta de `POST /api/admin/verdicts/{id}/authorize-correction/`: sin autores, evaluaciones ni PDF. */
+export interface CorrectionAuthorized {
+  id: string;
+  verdict_id: string;
+  manuscript_code: string;
+  decision: string;
+  decided_at: string;
+  reason: string;
+  authorized_at: string;
+  is_active: boolean;
+}
+
 /** Filtros del listado; todos opcionales y combinables. */
 export interface AuditFilters {
   date_from?: string;

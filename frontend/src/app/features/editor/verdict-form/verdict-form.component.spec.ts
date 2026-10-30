@@ -5,13 +5,19 @@ import { TestBed } from '@angular/core/testing';
 
 import { API_BASE_URL } from '../../../core/http/api-base-url.token';
 import {
+  CorrectionAuthorization,
   EditorEvaluation,
   Recommendation,
   Verdict,
   VerdictRegistered,
 } from '../../../core/models/editor.model';
 import { errorEnvelope } from '../../author/testing/manuscript.fixtures';
-import { buildEvaluation, buildVerdict, buildVerdictResult } from '../testing/editor.fixtures';
+import {
+  buildCorrectionAuthorization,
+  buildEvaluation,
+  buildVerdict,
+  buildVerdictResult,
+} from '../testing/editor.fixtures';
 import {
   VerdictFormComponent,
   justificationRequired,
@@ -25,6 +31,7 @@ import {
     [version]="version()"
     [etag]="etag()"
     [canRegister]="canRegister()"
+    [correction]="correction()"
     (registered)="registered.push($event)"
     (stale)="staleCount = staleCount + 1"
   />`,
@@ -33,6 +40,7 @@ class HostComponent {
   readonly version = signal(1);
   readonly etag = signal<string | null>('"4"');
   readonly canRegister = signal(true);
+  readonly correction = signal<CorrectionAuthorization | null>(null);
   readonly registered: VerdictRegistered[] = [];
   staleCount = 0;
 }
@@ -255,8 +263,25 @@ describe('VerdictFormComponent', () => {
       });
 
       expect(text(element.querySelector('.verdict__history'))).toContain(
-        '(sustituye a un veredicto anterior)',
+        '(decisión corregida: sustituye a la anterior)',
       );
+    });
+
+    it('el veredicto sustituido sigue en el historial, marcado y de solo lectura', async () => {
+      const { element } = await open({
+        verdicts: [
+          buildVerdict({ id: 'vd-1', decision: 'ACCEPTED' }),
+          buildVerdict({ id: 'vd-2', previous_verdict: 'vd-1', decision: 'REJECTED', justification: 'Revisado.' }),
+        ],
+      });
+
+      const items = Array.from(element.querySelectorAll('.verdict__history li')).map((li) => text(li));
+      expect(items.length).toBe(2);
+      expect(items[0]).toContain('Aceptado');
+      expect(items[0]).toContain('(sustituida por una decisión posterior)');
+      expect(items[1]).toContain('Rechazado');
+      expect(items[1]).toContain('(decisión corregida: sustituye a la anterior)');
+      expect(element.querySelector('.verdict__history')!.querySelector('button, input, textarea')).toBeNull();
     });
 
     it('sin permiso para registrar (no está en revisión) solo se lee', async () => {
@@ -264,6 +289,167 @@ describe('VerdictFormComponent', () => {
 
       expect(element.querySelector('.verdict__evaluation')).not.toBeNull();
       expect(element.querySelector('form')).toBeNull();
+    });
+  });
+
+  describe('corrección autorizada (CA-HU-13-12)', () => {
+    const JUDGED = [buildVerdict({ id: 'vd-1', decision: 'ACCEPTED' })];
+    const authorized = (host: HostComponent) => {
+      host.correction.set(buildCorrectionAuthorization({ verdict_id: 'vd-1' }));
+      host.etag.set('"6"');
+    };
+    const sendCorrection = async (element: HTMLElement, settle: () => Promise<void>) => {
+      await choose(element, 'Rechazado', settle);
+      await write(element, 'textarea[name="justification"]', ' Error en la primera decisión. ', settle);
+      submitButton(element).click();
+      await settle();
+      (Array.from(confirmDialog(element).querySelectorAll('button')).find(
+        (b) => text(b) === 'Registrar decisión corregida',
+      ) as HTMLButtonElement).click();
+      await settle();
+    };
+
+    it('con la versión ya juzgada y una autorización activa habilita el formulario', async () => {
+      const { element } = await open({ verdicts: JUDGED }, authorized);
+
+      expect(element.querySelector('form')).not.toBeNull();
+      expect(text(submitButton(element))).toBe('Registrar decisión corregida');
+    });
+
+    it('muestra la autorización con la decisión y la fecha originales y avisa que se conservan', async () => {
+      const { element } = await open({ verdicts: JUDGED }, authorized);
+
+      const banner = text(element.querySelector('.verdict__correction'));
+      expect(banner).toContain('Corrección autorizada');
+      // 15:00 UTC en la zona institucional (UTC-5) son las 10:00.
+      expect(banner).toContain('10/11/2026 10:00');
+      expect(banner).toContain('Sustituirá a la decisión Aceptado');
+      expect(banner).toContain('06/11/2026 10:00');
+      expect(banner).toContain('La decisión anterior se conserva en el historial');
+    });
+
+    it('el formulario nace vacío: no precarga el veredicto original', async () => {
+      const original = buildVerdict({
+        id: 'vd-1',
+        decision: 'REQUIRES_CORRECTIONS',
+        observations: 'Ampliar el muestreo.',
+        justification: 'Texto original.',
+      });
+      const { element } = await open({ verdicts: [original] }, authorized);
+
+      const checked = element.querySelectorAll('.verdict__option input:checked');
+      expect(checked.length).toBe(0);
+      expect(justification(element)).toBeNull();
+      expect(observations(element)).toBeNull();
+      expect(element.querySelector('form')!.textContent).not.toContain('Texto original.');
+      expect(element.querySelector('form')!.textContent).not.toContain('Ampliar el muestreo.');
+    });
+
+    it('el veredicto original no se puede editar desde ninguna parte', async () => {
+      const { element } = await open({ verdicts: JUDGED }, authorized);
+
+      const history = element.querySelector('.verdict__history') as HTMLElement;
+      expect(history.querySelector('button, input, textarea, select, a')).toBeNull();
+    });
+
+    it('sin autorización activa la versión juzgada sigue sin formulario ni aviso', async () => {
+      const { element } = await open({ verdicts: JUDGED });
+
+      expect(element.querySelector('form')).toBeNull();
+      expect(element.querySelector('.verdict__correction')).toBeNull();
+    });
+
+    it('sin permiso para registrar (p. ej. manuscrito dado de baja) no hay formulario', async () => {
+      const { element } = await open({ verdicts: JUDGED }, (host) => {
+        authorized(host);
+        host.canRegister.set(false);
+      });
+
+      expect(element.querySelector('form')).toBeNull();
+    });
+
+    it('la confirmación explica que sustituye a la decisión anterior y que ésta se conserva', async () => {
+      const { element, settle } = await open({ verdicts: JUDGED }, authorized);
+      await choose(element, 'Rechazado', settle);
+      await write(element, 'textarea[name="justification"]', 'Motivo.', settle);
+
+      submitButton(element).click();
+      await settle();
+
+      const dialog = text(confirmDialog(element));
+      expect(dialog).toContain('Sustituirá a la decisión «Aceptado»');
+      expect(dialog).toContain('se conserva en el historial');
+      http.expectNone((r) => r.method === 'POST');
+    });
+
+    it('las mismas reglas aplican: rechazar exige la justificación', async () => {
+      const { element, settle } = await open({ verdicts: JUDGED }, authorized);
+      await choose(element, 'Rechazado', settle);
+
+      submitButton(element).click();
+      await settle();
+
+      expect(text(element.querySelector('.verdict__error'))).toContain('Indique la justificación');
+      expect(confirmDialog(element).open).toBe(false);
+    });
+
+    it('envía el mismo contrato de siempre, sin el veredicto anterior (lo deriva el servidor)', async () => {
+      const { element, settle } = await open({ verdicts: JUDGED }, authorized);
+
+      await sendCorrection(element, settle);
+
+      const request = verdictPost();
+      expect(request.request.headers.get('If-Match')).toBe('"6"');
+      expect(request.request.body).toEqual({
+        decision: 'REJECTED',
+        justification: 'Error en la primera decisión.',
+        observations: null,
+      });
+      request.flush(buildVerdictResult(), { status: 201, statusText: 'Created' });
+    });
+
+    it('al registrar, la autorización se consume: la acción desaparece y el historial muestra ambas', async () => {
+      const { element, host, settle } = await open({ verdicts: JUDGED }, authorized);
+      await sendCorrection(element, settle);
+      const original = JUDGED[0];
+      const corrected = buildVerdict({
+        id: 'vd-2',
+        previous_verdict: 'vd-1',
+        decision: 'REJECTED',
+        justification: 'Error en la primera decisión.',
+      });
+
+      verdictPost().flush(
+        buildVerdictResult({ verdict: corrected, history: [original, corrected], catalog_entry: null }),
+        { status: 201, statusText: 'Created', headers: { ETag: '"7"' } },
+      );
+      await settle();
+
+      // Aun sin que el contenedor relea el detalle (la autorización sigue en el input).
+      expect(host.correction()).not.toBeNull();
+      expect(element.querySelector('form')).toBeNull();
+      expect(element.querySelector('.verdict__correction')).toBeNull();
+      const items = Array.from(element.querySelectorAll('.verdict__history li')).map((li) => text(li));
+      expect(items.length).toBe(2);
+      expect(items[0]).toContain('sustituida por una decisión posterior');
+      expect(items[1]).toContain('decisión corregida');
+      expect(host.registered.length).toBe(1);
+    });
+
+    it('si la autorización ya no es válida (409) relee los datos y pide releer el detalle', async () => {
+      const { element, host, settle } = await open({ verdicts: JUDGED }, authorized);
+      await sendCorrection(element, settle);
+
+      verdictPost().flush(
+        errorEnvelope('CORRECTION_NOT_AUTHORIZED', 'El manuscrito ya tiene una versión posterior.'),
+        { status: 409, statusText: 'Conflict' },
+      );
+      await settle();
+
+      expect(host.staleCount).toBe(1);
+      http.expectOne((r) => r.url === EVALUATIONS).flush(page([buildEvaluation()]));
+      http.expectOne((r) => r.method === 'GET' && r.url === VERDICTS).flush(page(JUDGED));
+      await settle();
     });
   });
 

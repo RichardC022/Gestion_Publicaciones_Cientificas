@@ -5,7 +5,12 @@ import { Observable, catchError, throwError } from 'rxjs';
 import { API_BASE_URL } from '../http/api-base-url.token';
 import { toHttpParams } from '../http/query-params';
 import { toApiError } from '../models/api-error.model';
-import { AuditEvent, AuditEventDetail, AuditFilters } from '../models/audit.model';
+import {
+  AuditEvent,
+  AuditEventDetail,
+  AuditFilters,
+  CorrectionAuthorized,
+} from '../models/audit.model';
 import { Paginated } from '../models/paginated.model';
 
 /**
@@ -34,6 +39,26 @@ export class AuditService {
           page_size: pageSize,
         }),
       })
+      .pipe(catchError((error) => throwError(() => toApiError(error))));
+  }
+
+  /**
+   * Habilita que el Editor decida de nuevo sobre un veredicto
+   * (`POST /api/admin/verdicts/{id}/authorize-correction/`). El veredicto
+   * original no se toca. `idempotencyKey` identifica esta intención: un
+   * reintento con la misma clave devuelve lo ya registrado.
+   */
+  authorizeCorrection(
+    verdictId: string,
+    reason: string,
+    idempotencyKey: string,
+  ): Observable<CorrectionAuthorized> {
+    return this.http
+      .post<CorrectionAuthorized>(
+        `${this.baseUrl}admin/verdicts/${encodeURIComponent(verdictId)}/authorize-correction/`,
+        { reason },
+        { headers: { 'Idempotency-Key': idempotencyKey } },
+      )
       .pipe(catchError((error) => throwError(() => toApiError(error))));
   }
 

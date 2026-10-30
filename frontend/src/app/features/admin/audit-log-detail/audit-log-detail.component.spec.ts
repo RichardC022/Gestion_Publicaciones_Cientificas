@@ -199,13 +199,204 @@ describe('AuditLogDetailComponent', () => {
       expect(text(section)).toContain('22/10/2026 10:00');
     });
 
-    it('al pulsarla no envía nada al servidor', async () => {
-      const { element, settle } = await render(buildEventDetail({ can_authorize_correction: true }));
+    describe('al habilitarla', () => {
+      const VERDICT_EVENT = buildEventDetail({
+        can_authorize_correction: true,
+        verdict: {
+          id: 'vd-1',
+          manuscript_code: 'GPC-2026-000001',
+          decision: 'ACCEPTED',
+          decided_at: '2026-10-22T15:00:00Z',
+        },
+      });
+      const POST = '/api/admin/verdicts/vd-1/authorize-correction/';
 
-      correctionButton(element)!.click();
-      await settle();
+      const dialog = (element: HTMLElement) =>
+        element.querySelector('app-verdict-correction-dialog dialog') as HTMLDialogElement;
+      const confirm = (element: HTMLElement) =>
+        Array.from(dialog(element).querySelectorAll('button')).find((b) =>
+          text(b).startsWith('Habilitar'),
+        ) as HTMLButtonElement;
+      const write = async (
+        element: HTMLElement,
+        value: string,
+        settle: () => Promise<void>,
+      ) => {
+        const area = dialog(element).querySelector('textarea') as HTMLTextAreaElement;
+        area.value = value;
+        area.dispatchEvent(new Event('input'));
+        await settle();
+      };
+      const start = async (event = VERDICT_EVENT) => {
+        const view = await render(event);
+        correctionButton(view.element)!.click();
+        await view.settle();
+        return view;
+      };
 
-      expect(text(element.querySelector('[role="status"]'))).toContain('aún no está disponible');
+      beforeAll(() => {
+        // jsdom no implementa el ciclo abierto/cerrado del diálogo nativo.
+        if (typeof HTMLDialogElement.prototype.showModal !== 'function') {
+          HTMLDialogElement.prototype.showModal = function (this: HTMLDialogElement) {
+            this.setAttribute('open', '');
+          };
+        }
+        if (typeof HTMLDialogElement.prototype.close !== 'function') {
+          HTMLDialogElement.prototype.close = function (this: HTMLDialogElement) {
+            this.removeAttribute('open');
+          };
+        }
+      });
+
+      it('sin la marca del backend no existe ni el diálogo', async () => {
+        const { element } = await render(buildEventDetail({ can_authorize_correction: false }));
+
+        expect(element.querySelector('app-verdict-correction-dialog')).toBeNull();
+      });
+
+      it('al pulsarla abre el diálogo sin enviar nada', async () => {
+        const { element } = await start();
+
+        expect(dialog(element).open).toBe(true);
+        expect(text(dialog(element))).toContain('La decisión anterior se conserva');
+      });
+
+      it('sin motivo válido no envía nada', async () => {
+        const { element, settle } = await start();
+
+        confirm(element).click();
+        await settle();
+        await write(element, 'corto', settle);
+        confirm(element).click();
+        await settle();
+
+        http.expectNone(POST);
+        expect(dialog(element).open).toBe(true);
+      });
+
+      it('envía el motivo con Idempotency-Key, cierra y retira la acción', async () => {
+        const { element, settle } = await start();
+        await write(element, 'El veredicto contiene un error de captura.', settle);
+
+        confirm(element).click();
+        await settle();
+        const request = http.expectOne(POST);
+        expect(request.request.body).toEqual({ reason: 'El veredicto contiene un error de captura.' });
+        expect(request.request.headers.get('Idempotency-Key')).toMatch(/^[A-Za-z0-9._:-]{1,100}$/);
+        request.flush(
+          {
+            id: 'co-1',
+            verdict_id: 'vd-1',
+            manuscript_code: 'GPC-2026-000001',
+            decision: 'ACCEPTED',
+            decided_at: '2026-10-22T15:00:00Z',
+            reason: 'El veredicto contiene un error de captura.',
+            authorized_at: '2026-10-23T15:00:00Z',
+            is_active: true,
+          },
+          { status: 201, statusText: 'Created' },
+        );
+        await settle();
+
+        expect(element.querySelector('app-verdict-correction-dialog')).toBeNull();
+        expect(correctionButton(element)).toBeUndefined();
+        expect(text(element.querySelector('[role="status"]'))).toContain('Corrección habilitada');
+        // El motivo escrito por el Administrador no se repite en pantalla.
+        expect(text(element)).not.toContain('error de captura');
+      });
+
+      it('un corte de red se reintenta con la misma clave; otro motivo, con otra', async () => {
+        const { element, settle } = await start();
+        await write(element, 'Primer motivo suficiente.', settle);
+        confirm(element).click();
+        await settle();
+        const first = http.expectOne(POST);
+        const key = first.request.headers.get('Idempotency-Key');
+        first.error(new ProgressEvent('error'));
+        await settle();
+
+        expect(dialog(element).open).toBe(true);
+        expect(text(dialog(element))).toContain('No fue posible conectar');
+        confirm(element).click();
+        await settle();
+        const retry = http.expectOne(POST);
+        expect(retry.request.headers.get('Idempotency-Key')).toBe(key);
+        retry.error(new ProgressEvent('error'));
+        await settle();
+
+        await write(element, 'Un motivo distinto y válido.', settle);
+        confirm(element).click();
+        await settle();
+        const other = http.expectOne(POST);
+        expect(other.request.headers.get('Idempotency-Key')).not.toBe(key);
+        other.error(new ProgressEvent('error'));
+      });
+
+      it('mientras envía bloquea el diálogo y no repite la petición', async () => {
+        const { element, settle } = await start();
+        await write(element, 'Motivo suficientemente largo.', settle);
+
+        confirm(element).click();
+        await settle();
+        const button = Array.from(dialog(element).querySelectorAll('button')).find((b) =>
+          text(b).startsWith('Habilitando'),
+        ) as HTMLButtonElement;
+        button.click();
+        await settle();
+
+        expect(button.disabled).toBe(true);
+        http.expectOne(POST).error(new ProgressEvent('error'));
+      });
+
+      it('un 409 (ya no es corregible) cierra, avisa y retira la acción', async () => {
+        const { element, settle } = await start();
+        await write(element, 'Motivo suficientemente largo.', settle);
+        confirm(element).click();
+        await settle();
+
+        http.expectOne(POST).flush(
+          { error: { code: 'CORRECTION_NOT_AUTHORIZED', message: 'Este veredicto ya tiene una autorización de corrección activa.' } },
+          { status: 409, statusText: 'Conflict' },
+        );
+        await settle();
+
+        expect(element.querySelector('app-verdict-correction-dialog')).toBeNull();
+        expect(correctionButton(element)).toBeUndefined();
+        expect(text(element.querySelector('[role="alert"]'))).toContain(
+          'ya tiene una autorización de corrección activa',
+        );
+        expect(element.querySelector('[role="status"]')).toBeNull();
+      });
+
+      it('un 403 se muestra en el diálogo y deja corregir el motivo', async () => {
+        const { element, settle } = await start();
+        await write(element, 'Motivo suficientemente largo.', settle);
+        confirm(element).click();
+        await settle();
+
+        http.expectOne(POST).flush(
+          { error: { code: 'FORBIDDEN', message: 'No autorizado.' } },
+          { status: 403, statusText: 'Forbidden' },
+        );
+        await settle();
+
+        expect(dialog(element).open).toBe(true);
+        expect(text(dialog(element))).toContain('Acceso denegado');
+        expect(correctionButton(element)).toBeDefined();
+      });
+
+      it('cancelar cierra el diálogo sin enviar nada', async () => {
+        const { element, settle } = await start();
+
+        (Array.from(dialog(element).querySelectorAll('button')).find(
+          (b) => text(b) === 'Cancelar',
+        ) as HTMLButtonElement).click();
+        await settle();
+
+        expect(dialog(element).open).toBe(false);
+        expect(correctionButton(element)).toBeDefined();
+        http.expectNone(POST);
+      });
     });
   });
 

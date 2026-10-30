@@ -1,5 +1,6 @@
 import {
   Assignment,
+  CorrectionAuthorization,
   EditorEvaluation,
   EligibleReviewer,
   Incident,
@@ -101,6 +102,7 @@ export function buildSubmissionDetail(overrides: Partial<SubmissionDetail> = {})
       },
     ],
     open_assignment: null,
+    correction_authorization: null,
     created_at: '2026-10-20T15:30:00Z',
     updated_at: '2026-10-21T15:30:00Z',
     ...overrides,
@@ -158,6 +160,17 @@ export function buildEvaluation(overrides: Partial<EditorEvaluation> = {}): Edit
     confidential_comments: 'Solo para el Editor: sospecho autocitas.',
     conflict_declared: false,
     submitted_at: '2026-11-05T15:00:00Z',
+    ...overrides,
+  };
+}
+
+export function buildCorrectionAuthorization(
+  overrides: Partial<CorrectionAuthorization> = {},
+): CorrectionAuthorization {
+  return {
+    id: 'co-1',
+    verdict_id: 'vd-1',
+    authorized_at: '2026-11-10T15:00:00Z',
     ...overrides,
   };
 }

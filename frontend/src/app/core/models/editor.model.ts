@@ -184,8 +184,20 @@ export interface SubmissionDetail {
   versions: SubmissionVersion[];
   history: HistoryEntry[];
   open_assignment: Assignment | null;
+  /** Autorización activa del Administrador para decidir de nuevo (CA-HU-13-12), si la hay. */
+  correction_authorization: CorrectionAuthorization | null;
   created_at: string;
   updated_at: string;
+}
+
+/**
+ * Lo que el Editor ve de la autorización de corrección: a qué veredicto
+ * sustituiría y cuándo se habilitó. El motivo y el Administrador no llegan.
+ */
+export interface CorrectionAuthorization {
+  id: string;
+  verdict_id: string;
+  authorized_at: string;
 }
 
 /** Un detalle junto con su `ETag` vigente (bloqueo optimista). */
