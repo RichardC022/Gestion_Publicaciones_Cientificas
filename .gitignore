@@ -23,3 +23,6 @@ credentials.txt
 coverage.xml
 coverage.json
 htmlcov/
+
+# Informes de la prueba de carga (TSK-86)
+load-report*.json

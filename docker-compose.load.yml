@@ -1,0 +1,13 @@
+# Stack AISLADO para la prueba de carga (TSK-86). Se usa SIEMPRE con otro nombre
+# de proyecto, de modo que sus volúmenes y su base no tocan los de trabajo:
+#
+#   docker compose -p gpc_load -f docker-compose.yml -f docker-compose.load.yml up -d --build db backend web
+#
+# Solo cambia lo publicado: Nginx escucha en LOAD_WEB_PORT (18080 por defecto) y
+# PostgreSQL no se publica. Los límites de memoria son los de docker-compose.yml.
+services:
+  db:
+    ports: !reset []
+  web:
+    ports: !override
+      - "${LOAD_WEB_PORT:-18080}:80"

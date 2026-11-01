@@ -4,6 +4,9 @@ services:
     ports:
       - "5432:5432"
     restart: unless-stopped
+    # Límite de memoria medido en la prueba de carga (TSK-86, pico ~35 MiB).
+    mem_limit: 512m
+    memswap_limit: 512m
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
@@ -23,6 +26,9 @@ services:
     build:
       context: ./backend
     restart: unless-stopped
+    # 3 workers de Gunicorn; pico medido en la prueba de carga de 50 MB (TSK-86): ~290 MiB.
+    mem_limit: 1g
+    memswap_limit: 1g
     # `.env` (creado con permisos 0600 y nunca versionado) porta los
     # secretos de PostgreSQL, Django, JWT, cookies y SMTP del backend.
     env_file: .env
@@ -57,6 +63,9 @@ services:
     restart: unless-stopped
     ports:
       - "80:80"
+    # Nginx lleva los cuerpos grandes a disco; pico medido (TSK-86): ~104 MiB.
+    mem_limit: 256m
+    memswap_limit: 256m
     volumes:
       - media_data:/data/media:ro
       - static_data:/app/staticfiles:ro

@@ -578,6 +578,27 @@ Levanta, de forma efímera, Nginx con la configuración real (`nginx/conf.d/defa
 
 Requiere Docker, `curl` y `python3`; termina con código distinto de cero si algo falla y limpia sus contenedores y su volumen.
 
+### 10.4 Prueba de carga (50 MB y 50 personas concurrentes)
+
+```bash
+./scripts/load_test.sh              # ~6 min
+./scripts/load_test.sh --timeouts   # añade el corte por inactividad de 120 s (~+2 min)
+```
+
+Levanta un **stack aislado** (`docker compose -p gpc_load -f docker-compose.yml -f docker-compose.load.yml`, puerto `LOAD_WEB_PORT`, 18080 por defecto, con sus propios volúmenes), siembra cuentas con una contraseña aleatoria que no se guarda, ejecuta `scripts/load/load_test.py` por el puerto público de Nginx y lo apaga al terminar (`LOAD_KEEP=1` lo conserva). La base y los PDF de trabajo no se tocan. Todo pasa por la API real (autor, editor, revisor), no por atajos en la base.
+
+Comprueba, y falla con código distinto de cero si algo no se cumple:
+
+- la configuración efectiva de Nginx (`client_max_body_size 60m`, timeouts de 120 s, `proxy_request_buffering on`) y de Gunicorn (`--timeout 120`, 3 workers);
+- 50 logins simultáneos, y 50 personas × 6 consultas al catálogo con p95 < 2 s (SC-11);
+- 50 descargas simultáneas del PDF grande del catálogo (`X-Accel-Redirect`) y 5 sanitizadas del revisor;
+- 5 cargas simultáneas de PDF de ~50 MB, un PDF de exactamente 50 MB (201), uno de 51 MB (413 `PDF_TOO_LARGE` de Django) y un cuerpo de 61 MB que **Nginx** rechaza con 413 sin que llegue a Gunicorn;
+- que una carga lenta se acumula en el buffer en disco de Nginx (se mide por el archivo temporal abierto) y que seis clientes lentos (el doble de workers) no impiden que `/api/health/` responda;
+- con `--timeouts`, que Nginx corta a los ~120 s un cuerpo detenido;
+- la memoria de cada contenedor durante toda la corrida: pico por debajo del 90 % de su límite, sin `OOMKilled` ni reinicios.
+
+Los límites de memoria viven en `docker-compose.yml` (`mem_limit`: backend 1 GB, db 512 MB, web 256 MB) y salen de los picos medidos (≈ 320, 40 y 100 MiB). Requiere Docker, `openssl` y `python3`. Se ejecuta a mano (no está en CI: construye imágenes y dura minutos) cuando cambian Nginx, Gunicorn, los límites de memoria o la carga de PDF.
+
 ---
 
 ## 11. Seguridad
