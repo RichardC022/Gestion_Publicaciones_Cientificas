@@ -9,6 +9,7 @@ import { API_BASE_URL } from '../../../core/http/api-base-url.token';
 import { errorInterceptor } from '../../../core/http/error.interceptor';
 import { Notice, NoticePage } from '../../../core/models/notification.model';
 import { NotificationService } from '../../../core/services/notification.service';
+import { HTTP_ERROR_CASES, errorResponse } from '../../../core/testing/http-error.fixtures';
 import { buildNotice, buildNoticePage, buildNoticePayload } from '../testing/notification.fixtures';
 import { NotificationListComponent } from './notification-list.component';
 
@@ -123,6 +124,25 @@ describe('NotificationListComponent', () => {
 
       expect(items(element).length).toBe(1);
     });
+  });
+
+  describe('errores HTTP al cargar', () => {
+    it.each(HTTP_ERROR_CASES)(
+      'un $status se explica sin mostrar avisos y permite reintentar',
+      async (testCase) => {
+        const harness = await RouterTestingHarness.create();
+        await harness.navigateByUrl('/app/notifications', NotificationListComponent);
+        const element = harness.routeNativeElement as HTMLElement;
+        http.expectOne(LIST).flush(...errorResponse(testCase));
+        await harness.fixture.whenStable();
+        harness.detectChanges();
+
+        expect(text(element.querySelector('app-error-state'))).toContain(testCase.shown);
+        expect(items(element)).toHaveLength(0);
+        expect(element.querySelector('app-error-state button')).not.toBeNull();
+        expect(TestBed.inject(NotificationService).unreadCount()).toBe(0);
+      },
+    );
   });
 
   describe('filtro y página en la URL', () => {
@@ -245,6 +265,38 @@ describe('NotificationListComponent', () => {
       expect(markButton(items(element)[0])).toBeDefined();
       expect(TestBed.inject(NotificationService).unreadCount()).toBe(1);
     });
+
+    it.each(HTTP_ERROR_CASES)(
+      'un $status al marcar uno se explica y el aviso sigue sin leer',
+      async (testCase) => {
+        const { element, settle } = await open(buildNoticePage([buildNotice({ id: 'n-1' })], 1));
+
+        markButton(items(element)[0])!.click();
+        await settle();
+        http.expectOne('/api/notifications/n-1/read/').flush(...errorResponse(testCase));
+        await settle();
+
+        expect(text(element.querySelector('[role="alert"]'))).toContain(testCase.shown);
+        expect(markButton(items(element)[0])).toBeDefined();
+        expect(TestBed.inject(NotificationService).unreadCount()).toBe(1);
+      },
+    );
+
+    it.each(HTTP_ERROR_CASES)(
+      'un $status al marcar todos no cambia el contador ni los avisos',
+      async (testCase) => {
+        const { element, settle } = await open(buildNoticePage([buildNotice()], 1));
+
+        markAllButton(element).click();
+        await settle();
+        http.expectOne('/api/notifications/read-all/').flush(...errorResponse(testCase));
+        await settle();
+
+        expect(text(element.querySelector('[role="alert"]'))).toContain(testCase.shown);
+        expect(items(element)).toHaveLength(1);
+        expect(TestBed.inject(NotificationService).unreadCount()).toBe(1);
+      },
+    );
 
     it('marca todos: envía una sola petición, vuelve a leer y deja el contador en cero', async () => {
       const { element, settle } = await open(

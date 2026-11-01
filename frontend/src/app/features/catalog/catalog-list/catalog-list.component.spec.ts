@@ -13,6 +13,7 @@ import { authInterceptor } from '../../../core/auth/auth.interceptor';
 import { AuthStore } from '../../../core/auth/auth.store';
 import { API_BASE_URL } from '../../../core/http/api-base-url.token';
 import { errorInterceptor } from '../../../core/http/error.interceptor';
+import { HTTP_ERROR_CASES, errorResponse } from '../../../core/testing/http-error.fixtures';
 import { CatalogArticle } from '../../../core/models/catalog.model';
 import { buildArticle, buildArticlePage } from '../testing/catalog.fixtures';
 import { CatalogListComponent, PAGE_SIZE } from './catalog-list.component';
@@ -251,6 +252,19 @@ describe('CatalogListComponent', () => {
   });
 
   describe('errores', () => {
+    it.each(HTTP_ERROR_CASES)(
+      'un $status muestra un error controlado, sin artículos ni acciones internas',
+      async (testCase) => {
+        const { element, settle } = await open();
+        listRequest().flush(...errorResponse(testCase));
+        await settle();
+
+        expect(element.querySelector('app-error-state')).not.toBeNull();
+        expect(text(element.querySelector('app-error-state'))).toContain(testCase.shown);
+        expect(cards(element)).toHaveLength(0);
+      },
+    );
+
     it('muestra el error con reintento y vuelve a pedir la lista', async () => {
       const { element, settle } = await open();
       listRequest().flush(

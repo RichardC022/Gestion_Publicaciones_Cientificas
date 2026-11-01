@@ -305,6 +305,36 @@ describe('AuditLogDetailComponent', () => {
         expect(text(element)).not.toContain('error de captura');
       });
 
+      it('habilitar no edita el veredicto: solo envía el POST y lo mostrado no cambia', async () => {
+        const { element, settle } = await start();
+        const before = text(element.querySelector('dl[aria-label="Veredicto"]'));
+        await write(element, 'El veredicto contiene un error de captura.', settle);
+
+        confirm(element).click();
+        await settle();
+        const request = http.expectOne(POST);
+        expect(request.request.method).toBe('POST');
+        expect(Object.keys(request.request.body as object)).toEqual(['reason']);
+        request.flush(
+          {
+            id: 'co-1',
+            verdict_id: 'vd-1',
+            manuscript_code: 'GPC-2026-000001',
+            decision: 'REJECTED',
+            decided_at: '2026-10-22T15:00:00Z',
+            reason: 'El veredicto contiene un error de captura.',
+            authorized_at: '2026-10-23T15:00:00Z',
+            is_active: true,
+          },
+          { status: 201, statusText: 'Created' },
+        );
+        await settle();
+
+        // La decisión mostrada sigue siendo la original; la respuesta de la autorización no la reemplaza.
+        expect(text(element.querySelector('dl[aria-label="Veredicto"]'))).toBe(before);
+        expect(text(element.querySelector('dl[aria-label="Veredicto"]'))).toContain('Aceptado');
+      });
+
       it('un corte de red se reintenta con la misma clave; otro motivo, con otra', async () => {
         const { element, settle } = await start();
         await write(element, 'Primer motivo suficiente.', settle);

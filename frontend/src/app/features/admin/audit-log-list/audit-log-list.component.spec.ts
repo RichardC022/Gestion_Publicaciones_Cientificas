@@ -12,6 +12,7 @@ import { RouterTestingHarness } from '@angular/router/testing';
 import { authInterceptor } from '../../../core/auth/auth.interceptor';
 import { API_BASE_URL } from '../../../core/http/api-base-url.token';
 import { errorInterceptor } from '../../../core/http/error.interceptor';
+import { HTTP_ERROR_CASES, errorResponse } from '../../../core/testing/http-error.fixtures';
 import { AuditEvent } from '../../../core/models/audit.model';
 import {
   ACTOR_ID,
@@ -251,6 +252,18 @@ describe('AuditLogListComponent', () => {
       expect(element.querySelector('app-error-state')).not.toBeNull();
       expect(element.querySelector('table')).toBeNull();
     });
+
+    it.each(HTTP_ERROR_CASES.filter((c) => c.status !== 403))(
+      'un $status muestra un error controlado sin tabla',
+      async (testCase) => {
+        const { element, settle } = await open();
+        listRequest().flush(...errorResponse(testCase));
+        await settle();
+
+        expect(text(element.querySelector('app-error-state'))).toContain(testCase.shown);
+        expect(element.querySelector('table')).toBeNull();
+      },
+    );
 
     it('un 503 (auditoría no disponible) permite reintentar', async () => {
       const { element, settle } = await open();

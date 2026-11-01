@@ -1,24 +1,25 @@
 # HANDOFF — 29/10/2026
 
-**Estado:** Fases 0–4 completas · Fase 5: **TSK-71 a TSK-83 hechas** (TSK-83 sin commit todavía) · **siguiente: TSK-84** (pruebas de frontend de la Fase 5) y después la Fase 6 (TSK-85 en adelante) · rama `dev/jostin-setup`.
-**Detalle solo si hace falta:** `.spec-kit/compliance.md` (matriz de 57 filas, §2.6 Fase 5, §3 deuda, §4 siguiente paso). Código: `graphify query "<pregunta>"` antes de leer archivos.
+**Estado:** Fases 0–4 completas · Fase 5: **completa, TSK-71 a TSK-84** (TSK-84 sin commit todavía) · **siguiente: Fase 6**, empezando por TSK-85 (pipeline de calidad) · rama `dev/jostin-setup`.
+**Detalle solo si hace falta:** `.spec-kit/compliance.md` (matriz de 58 filas, §2.6 Fase 5, §3 deuda, §4 siguiente paso). Código: `graphify query "<pregunta>"` antes de leer archivos.
 
 ## Últimos commits (Fase 5)
 ```
-f3d47ca TSK 82 diálogo de corrección y veredicto corregido   9a3db07 TSK 81 auditoría global del Administrador
-f1c206e TSK 80 catálogo público (búsqueda, listado, ficha)    d665766 TSK 79 pruebas de ciclo completo
-d2d5f3d TSK 78 el veredicto del Editor consume la corrección  aa05996 TSK 77 autorización administrativa de corrección
-639cabe TSK 75 notificaciones de panel y correo               fd65399 TSK 74 catálogo público (rotulado «TSK 73» por error)
-a7c261e TSK 73 consulta administrativa de auditoría           af289de TSK 72 rol de aplicación sin UPDATE/DELETE en auditoría
-fd87eaf TSK 71 cron de avisos, limpieza e integridad          e686f7b TSK 76 comandos de avisos, limpieza e integridad
+87e13a7 TSK 83 panel y lista de avisos con contador         f3d47ca TSK 82 diálogo de corrección y veredicto corregido
+9a3db07 TSK 81 auditoría global del Administrador            f1c206e TSK 80 catálogo público (búsqueda, listado, ficha)
+d665766 TSK 79 pruebas de ciclo completo                      d2d5f3d TSK 78 el veredicto del Editor consume la corrección
+aa05996 TSK 77 autorización administrativa de corrección      639cabe TSK 75 notificaciones de panel y correo
+fd65399 TSK 74 catálogo público (rotulado «TSK 73» por error) a7c261e TSK 73 consulta administrativa de auditoría
+af289de TSK 72 rol sin UPDATE/DELETE en auditoría             fd87eaf TSK 71 cron de avisos, limpieza e integridad
+e686f7b TSK 76 comandos de avisos, limpieza e integridad
 ```
-**Sin commit:** TSK-83 (avisos en el frontend) y esta actualización de `HANDOFF.md`/`compliance.md`.
+**Sin commit:** TSK-84 (pruebas de errores HTTP del frontend) y esta actualización de `HANDOFF.md`/`compliance.md`.
 
 ## Pruebas (último resultado)
 | Suite | Resultado | Comando |
 |---|---|---|
 | Backend | 1580 ✅ · 11 omitidas · 0 `xfail` (antes 1312 · 8 · 1; el `xfail` de D-10 se cerró) — corrida completa del 29/10 | `docker compose run --rm --no-deps -v "$PWD/backend:/app" backend sh -c "python -m pip install --quiet --user -r requirements/development.txt; python -m pytest -q -p no:cacheprovider"` (≈ 42 min; añade una carpeta de `tests/` para acotar) |
-| Frontend | 1282 ✅ (74 archivos) · `ng build --configuration production` OK (solo el aviso NG8113, D-13) | `cd frontend && npx ng test --watch=false` · `npx ng build --configuration production` |
+| Frontend | 1302 ✅ (74 archivos) · `ng build --configuration production` OK (solo el aviso NG8113, D-13) | `cd frontend && npx ng test --watch=false` · `npx ng build --configuration production` |
 | Volumen | ✅ (TSK-58, no repetido) | `./scripts/smoke_media_isolation.sh` |
 | Migraciones | sin pendientes (`publications/0009_verdict_correction` y `notifications/0001_initial` son las nuevas de la Fase 5) | `docker compose run --rm --no-deps -v "$PWD/backend:/app" backend python manage.py makemigrations --check --dry-run` |
 
@@ -41,10 +42,11 @@ Docker (tras cambios): `docker compose up -d --build backend web` · apagar: `do
 - **80** `/catalog` y `/catalog/:code` sin guard ni JWT, filtros combinados, paginación en la URL, ficha con visor de PDF; sin evaluaciones, revisores ni historial.
 - **81** `/app/admin/audit` (tabla paginada, filtros en la URL) y `/audit/:id` (hashes, datos de lista blanca, sin PII).
 - **82** `features/admin/verdict-correction-dialog/` (motivo 10–1000, avisa que la decisión anterior se conserva); el botón «Habilitar corrección» aparece solo si `can_authorize_correction` es `true` y desaparece al confirmar. `VerdictFormComponent` recibe `correction` (`SubmissionDetail.correction_authorization`): muestra el veredicto que sustituiría, nace vacío, nunca envía `previous_verdict_id` y el historial marca ambas decisiones.
-- **83** (sin commit) `core/models/notification.model.ts`, `core/services/notification.service.ts` (guarda el contador de no leídos en una señal), `features/notifications/notification-item/` y `notification-list/` (filtro Todos/No leídos y página en la URL, marcar uno o todos, el enlace solo se activa si es `/app/…`), y `ShellComponent` pasa el contador real a la campana. Para las pruebas que montan el shell real existe `core/testing/notification.service.stub.ts`.
+- **83** `core/models/notification.model.ts`, `core/services/notification.service.ts` (guarda el contador de no leídos en una señal), `features/notifications/notification-item/` y `notification-list/` (filtro Todos/No leídos y página en la URL, marcar uno o todos, el enlace solo se activa si es `/app/…`), y `ShellComponent` pasa el contador real a la campana. Para las pruebas que montan el shell real existe `core/testing/notification.service.stub.ts`.
+- **84** (sin commit) no añade código: contrasta sus tres criterios con los specs y cierra los huecos. `core/testing/http-error.fixtures.ts` (`HTTP_ERROR_CASES`, `errorResponse`) simula `403/404/409/410` con el sobre real; se usa en avisos, catálogo y lista de auditoría.
 
 ## Pendiente / decisiones abiertas
-- **TSK-84** consolida pruebas que ya existen por tarea (catálogo, filtros de auditoría, diálogo de corrección, veredicto con autorización, avisos con `403/404/409/410`); revisar qué falta contra sus tres criterios antes de escribir de nuevo. Nombra Jasmine/Karma pero el proyecto usa Vitest (D-12).
+- **Fase 6 (TSK-85 a TSK-92):** pipeline de calidad (cierra D-07 y D-16), carga de 50 MB, restauración, runbook (D-18, D-21), auditoría de seguridad/IDOR, cobertura, E2E y accesibilidad. Confirmar el inicio antes de empezar.
 - **Contador de la campana (D-23):** se lee al entrar al área autenticada y se ajusta al marcar; no hay sondeo, así que un aviso que llega mientras se navega no aparece hasta recargar o abrir la lista.
 - **Avisos del Autor/Revisor** nunca llevan identidades cruzadas por construcción (`payloads.py`); `test_notifications.py` y `test_phase5_notifications.py` lo prueban sobre la notificación construida (cierra el pendiente de la Fase 4).
 - **D-11:** las cuatro secciones del panel siguen devolviendo `{}`.
@@ -59,7 +61,7 @@ Docker (tras cambios): `docker compose up -d --build backend web` · apagar: `do
 - **Si un componente dispara una petición al crearse y existe un spec que monta `routes` reales**, esas pruebas fallan con «Expected no open requests» (y los siguientes archivos del mismo hilo arrastran «Cannot configure the test module…»): proporciona el stub o responde la petición.
 - Un enlace de prueba que navega a una ruta que no existe en `provideRouter([...])` lanza `NG04002` asíncrono y contamina las pruebas siguientes: registra la ruta destino.
 - En diálogos con `[ngModel]` el valor y el `disabled` se aplican de forma asíncrona: espera `fixture.whenStable()` antes de afirmar.
-- Respuestas de error: `userMessage` sale del **código** (`api-error.model.ts`); para el motivo concreto de un `409` usa `error.message`.
+- Respuestas de error: `userMessage` sale del **código** (`api-error.model.ts`); para el motivo concreto de un `409` usa `error.message`. Un cuerpo sin `{ error: { code } }` se ve como `SERVER_ERROR` aunque el estado sea 403/404/409/410 (D-24): en pruebas usa `HTTP_ERROR_CASES`, no `{}`.
 - **No** ejecutes `prettier --write` sobre carpetas ni con globs amplios (reformatea archivos ajenos): comprueba antes con `git show HEAD:<ruta> | npx prettier --stdin-filepath <ruta> --check` y formatea solo los que estaban limpios. Ya incumplían Prettier: `editor.model.ts`, `expired-assignments.component.ts`, `verdict-form.component.ts` (+spec), `submission-detail.component.ts` (+spec), `shell.component.spec.ts`, `audit.service.spec.ts`, `audit-log-detail.component.spec.ts`.
 - Pruebas que leen código fuente (`no-authorship.spec.ts`) usan `node:fs` por import dinámico (no hay `@types/node`).
 
@@ -67,4 +69,4 @@ Docker (tras cambios): `docker compose up -d --build backend web` · apagar: `do
 Constitución: código en inglés; comentarios, docs y commits en español; SOLID/KISS/DRY/YAGNI; doble ciego estricto. **Sin commits ni push salvo orden** (entregar resultados de pruebas + sugerencia de commit + comandos Docker si aplican). Antes de explorar código: `graphify query`; al terminar: `graphify update .` y actualizar `compliance.md` solo si cambia el estado de la deuda.
 
 ## Deuda abierta (una línea)
-D-02 TLS · D-03 `db` (5432) y `adminer` (8888) publicados · D-11 panel con 4 secciones `{}` · D-07/D-16/D-18 CI (tolera «sin pruebas», sin pruebas del frontend), linter, logrotate (ahora 5 logs de cron) · D-04/D-12/D-13/D-14/D-15 menores · D-20/D-21/D-22/D-23 bajas. **Resueltas en la Fase 5:** D-09 (`verify_integrity`), D-10 (retirada del catálogo y receptores de las señales), D-17 (catálogo público).
+D-02 TLS · D-03 `db` (5432) y `adminer` (8888) publicados · D-11 panel con 4 secciones `{}` · D-07/D-16/D-18 CI (tolera «sin pruebas», sin pruebas del frontend), linter, logrotate (ahora 5 logs de cron) · D-04/D-12/D-13/D-14/D-15 menores · D-20/D-21/D-22/D-23/D-24 bajas. **Resueltas en la Fase 5:** D-09 (`verify_integrity`), D-10 (retirada del catálogo y receptores de las señales), D-17 (catálogo público).
