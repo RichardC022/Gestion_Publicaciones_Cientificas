@@ -33,7 +33,7 @@ import tempfile
 import time
 from pathlib import Path
 from types import SimpleNamespace
-from urllib.parse import urlparse
+from urllib.parse import urlencode, urlparse
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts" / "load"))
@@ -397,6 +397,7 @@ class Verifier:
                                                          "permissions-policy") and names.count(n) > 1})
             self.check(f"cabeceras de seguridad en {label} ({status})", not missing and not repeated,
                        f"faltan {missing}" if missing else (f"repetidas {repeated}" if repeated else ""))
+            self.check(f"{label}: no se filtra la ruta interna (X-Accel-Redirect)", "x-accel-redirect" not in names)
         status, hdrs, _ = self.raw(self.api, "/")
         server = {k.lower(): v for k, v in hdrs}.get("server", "")
         self.check("la cabecera Server no revela la versión", not re.search(r"\d", server), server)
@@ -415,6 +416,67 @@ class Verifier:
                    bool(cookies) and all("Secure" in c and "HttpOnly" in c and "SameSite" in c for c in cookies),
                    "; ".join(c.split(";")[0].split("=")[0] for c in cookies))
 
+    def phase_admin(self) -> None:
+        print("\n8. Django Admin a través de Nginx (alta de cuentas)", flush=True)
+        password = self.args.password
+        created = compose("exec", "-T", "-e", "DJANGO_SUPERUSER_USERNAME=soporte",
+                          "-e", "DJANGO_SUPERUSER_EMAIL=soporte@example.invalid",
+                          "-e", f"DJANGO_SUPERUSER_PASSWORD={password}",
+                          "backend", "python", "manage.py", "createsuperuser", "--noinput")
+        self.check("se crea el superusuario de soporte", created.returncode == 0, text(created).strip()[-80:])
+
+        def request(method, path, cookies, fields=None):
+            connection = self.api.connect()
+            headers = {"Cookie": "; ".join(f"{k}={v}" for k, v in cookies.items()),
+                       "Referer": f"{self.args.base_url}/admin/login/"}
+            body = None
+            if fields is not None:
+                body = urlencode(fields)
+                headers["Content-Type"] = "application/x-www-form-urlencoded"
+            try:
+                connection.request(method, path, body=body, headers=headers)
+                response = connection.getresponse()
+                payload = response.read().decode(errors="replace")
+                for key, value in response.getheaders():
+                    if key.lower() == "set-cookie":
+                        name, _, rest = value.partition("=")
+                        cookies[name] = rest.partition(";")[0]
+                return response.status, response.getheaders(), payload
+            finally:
+                connection.close()
+
+        def login(user, secret):
+            cookies: dict[str, str] = {}
+            status, hdrs, page = request("GET", "/admin/login/", cookies)
+            token = re.search(r'name="csrfmiddlewaretoken" value="([^"]+)"', page)
+            if status != 200 or not token:
+                return status, cookies, hdrs, page
+            status, hdrs, page = request("POST", "/admin/login/", cookies, {
+                "username": user, "password": secret, "next": "/admin/",
+                "csrfmiddlewaretoken": token.group(1)})
+            return status, cookies, hdrs, page
+
+        status, cookies, hdrs, _ = login("soporte", password)
+        cookie_lines = [v for k, v in hdrs if k.lower() == "set-cookie"]
+        self.check("el superusuario entra al Admin por HTTPS (302)", status == 302 and "sessionid" in cookies, str(status))
+        self.check("la cookie de sesión del Admin es Secure y HttpOnly",
+                   any("sessionid" in c and "Secure" in c and "HttpOnly" in c for c in cookie_lines))
+        status, hdrs, page = request("GET", "/admin/users/user/add/", cookies)
+        self.check("el formulario de alta de cuentas carga", status == 200 and "institutional_id" in page, str(status))
+        names = [k.lower() for k, _ in hdrs]
+        values = {k.lower(): v for k, v in hdrs}
+        self.check("cabeceras de seguridad, una sola vez, en el Admin",
+                   all(values.get(h) == v for h, v in SECURITY_HEADERS.items())
+                   and all(names.count(h) == 1 for h in SECURITY_HEADERS))
+        status, _, _ = request("GET", "/static/admin/css/base.css", {})
+        self.check("los estáticos del Admin los sirve Nginx", status == 200, str(status))
+
+        status, cookies, _, _ = login("load-author-00", password)
+        self.check("una cuenta de autor (sin staff) no entra al Admin", status == 200 and "sessionid" not in cookies, str(status))
+
+        results = [login("soporte", "contraseña-equivocada")[0] for _ in range(12)]
+        self.check("Nginx limita los intentos del login del Admin (429)", 429 in results, str(results))
+
     # -- orquestación -----------------------------------------------------
     def run(self) -> int:
         try:
@@ -428,6 +490,7 @@ class Verifier:
             self.phase_ports()
             self.phase_internal()
             self.phase_tls_and_headers()
+            self.phase_admin()
         finally:
             shutil.rmtree(self.workdir, ignore_errors=True)
         failed = [c for c in self.report.checks if not c.ok]

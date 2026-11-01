@@ -338,13 +338,13 @@ docker compose exec backend python manage.py collectstatic --noinput
 
 ### 5.6 Django Admin
 
-Django Admin queda disponible para soporte operativo en:
+Django Admin queda disponible para soporte operativo (alta de cuentas y roles) en:
 
 ```text
 https://<host>/admin/
 ```
 
-No es la interfaz del flujo editorial. El flujo funcional se expone por `/api/` y se consume desde Angular.
+No es la interfaz del flujo editorial. El flujo funcional se expone por `/api/` y se consume desde Angular. Nginx lo reenvía igual que la API y limita su login a 5 intentos por minuto por IP (el Admin de Django no bloquea intentos por sí mismo); usa contraseñas robustas en los superusuarios (`docs/RUNBOOK.md` §11.2).
 
 ---
 
@@ -638,7 +638,16 @@ Igual que la prueba de carga, usa un **stack aislado** (`gpc_verify`, HTTPS en `
 
 Requiere Docker, `openssl` y `python3`. Hay que repetirla en el servidor del piloto con el certificado institucional y antes de cada cambio de Nginx, del compose o de los scripts de respaldo.
 
-### 10.6 Runbook y decisiones Q1–Q5 (TSK-88)
+### 10.6 Matriz de acceso y seguridad (TSK-89)
+
+```bash
+docker compose run --rm --no-deps -v "$PWD/backend:/app" backend sh -c \
+  "python -m pip install --quiet --user -r requirements/development.txt; python -m pytest -q -p no:cacheprovider tests/security"
+```
+
+`backend/tests/security/test_access_matrix.py` clasifica **cada ruta de `/api/`** por rol del módulo y por alcance del objeto y la ejecuta contra ocho tipos de actor (sin credenciales, autor propietario, otro autor, revisor asignado, otro revisor, editor, administrador y usuario sin rol): `401` sin credenciales, `403` sin el rol del módulo (también para el Administrador en manuscritos, evaluaciones y PDF), `404` —idéntico al de un objeto inexistente— para un objeto ajeno. Falla si se añade una ruta sin clasificarla. Además comprueba que un rol retirado pierde su módulo en la siguiente petición, que un Editor que es autor no alcanza su manuscrito como editor, que el Editor no ve borradores ajenos y que ni las respuestas del Revisor ni la auditoría del Administrador contienen identidades. Forma parte de la suite del backend y corre en el CI.
+
+### 10.7 Runbook y decisiones Q1–Q5 (TSK-88)
 
 ```bash
 ./scripts/check_runbook.py

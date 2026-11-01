@@ -451,7 +451,14 @@ Ninguna se versiona ni se escribe en esta guía. `.env` es `0600`; el certificad
 
 ### 11.2 Crear una cuenta institucional
 
-Las cuentas las provisiona el soporte desde **Django Admin** (`https://<host>/admin/`), con el superusuario:
+Las cuentas las provisiona el soporte desde **Django Admin** (`https://<host>/admin/`), con el superusuario. Es una herramienta de **soporte**, no del flujo editorial, y una superficie sensible:
+
+- Usa una contraseña **robusta y única** para cada superusuario; las cuentas de las personas no son `staff` y no pueden entrar (se comprueba en `verify_pilot.sh`).
+- Nginx limita el login del Admin a **5 intentos por minuto por IP** (responde `429`; espera un minuto). El Admin de Django no bloquea intentos por sí mismo.
+- Si la red institucional lo permite, restringe además `/admin/` por IP: en `nginx/conf.d/default.conf` crea un `location ^~ /admin/` propio (con el mismo `proxy_pass` y cabeceras que el de la API) y dentro `allow <red-institucional>; deny all;`. Hoy comparte bloque con la API.
+- Revisa de vez en cuando Admin → *Login attempts* y la auditoría.
+
+Pasos:
 
 1. **Users → Añadir:** `institutional_id` (con el que la persona inicia sesión), `username`, correo y una contraseña inicial; indícale que la cambie.
 2. **User roles → Añadir:** asigna el rol (`AUTHOR`, `REVIEWER`, `EDITOR` o `ADMIN`). Una persona puede tener varios y verá todos sus apartados.
@@ -553,6 +560,7 @@ El **panel funciona igual** (los avisos son visibles ahí). Los correos fallidos
 
 - Tras **5 intentos fallidos en 15 minutos** la cuenta se bloquea (`429` con el tiempo de espera). **Se desbloquea sola** al pasar la ventana; no hay desbloqueo manual, y los intentos bloqueados no la alargan. Los intentos se ven (solo lectura) en Admin → Login attempts.
 - Cuenta desactivada o sin rol: Admin → Users / User roles.
+- El login del **Admin** responde `429` si se superan 5 intentos por minuto desde la misma IP: espera un minuto.
 - Tras rotar `DJANGO_SECRET_KEY`, todos deben volver a iniciar sesión.
 
 ### 12.10 Error `503` / `AUDIT_UNAVAILABLE`
@@ -592,6 +600,8 @@ El piloto se acepta cuando **todo** lo siguiente se cumple. «Hecho» indica la 
 | 12 | `.env` con secretos únicos y permisos `0600` | `stat -c %a .env` → `600` | **Pendiente en el servidor** |
 | 13 | Cuentas institucionales y Revisores con perfil creados | §11.2 | **Pendiente en el servidor** |
 | 14 | `./scripts/check_runbook.py` termina sin fallos | En el CI | Hecho (TSK-88) |
+| 15 | Matriz de acceso de la API: cada ruta × cada tipo de actor responde 401/403/404/acceso según lo planeado; el Administrador no alcanza manuscritos, evaluaciones ni PDF | `pytest tests/security` (37 pruebas; falla si se añade una ruta sin clasificar) | Hecho (TSK-89) |
+| 16 | Django Admin accesible solo con credenciales de superusuario, con límite de intentos | `./scripts/verify_pilot.sh` | Hecho (TSK-89) |
 
 ### 13.2 Funcionales (criterios de éxito SC-01 a SC-15 de la especificación)
 
