@@ -5,7 +5,7 @@ Coloca aquí los certificados institucionales antes de iniciar `web`.
 - Certificado público: `fullchain.pem`
 - Clave privada: `privkey.pem`
 
-Para un piloto local sin certificado institucional, puedes generar un certificado autofirmado con:
+Nginx no arranca sin estos dos archivos. Para un piloto local sin certificado institucional, genera uno autofirmado con `./scripts/make_dev_cert.sh` (no sobrescribe uno existente) o a mano con:
 
 ```bash
 openssl req -x509 -nodes -newkey rsa:2048 -days 365 \

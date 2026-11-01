@@ -120,9 +120,10 @@ No uses los valores de ejemplo `change-me` en producción.
 `.env` describe un entorno de producción (`DJANGO_SETTINGS_MODULE=config.settings.production`,
 `DEBUG=0`, hosts y orígenes CSRF reales, SMTP institucional y `COOKIE_SECURE=1`).
 Para un entorno de desarrollo local usa `DJANGO_SETTINGS_MODULE=config.settings.development`,
-`DEBUG=1`, `ALLOWED_HOSTS=localhost,127.0.0.1`, `CSRF_TRUSTED_ORIGINS=http://localhost`,
-correo por consola (ya configurado en `config.settings.development`) y, si no hay
-TLS local, `COOKIE_SECURE=0`. Nunca reutilices secretos de producción en desarrollo.
+`DEBUG=1`, `ALLOWED_HOSTS=localhost,127.0.0.1`, `CSRF_TRUSTED_ORIGINS=https://localhost`
+(Nginx solo sirve por HTTPS y el puerto 80 redirige), correo por consola (ya
+configurado en `config.settings.development`) y `COOKIE_SECURE=1` con el
+certificado autofirmado de la sección 7. Nunca reutilices secretos de producción en desarrollo.
 
 ### 3.3 Validar la configuración
 
@@ -211,9 +212,21 @@ El superusuario es solo para soporte operativo y Django Admin. No reemplaza el f
 
 ### 3.9 Levantar el sistema completo
 
+Nginx exige un certificado desde que sirve HTTPS (sección 7). Si no tienes el institucional, crea uno autofirmado (no sobrescribe uno existente):
+
 ```bash
+./scripts/make_dev_cert.sh
 docker compose up -d
 ```
+
+La aplicación queda en `https://localhost` (el puerto 80 redirige a 443; el navegador avisará del certificado autofirmado). **Solo `web` publica puertos (80 y 443)**: PostgreSQL y el backend no son alcanzables desde fuera. Si necesitas PostgreSQL o Adminer en desarrollo, hay un compose aparte que los liga a `127.0.0.1`:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+# PostgreSQL en 127.0.0.1:5432 · Adminer en http://127.0.0.1:8888 (servidor «db»)
+```
+
+No uses `docker-compose.dev.yml` en el servidor del piloto.
 
 El backend ejecuta automáticamente:
 
@@ -328,7 +341,7 @@ docker compose exec backend python manage.py collectstatic --noinput
 Django Admin queda disponible para soporte operativo en:
 
 ```text
-http://<host>/admin/
+https://<host>/admin/
 ```
 
 No es la interfaz del flujo editorial. El flujo funcional se expone por `/api/` y se consume desde Angular.
@@ -371,28 +384,30 @@ El script `scripts/init_media.sh` crea y normaliza la estructura. Se ejecuta aut
 
 ## 7. TLS y Nginx
 
-La topología objetivo de producción publica los puertos `80` y `443`. En la fase de cimientos actual, el servicio `web` publica únicamente `:80`; la habilitación de `:443` se realiza junto con la instalación del certificado institucional y el ajuste final de Nginx.
+`web` es el único servicio que publica puertos: **80**, que solo responde `301` hacia `https://`, y **443**, que sirve la SPA, la API y las descargas con TLS 1.2 y 1.3 (`ssl_protocols TLSv1.2 TLSv1.3`). Nginx no arranca sin certificado.
 
-Para producción, coloca el certificado institucional en:
+Coloca el certificado institucional en:
 
 ```text
 nginx/certs/fullchain.pem
 nginx/certs/privkey.pem
 ```
 
-Requisitos:
+Para un piloto local sin certificado institucional, genera uno autofirmado (el script no sobrescribe uno existente); el navegador mostrará una advertencia:
 
-- TLS 1.2 y TLS 1.3.
-- Redirección de HTTP a HTTPS.
-- `server_tokens off`.
-- Cabeceras de seguridad:
-  - `X-Content-Type-Options`
-  - `X-Frame-Options`
-  - `Referrer-Policy`
-  - `Permissions-Policy`
-  - `Content-Security-Policy`
+```bash
+./scripts/make_dev_cert.sh
+```
 
-Para un piloto local sin certificado institucional, se puede usar un certificado autofirmado, pero el navegador mostrará una advertencia y no debe habilitarse HSTS hasta contar con un certificado válido.
+Requisitos que cumple la configuración:
+
+- TLS 1.2 y TLS 1.3; TLS 1.0 y 1.1 se rechazan.
+- Redirección de HTTP a HTTPS conservando ruta y consulta.
+- `server_tokens off` (la cabecera `Server` no revela la versión).
+- Cabeceras de seguridad en **todas** las respuestas (SPA, API, errores y PDF): `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy` y `Content-Security-Policy`. Para `/api/`, Nginx oculta las tres que Django también emite para que no lleguen repetidas.
+- HSTS: Nginx **no** lo añade (con un certificado autofirmado dejaría al navegador sin acceso, D-06); Django lo emite en las respuestas de la API cuando la conexión es segura. Antes de abrir el piloto a usuarios reales, con el certificado institucional, valora retirar `preload`.
+
+Los `.pem` no se versionan. Verificación automatizada: sección 10.5.
 
 ---
 
@@ -479,13 +494,14 @@ La restauración:
 1. Verifica los checksums.
 2. Detiene `web` y `backend`.
 3. Restaura PostgreSQL.
-4. Restaura el volumen `media_data`.
-5. Normaliza permisos.
-6. Ejecuta la verificación de integridad.
-7. Levanta los servicios.
-8. Ejecuta `manage.py check`.
+4. Recrea el rol de ejecución de la aplicación y sus privilegios (`apply_db_privileges`): el volcado se toma con `--no-privileges`, así que en una base nueva ese rol no existe y, sin este paso, ni `verify_integrity` ni el backend podrían conectarse.
+5. Restaura el volumen `media_data`.
+6. Normaliza permisos.
+7. Ejecuta la verificación de integridad.
+8. Levanta los servicios.
+9. Ejecuta `manage.py check`.
 
-> **Nota:** el comando `verify_integrity` existe desde la `TSK-76`; la prueba de restauración se realiza en un entorno aislado y se registra según `scripts/BACKUP.md`.
+> **Nota:** la restauración sobre una base **vacía** (recuperación ante desastre) se comprueba de extremo a extremo con `./scripts/verify_pilot.sh` (sección 10.5).
 
 ### 8.4 Prueba mensual
 
@@ -556,9 +572,9 @@ docker compose config --quiet
 Verifica que las rutas internas no sean accesibles directamente:
 
 ```bash
-curl -I http://127.0.0.1/media/
-curl -I http://127.0.0.1/_protected/
-curl -I http://127.0.0.1/_catalog/
+curl -kI https://127.0.0.1/media/
+curl -kI https://127.0.0.1/_protected/
+curl -kI https://127.0.0.1/_catalog/
 ```
 
 Las respuestas esperadas son de denegación o recurso no disponible, no la entrega de archivos.
@@ -569,7 +585,7 @@ La **prueba de humo completa** del aislamiento del volumen es un script que no n
 ./scripts/smoke_media_isolation.sh
 ```
 
-Levanta, de forma efímera, Nginx con la configuración real (`nginx/conf.d/default.conf`), el volumen en solo lectura y un backend de prueba que responde con `X-Accel-Redirect`, y comprueba que:
+Levanta, de forma efímera, Nginx con la configuración real (`nginx/conf.d/default.conf`, con un certificado autofirmado que genera para la prueba), el volumen en solo lectura y un backend de prueba que responde con `X-Accel-Redirect`, y comprueba que:
 
 - desde fuera, `/_protected/`, `/_catalog/` y `/media/` no entregan archivos (tampoco con rutas codificadas, dobles barras o `..`) ni listan directorios;
 - cuando el backend autoriza, Nginx sí entrega el PDF con `Cache-Control` y `nosniff` (control positivo);
@@ -585,7 +601,7 @@ Requiere Docker, `curl` y `python3`; termina con código distinto de cero si alg
 ./scripts/load_test.sh --timeouts   # añade el corte por inactividad de 120 s (~+2 min)
 ```
 
-Levanta un **stack aislado** (`docker compose -p gpc_load -f docker-compose.yml -f docker-compose.load.yml`, puerto `LOAD_WEB_PORT`, 18080 por defecto, con sus propios volúmenes), siembra cuentas con una contraseña aleatoria que no se guarda, ejecuta `scripts/load/load_test.py` por el puerto público de Nginx y lo apaga al terminar (`LOAD_KEEP=1` lo conserva). La base y los PDF de trabajo no se tocan. Todo pasa por la API real (autor, editor, revisor), no por atajos en la base.
+Levanta un **stack aislado** (`docker compose -p gpc_load -f docker-compose.yml -f docker-compose.load.yml`, HTTPS en `LOAD_TLS_PORT` —18443 por defecto— y HTTP en `LOAD_WEB_PORT` —18080—, con sus propios volúmenes), siembra cuentas con una contraseña aleatoria que no se guarda, ejecuta `scripts/load/load_test.py` por el puerto público de Nginx y lo apaga al terminar (`LOAD_KEEP=1` lo conserva). La base y los PDF de trabajo no se tocan. Todo pasa por la API real (autor, editor, revisor), no por atajos en la base.
 
 Comprueba, y falla con código distinto de cero si algo no se cumple:
 
@@ -598,6 +614,22 @@ Comprueba, y falla con código distinto de cero si algo no se cumple:
 - la memoria de cada contenedor durante toda la corrida: pico por debajo del 90 % de su límite, sin `OOMKilled` ni reinicios.
 
 Los límites de memoria viven en `docker-compose.yml` (`mem_limit`: backend 1 GB, db 512 MB, web 256 MB) y salen de los picos medidos (≈ 320, 40 y 100 MiB). Requiere Docker, `openssl` y `python3`. Se ejecuta a mano (no está en CI: construye imágenes y dura minutos) cuando cambian Nginx, Gunicorn, los límites de memoria o la carga de PDF.
+
+### 10.5 Restauración, integridad y superficie expuesta (TSK-87)
+
+```bash
+./scripts/verify_pilot.sh           # ~6 min
+```
+
+Igual que la prueba de carga, usa un **stack aislado** (`gpc_verify`, HTTPS en `VERIFY_TLS_PORT`, 19443 por defecto; HTTP en 19080), contraseñas aleatorias y se apaga al terminar (`VERIFY_KEEP=1` lo conserva). No toca la base ni los PDF de trabajo. Siembra artículos aceptados por la API real y comprueba, con código de salida distinto de cero si algo falla:
+
+- **Restauración:** `backup.sh` produce `database.dump`, `media.tar.gz` y `SHA256SUMS` (permisos `0600/0700`); un respaldo alterado lo rechaza `restore.sh` **sin tocar la base**; se borran los volúmenes y `restore.sh` reconstruye todo sobre una base vacía. La huella del estado (filas de cada modelo, SHA-256 de cada archivo y último hash de la cadena de auditoría) es idéntica a la de antes del desastre, las cuentas inician sesión con su contraseña y el catálogo entrega por Nginx los mismos PDF.
+- **Integridad:** `verify_integrity` pasa tras restaurar, detecta un PDF alterado (sale distinto de cero) y volver a restaurar lo repara.
+- **Puertos:** el compose base solo tiene `db`, `backend` y `web`; solo `web` publica y solo 80 y 443; `backend_net` es interna; el compose de desarrollo liga PostgreSQL y Adminer a `127.0.0.1`. El CI repite la comprobación estática.
+- **Ubicaciones internas:** `/_protected/`, `/_catalog/` y `/media/` no entregan archivos reales del volumen restaurado (tampoco con `//`, `%5F`, `..` ni `%2e%2e`), un `X-Accel-Redirect` enviado por el cliente se ignora y por HTTP plano solo hay redirección. Control positivo: lo autorizado sí se entrega.
+- **TLS y cabeceras:** redirección `301` a HTTPS con ruta y consulta, TLS 1.2 y 1.3 se negocian y 1.0/1.1 se rechazan, el certificado servido es el de `nginx/certs/` y no está por vencer, la cookie del refresh es `Secure; HttpOnly; SameSite`, la API envía HSTS, `Server` no revela versión y las cinco cabeceras de seguridad están (una sola vez) en SPA, API, errores 401/404/403 y PDF.
+
+Requiere Docker, `openssl` y `python3`. Hay que repetirla en el servidor del piloto con el certificado institucional y antes de cada cambio de Nginx, del compose o de los scripts de respaldo.
 
 ---
 

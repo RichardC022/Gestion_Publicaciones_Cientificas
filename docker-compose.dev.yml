@@ -1,0 +1,20 @@
+# Herramientas SOLO de desarrollo (TSK-87, D-03). No forman parte del despliegue:
+# el compose base no publica ni PostgreSQL ni un cliente web de la base.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+#
+# Ambos puertos se ligan a 127.0.0.1: no son alcanzables desde otras máquinas.
+#   - PostgreSQL: 127.0.0.1:5432
+#   - Adminer:    http://127.0.0.1:8888  (sistema PostgreSQL, servidor `db`)
+services:
+  db:
+    ports:
+      - "127.0.0.1:5432:5432"
+  adminer:
+    image: adminer:6.1.2
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8888:8080"
+    networks:
+      - backend_net
+      - frontend_net

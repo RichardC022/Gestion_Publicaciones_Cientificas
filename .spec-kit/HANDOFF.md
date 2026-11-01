@@ -1,7 +1,7 @@
 # HANDOFF — 29/10/2026
 
-**Estado:** Fases 0–4 completas · Fase 5 completa · Fase 6: **TSK-85 y TSK-86 hechas** (TSK-86 sin commit todavía) · **siguiente: TSK-87** (restauración, integridad y superficie expuesta) · rama `dev/jostin-setup`.
-**Detalle solo si hace falta:** `.spec-kit/compliance.md` (matriz de 60 filas, §2.6 Fase 5, §3 deuda, §4 siguiente paso). Código: `graphify query "<pregunta>"` antes de leer archivos.
+**Estado:** Fases 0–4 completas · Fase 5 completa · Fase 6: **TSK-85, TSK-86 y TSK-87 hechas** (TSK-87 sin commit todavía) · **siguiente: TSK-88** (runbook del piloto) · rama `dev/jostin-setup`.
+**Detalle solo si hace falta:** `.spec-kit/compliance.md` (matriz de 61 filas, §2.6 Fase 5, §3 deuda, §4 siguiente paso). Código: `graphify query "<pregunta>"` antes de leer archivos.
 
 ## Últimos commits (Fase 5)
 ```
@@ -13,8 +13,8 @@ fd65399 TSK 74 catálogo público (rotulado «TSK 73» por error) a7c261e TSK 73
 af289de TSK 72 rol sin UPDATE/DELETE en auditoría             fd87eaf TSK 71 cron de avisos, limpieza e integridad
 e686f7b TSK 76 comandos de avisos, limpieza e integridad
 ```
-Último commit: `12e3d6e` TSK 85 (pipeline de calidad, DRF 3.18.3).
-**Sin commit:** TSK-86 (`scripts/load_test.sh`, `scripts/load/`, `docker-compose.load.yml`, límites `mem_limit` en `docker-compose.yml`, README §10.4) y esta actualización de `HANDOFF.md`/`compliance.md`.
+Último commit: `725c9b2` TSK 86 (prueba de carga y límites de memoria).
+**Sin commit:** TSK-87 (`scripts/verify_pilot.sh`, `scripts/verify/`, `scripts/make_dev_cert.sh`, `docker-compose.dev.yml`, TLS en `nginx/conf.d/default.conf`, `restore.sh` corregido, `docker-compose.yml` sin `db`/`adminer` publicados y con `443`, `docker-compose.load.yml` con puerto TLS, `smoke_media_isolation.sh` y `load_test.py` por HTTPS, CI con comprobación de puertos, README §3.9/§7/§8.3/§10.5) y esta actualización de `HANDOFF.md`/`compliance.md`.
 
 ## Pruebas (último resultado)
 | Suite | Resultado | Comando |
@@ -47,7 +47,8 @@ Docker (tras cambios): `docker compose up -d --build backend web` · apagar: `do
 - **84** (sin commit) no añade código: contrasta sus tres criterios con los specs y cierra los huecos. `core/testing/http-error.fixtures.ts` (`HTTP_ERROR_CASES`, `errorResponse`) simula `403/404/409/410` con el sobre real; se usa en avisos, catálogo y lista de auditoría.
 
 ## Pendiente / decisiones abiertas
-- **Fase 6:** TSK-85 y TSK-86 hechas. Siguen TSK-87 restauración, integridad y superficie expuesta (D-02, D-03), TSK-88 runbook (D-18, D-21), TSK-89 seguridad/IDOR, TSK-90 consultas y cobertura, TSK-91 E2E Playwright, TSK-92 accesibilidad y responsive. Confirmar el inicio de cada una.
+- **Fase 6:** TSK-85, TSK-86 y TSK-87 hechas. Siguen TSK-88 runbook (D-18, D-21), TSK-89 seguridad/IDOR, TSK-90 consultas y cobertura, TSK-91 E2E Playwright, TSK-92 accesibilidad y responsive. Confirmar el inicio de cada una.
+- **TSK-87 (cómo quedó):** `./scripts/verify_pilot.sh` (~6 min) levanta el stack aislado `gpc_verify` (HTTPS 19443, HTTP 19080), siembra por la API real y comprueba **61 criterios (61/61 en verde)**: respaldo → un respaldo alterado se rechaza sin tocar la base → se borran los volúmenes y `restore.sh` reconstruye sobre una base vacía → huella idéntica (filas por modelo, SHA-256 de cada archivo, último hash de auditoría) → `verify_integrity` pasa, detecta un PDF alterado y restaurar lo repara → puertos, ubicaciones internas, redirección, TLS, certificado, cookie y cabeceras. **Hallazgos corregidos:** (1) `restore.sh` fallaba sobre una base nueva (el volcado va con `--no-privileges`, no existía el rol `gpc_runtime`): ahora corre `apply_db_privileges` tras `pg_restore`; (2) `db`/`adminer` publicados (D-03): `adminer:6.1.2` y el puerto de `db` pasaron a `docker-compose.dev.yml` (`127.0.0.1`); (3) TLS (D-02): `443` con TLS 1.2/1.3 y `80` solo redirige; Nginx **no arranca sin** `nginx/certs/{fullchain,privkey}.pem` (`./scripts/make_dev_cert.sh` crea uno autofirmado sin sobrescribir); (4) `/api/` repetía tres cabeceras de seguridad (Django y Nginx): `proxy_hide_header`. Todo el acceso local pasa a `https://localhost` (certificado autofirmado, aviso del navegador). **Para aplicarlo al entorno de trabajo:** `docker compose up -d --build --remove-orphans`. No está en CI (D-29).
 - **TSK-86 (cómo quedó):** `./scripts/load_test.sh [--timeouts]` levanta un stack aislado (`-p gpc_load`, puerto 18080, otros volúmenes), siembra por la API real y comprueba 28 criterios (50 logins/consultas/descargas, cargas de 50 MB, 51 MB → 413 Django, 61 MB → 413 Nginx sin llegar a Gunicorn, buffer en disco, clientes lentos, corte de 120 s, memoria). **28/28 en verde.** Se definieron los `mem_limit` que no existían: backend 1 GB, db 512 MB, web 256 MB (picos 323/39/68 MiB). Hay que recrear los contenedores para que apliquen. No está en CI; solo `localhost` (D-27 login ≈ 2,5 s con 50 simultáneos, D-28).
 - **TSK-85 (cómo quedó):** `ci.yml` con 8 jobs, `backend/.coveragerc` y umbral `COVERAGE_MIN=80` sobre servicios y permisos (medido 97 %). **Aún no se ha ejecutado en GitHub Actions:** revisar la primera corrida. `pip-audit` falla con cualquier aviso; los de herramientas de desarrollo del frontend solo se informan (D-25).
 - **Contador de la campana (D-23):** se lee al entrar al área autenticada y se ajusta al marcar; no hay sondeo, así que un aviso que llega mientras se navega no aparece hasta recargar o abrir la lista.
@@ -57,6 +58,7 @@ Docker (tras cambios): `docker compose up -d --build backend web` · apagar: `do
 - Latente (D-20): `resolve_assignment` (`reviews/permissions.py`).
 
 ## Trampas ya conocidas
+- TSK-87: tras TLS, `http://localhost` solo redirige (`$host` pierde un puerto distinto de 443, así que en los stacks aislados la verificación del `Location` solo mira esquema, ruta y consulta). `openssl s_client -tls1_1` necesita `-cipher 'ALL:@SECLEVEL=0'`; la línea «Protocol : TLSv1.1» del resultado es el intento, no la negociación: el rechazo se reconoce por «alert protocol version» / «Cipher is (NONE)». `docker compose run backend <comando>` NO ejecuta el `command` del servicio (ni `migrate` ni `apply_db_privileges`). `COMPOSE` de `backup.sh`/`restore.sh` permite apuntarlos a un proyecto aislado.
 - Prueba de carga: el sondeo del buffer de Nginx debe ejecutarse como `-u nginx` (root no tiene `CAP_SYS_PTRACE` para leer sus descriptores) y Nginx borra el archivo temporal al crearlo, así que `du` no lo ve. El PDF de prueba debe estar referenciado por la página o la sanitización lo descarta.
 - `docker compose run` usa el código de la **imagen**: monta `-v "$PWD/backend:/app"`; `makemigrations` igual. Nombres de índice ≤ 30 caracteres. `ruff` no está (D-16).
 - `Now()` en PostgreSQL es `STATEMENT_TIMESTAMP()`: para probar el borde de `due_at` se congela `evaluations.Now`. Baja lógica = `is_active=False` + `withdrawn_at`.
@@ -73,4 +75,4 @@ Docker (tras cambios): `docker compose up -d --build backend web` · apagar: `do
 Constitución: código en inglés; comentarios, docs y commits en español; SOLID/KISS/DRY/YAGNI; doble ciego estricto. **Sin commits ni push salvo orden** (entregar resultados de pruebas + sugerencia de commit + comandos Docker si aplican). Antes de explorar código: `graphify query`; al terminar: `graphify update .` y actualizar `compliance.md` solo si cambia el estado de la deuda.
 
 ## Deuda abierta (una línea)
-D-02 TLS · D-03 `db` (5432) y `adminer` (8888) publicados · D-11 panel con 4 secciones `{}` · D-16 sin linter (`ruff`), D-18 logrotate (ahora 5 logs de cron) · D-04/D-12/D-13/D-14/D-15 menores · D-20/D-21/D-22/D-23/D-24/D-25/D-26/D-27/D-28 bajas. **Resueltas en las Fases 5 y 6:** D-07 (TSK-85), D-09 (`verify_integrity`), D-10 (retirada del catálogo y receptores de las señales), D-17 (catálogo público).
+D-11 panel con 4 secciones `{}` · D-16 sin linter (`ruff`), D-18 logrotate (ahora 5 logs de cron) · D-04/D-12/D-13/D-14/D-15 menores · D-20/D-21/D-22/D-23/D-24/D-25/D-26/D-27/D-28/D-29 bajas; D-06 (HSTS `preload` con certificado autofirmado) media; falta instalar el certificado institucional. **Resueltas en las Fases 5 y 6:** D-02 y D-03 (TSK-87), D-07 (TSK-85), D-09 (`verify_integrity` y restauración probada), D-10 (retirada del catálogo y receptores de las señales), D-17 (catálogo público).

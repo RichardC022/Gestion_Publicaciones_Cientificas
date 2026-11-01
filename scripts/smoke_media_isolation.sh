@@ -49,7 +49,7 @@ check_denied() {
   local description="$1" expected="$2" path="$3"
   shift 3
   local status
-  status="$(curl -s -o "${WORK}/body" -w '%{http_code}' --path-as-is "$@" "${BASE}${path}")"
+  status="$(curl -sk -o "${WORK}/body" -w '%{http_code}' --path-as-is "$@" "${BASE}${path}")"
   if [[ "${status}" == "${expected}" ]] && ! grep -q '%PDF' "${WORK}/body"; then
     pass "${description} → ${status}"
   else
@@ -123,21 +123,25 @@ for _ in $(seq 1 60); do
   sleep 0.5
 done
 
+# Nginx exige certificado (TSK-87): uno autofirmado y efímero, solo para esta prueba.
+"${ROOT}/scripts/make_dev_cert.sh" "${WORK}/certs" >/dev/null
+
 # Nginx con la configuración real y el volumen de solo lectura, como en `web`.
-docker run -d --name "${NGINX}" --network "${NETWORK}" -p 127.0.0.1::80 \
+docker run -d --name "${NGINX}" --network "${NETWORK}" -p 127.0.0.1::443 \
   -v "${ROOT}/nginx/conf.d/default.conf:/etc/nginx/conf.d/default.conf:ro" \
+  -v "${WORK}/certs:/etc/nginx/certs:ro" \
   -v "${VOLUME}:/data/media:ro" \
   -v "${WORK}/html:/usr/share/nginx/html:ro" \
   "${NGINX_IMAGE}" >/dev/null
 
-PORT="$(docker port "${NGINX}" 80/tcp | head -n1 | sed 's/.*://')"
-BASE="http://127.0.0.1:${PORT}"
+PORT="$(docker port "${NGINX}" 443/tcp | head -n1 | sed 's/.*://')"
+BASE="https://127.0.0.1:${PORT}"
 
 for _ in $(seq 1 40); do
-  if [[ "$(curl -s -o /dev/null -w '%{http_code}' "${BASE}/")" == "200" ]]; then break; fi
+  if [[ "$(curl -sk -o /dev/null -w '%{http_code}' "${BASE}/")" == "200" ]]; then break; fi
   sleep 0.5
 done
-if [[ "$(curl -s -o /dev/null -w '%{http_code}' "${BASE}/")" != "200" ]]; then
+if [[ "$(curl -sk -o /dev/null -w '%{http_code}' "${BASE}/")" != "200" ]]; then
   docker logs "${NGINX}" >&2 || true
   echo "Nginx no arrancó con la configuración del proyecto." >&2
   exit 2
@@ -172,7 +176,7 @@ echo "2. Control positivo: el backend autoriza y Nginx entrega"
 fetch_authorized() {
   local description="$1" path="$2" marker="$3" cache="$4"
   local status
-  status="$(curl -s -D "${WORK}/headers" -o "${WORK}/body" -w '%{http_code}' "${BASE}${path}")"
+  status="$(curl -sk -D "${WORK}/headers" -o "${WORK}/body" -w '%{http_code}' "${BASE}${path}")"
   if [[ "${status}" == "200" ]] && grep -q "${marker}" "${WORK}/body"; then
     pass "${description} → 200 con el contenido esperado"
   else

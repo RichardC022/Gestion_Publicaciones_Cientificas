@@ -44,13 +44,14 @@ La restauración:
 1. Verifica los checksums del respaldo.
 2. Detiene `web` y `backend`.
 3. Restaura PostgreSQL con `pg_restore --clean --if-exists`.
-4. Reemplaza el contenido de `media_data` y extrae `media.tar.gz`.
-5. Normaliza permisos con `scripts/init_media.sh`.
-6. Ejecuta `scripts/verify_integrity.sh`.
-7. Levanta `db`, `backend` y `web`.
-8. Ejecuta `python manage.py check` y valida la estructura del volumen.
+4. Recrea el rol de ejecución de la aplicación y sus privilegios (`apply_db_privileges`, con el administrador): el volcado se toma con `--no-privileges`, así que en una base nueva ese rol no existe.
+5. Reemplaza el contenido de `media_data` y extrae `media.tar.gz`.
+6. Normaliza permisos con `scripts/init_media.sh`.
+7. Ejecuta `scripts/verify_integrity.sh`.
+8. Levanta `db`, `backend` y `web`.
+9. Ejecuta `python manage.py check` y valida la estructura del volumen.
 
-No restaures sobre el entorno institucional sin haber probado antes el respaldo en un entorno aislado.
+No restaures sobre el entorno institucional sin haber probado antes el respaldo en un entorno aislado. `./scripts/verify_pilot.sh` automatiza esa prueba (respaldo → desastre → restauración sobre una base vacía → huella idéntica → integridad).
 
 ## Verificación de integridad
 

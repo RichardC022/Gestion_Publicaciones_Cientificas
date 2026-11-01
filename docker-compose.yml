@@ -1,8 +1,8 @@
 services:
   db:
     image: postgres:16-alpine
-    ports:
-      - "5432:5432"
+    # Sin `ports`: PostgreSQL solo es alcanzable desde `backend_net` (TSK-87,
+    # D-03). Para abrirlo en desarrollo existe `docker-compose.dev.yml`.
     restart: unless-stopped
     # Límite de memoria medido en la prueba de carga (TSK-86, pico ~35 MiB).
     mem_limit: 512m
@@ -61,8 +61,10 @@ services:
       context: .
       dockerfile: frontend/Dockerfile
     restart: unless-stopped
+    # Único servicio que publica puertos: 80 solo redirige a 443 (TSK-87, D-02).
     ports:
       - "80:80"
+      - "443:443"
     # Nginx lleva los cuerpos grandes a disco; pico medido (TSK-86): ~104 MiB.
     mem_limit: 256m
     memswap_limit: 256m
@@ -75,14 +77,6 @@ services:
         condition: service_healthy
     networks:
       - frontend_net
-  adminer:
-    image: adminer
-    ports:
-      - "8888:8080"
-    networks:
-      - backend_net
-      - frontend_net
-
 volumes:
   postgres_data:
   media_data:

@@ -26,6 +26,8 @@ import http.client
 import json
 import os
 import re
+import socket
+import ssl
 import statistics
 import subprocess
 import sys
@@ -91,8 +93,27 @@ class Api:
 
     def __init__(self, base_url: str, report: Report, timeout: float = 300.0) -> None:
         parsed = urlparse(base_url)
-        self.host, self.port = parsed.hostname, parsed.port or 80
+        self.tls = parsed.scheme == "https"
+        self.host, self.port = parsed.hostname, parsed.port or (443 if self.tls else 80)
         self.report, self.timeout = report, timeout
+
+    def open_socket(self, timeout: float):
+        """Socket crudo hacia Nginx (con TLS si la URL es https; el certificado es autofirmado)."""
+        sock = socket.create_connection((self.host, self.port), timeout=timeout)
+        if self.tls:
+            context = ssl.create_default_context()
+            context.check_hostname = False
+            context.verify_mode = ssl.CERT_NONE
+            sock = context.wrap_socket(sock, server_hostname=self.host)
+        return sock
+
+    def connect(self):
+        if not self.tls:
+            return http.client.HTTPConnection(self.host, self.port, timeout=self.timeout)
+        context = ssl.create_default_context()
+        context.check_hostname = False
+        context.verify_mode = ssl.CERT_NONE
+        return http.client.HTTPSConnection(self.host, self.port, timeout=self.timeout, context=context)
 
     def call(
         self,
@@ -113,7 +134,7 @@ class Api:
             body = json.dumps(json_body).encode()
             send_headers["Content-Type"] = "application/json"
         started = time.monotonic()
-        connection = http.client.HTTPConnection(self.host, self.port, timeout=self.timeout)
+        connection = self.connect()
         status, response_headers, payload = 0, {}, b""
         try:
             connection.request(method, path, body=body, headers=send_headers)
@@ -566,8 +587,7 @@ class Scenario:
 
         reader = threading.Thread(target=read_samples, daemon=True)
         reader.start()
-        import socket
-        sock = socket.create_connection((self.api.host, self.api.port), timeout=120)
+        sock = self.api.open_socket(120)
         head = (f"POST /api/manuscripts/{manuscript_id}/draft-file/ HTTP/1.1\r\nHost: localhost\r\n"
                 f"Authorization: Bearer {token}\r\nContent-Type: {content_type}\r\n"
                 f"Content-Length: {len(body)}\r\nConnection: close\r\n\r\n").encode()
@@ -665,8 +685,7 @@ class Scenario:
             head = (f"POST /api/manuscripts/00000000-0000-0000-0000-000000000000/draft-file/ HTTP/1.1\r\n"
                     f"Host: localhost\r\nContent-Type: application/octet-stream\r\n"
                     f"Content-Length: {len(body)}\r\nConnection: close\r\n\r\n").encode()
-            import socket
-            sock = socket.create_connection((self.api.host, self.api.port), timeout=30)
+            sock = self.api.open_socket(30)
             try:
                 sock.sendall(head)
                 step = max(1, len(body) // (duration * 2))
@@ -700,8 +719,7 @@ class Scenario:
 
     def phase_timeouts(self) -> None:
         print("\n7. Corte por inactividad del cuerpo (client_body_timeout 120 s)", flush=True)
-        import socket
-        sock = socket.create_connection((self.api.host, self.api.port), timeout=150)
+        sock = self.api.open_socket(150)
         sock.sendall((b"POST /api/manuscripts/00000000-0000-0000-0000-000000000000/draft-file/ HTTP/1.1\r\n"
                       b"Host: localhost\r\nContent-Type: application/octet-stream\r\n"
                       b"Content-Length: 1048576\r\n\r\n") + b"x" * 1024)
@@ -781,7 +799,7 @@ class Scenario:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    parser.add_argument("--base-url", default=os.environ.get("LOAD_BASE_URL", "http://localhost:18080"))
+    parser.add_argument("--base-url", default=os.environ.get("LOAD_BASE_URL", "https://localhost:18443"))
     parser.add_argument("--password", default=os.environ.get("LOAD_PASSWORD", ""))
     parser.add_argument("--users", type=int, default=int(os.environ.get("LOAD_USERS", "50")))
     parser.add_argument("--articles", type=int, default=int(os.environ.get("LOAD_ARTICLES", "8")))

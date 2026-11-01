@@ -9,7 +9,7 @@
 #   ./scripts/load_test.sh                # prueba completa (~5 min)
 #   ./scripts/load_test.sh --timeouts     # añade el corte de 120 s (~+2 min)
 #
-# Variables: LOAD_WEB_PORT (18080), LOAD_USERS (50), LOAD_UPLOADS (5),
+# Variables: LOAD_WEB_PORT (18080, HTTP→HTTPS), LOAD_TLS_PORT (18443), LOAD_USERS (50), LOAD_UPLOADS (5),
 # LOAD_KEEP=1 conserva el stack al terminar, LOAD_OUTPUT=ruta.json guarda el informe.
 set -euo pipefail
 
@@ -17,8 +17,9 @@ cd "$(dirname "$0")/.."
 
 PROJECT="gpc_load"
 export LOAD_WEB_PORT="${LOAD_WEB_PORT:-18080}"
+export LOAD_TLS_PORT="${LOAD_TLS_PORT:-18443}"
 export LOAD_COMPOSE="docker compose -p ${PROJECT} -f docker-compose.yml -f docker-compose.load.yml"
-export LOAD_BASE_URL="http://localhost:${LOAD_WEB_PORT}"
+export LOAD_BASE_URL="https://localhost:${LOAD_TLS_PORT}"
 export LOAD_PASSWORD
 LOAD_PASSWORD="$(openssl rand -hex 16)"
 # El driver invoca «docker compose» con el mismo proyecto y los mismos archivos.
@@ -40,7 +41,10 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "Levantando el stack aislado (${PROJECT}, puerto ${LOAD_WEB_PORT})…"
+# Nginx exige certificado desde TSK-87: si no hay uno, se crea uno autofirmado.
+./scripts/make_dev_cert.sh >/dev/null
+
+echo "Levantando el stack aislado (${PROJECT}, HTTPS en el puerto ${LOAD_TLS_PORT})…"
 compose up -d --build db backend web
 
 echo "Esperando a que el backend esté sano…"
