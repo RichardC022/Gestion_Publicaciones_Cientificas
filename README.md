@@ -657,6 +657,15 @@ Estático (no levanta contenedores; el CI lo ejecuta en cada cambio). Comprueba 
 
 ---
 
+### 10.8 Consultas y cobertura (TSK-90)
+
+```bash
+docker compose run --rm --no-deps -v "$PWD/backend:/app" backend sh -c \
+  "python -m pip install --quiet --user -r requirements/development.txt; python -m pytest -q -p no:cacheprovider tests/performance"
+```
+
+`backend/tests/performance/test_query_scaling.py` mide cada lectura (bandejas, detalles, historial, catálogo, auditoría, avisos) con 2 y con 9 filas de cada tipo y exige que el número de consultas SQL no cambie: si crece con las filas hay un N+1. La cobertura se mide como en la CI (`pytest --cov`, y `coverage report --fail-under=80` sobre servicios y permisos, que hoy está en 98 %).
+
 ## 11. Seguridad
 
 - PostgreSQL no publica puertos al host.
