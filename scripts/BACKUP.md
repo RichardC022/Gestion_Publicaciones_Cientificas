@@ -86,7 +86,9 @@ sudo chown root:root /etc/cron.d/gpc
 sudo chmod 0644 /etc/cron.d/gpc
 ```
 
-Ajusta la ruta `/opt/gpc` si el repositorio está en otro directorio.
+Ajusta la ruta `/opt/gpc` si el repositorio está en otro directorio. Para rotar los cinco logs (D-18): `sudo cp scripts/cron/gpc.logrotate /etc/logrotate.d/gpc`.
+
+El procedimiento completo, paso a paso y para quien no conoce el código, está en [`docs/RUNBOOK.md`](../docs/RUNBOOK.md) (respaldo cifrado y copia externa en §8.3).
 
 La plantilla incluye también la expiración de asignaciones (TSK-45 y TSK-49): cada minuto ejecuta `mark_expired_assignments`, que marca como `EXPIRED` las asignaciones `ACTIVE` con `due_at <= now()`, sin revocar ni reasignar, y escribe en `/var/log/gpc-expire.log` solo cuando hubo trabajo o un error. El contenedor `backend` debe estar en ejecución. Para probarla a mano:
 

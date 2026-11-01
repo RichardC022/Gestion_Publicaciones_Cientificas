@@ -278,6 +278,9 @@ jobs:
                 and sorted(published["web"]) == ["443", "80"])
           sys.exit(0 if ok else 1)'
 
+      - name: Check runbook and infrastructure decisions Q1-Q5
+        run: python3 scripts/check_runbook.py
+
       - name: Verify no secrets are tracked
         run: |
           if git ls-files | grep -E '^(\.env|credentials\.txt)$'; then

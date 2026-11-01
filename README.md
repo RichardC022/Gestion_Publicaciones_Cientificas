@@ -14,6 +14,8 @@ El proyecto sigue una arquitectura SPA + API REST:
 
 No se usa MySQL, SQLite ni otro motor de base de datos. El entorno completo se ejecuta con Docker Compose.
 
+> **¿Vas a desplegar u operar el sistema?** Empieza por el **[runbook del piloto](docs/RUNBOOK.md)**: despliegue, TLS, respaldos, restauración, cron, credenciales, incidentes y criterios de aceptación, escritos para quien no conoce el código. Este README es la referencia técnica y de desarrollo.
+
 ---
 
 ## 1. Requisitos previos
@@ -200,8 +202,6 @@ docker compose run --rm backend python manage.py seed_roles
 
 Este comando es idempotente y forma parte de la Fase 1 del plan. Cuando se ejecuta en una base vacía, crea exactamente los cuatro roles; si ya existen, no duplica registros.
 
-> **Nota de fase:** `seed_roles` se implementa junto con los modelos de identidad en `TSK-17`. En la fase de cimientos puede devolver `Unknown command`; hasta esa tarea, el aprovisionamiento operativo puede realizarse temporalmente desde Django Admin.
-
 ### 3.8 Crear el superusuario operativo
 
 ```bash
@@ -256,7 +256,7 @@ Inspecciona los logs del backend:
 docker compose logs backend
 ```
 
-El endpoint de salud `/api/health/` forma parte de la tarea `TSK-12`. Hasta que esa tarea se implemente, usa `manage.py check` y `docker compose ps` como verificación operativa de la fase de cimientos.
+El endpoint de salud responde en `https://<host>/api/health/` (`{"status":"ok"}`); `docker compose ps` debe mostrar `backend` como `healthy`. La verificación completa del despliegue (restauración, puertos, TLS y cabeceras) es `./scripts/verify_pilot.sh` (sección 10.5).
 
 ---
 
@@ -450,6 +450,13 @@ sudo chmod 0644 /etc/cron.d/gpc
 
 Ajusta la ruta del repositorio en el archivo si no está en `/opt/gpc`.
 
+Instala también la rotación de los cinco logs del cron (semanal con 8 copias los de ejecución frecuente; mensual con 12 los de respaldo e integridad):
+
+```bash
+sudo cp scripts/cron/gpc.logrotate /etc/logrotate.d/gpc
+sudo logrotate -d /etc/logrotate.d/gpc    # simula y muestra errores
+```
+
 La plantilla incluye también la expiración de asignaciones (TSK-45 y TSK-49): cada minuto ejecuta `mark_expired_assignments`, que marca como `EXPIRED` las asignaciones `ACTIVE` con `due_at <= now()`, sin revocar ni reasignar, y escribe en `/var/log/gpc-expire.log` solo cuando hubo trabajo o un error. El contenedor `backend` debe estar en ejecución. Para probarla a mano:
 
 ```bash
@@ -631,12 +638,20 @@ Igual que la prueba de carga, usa un **stack aislado** (`gpc_verify`, HTTPS en `
 
 Requiere Docker, `openssl` y `python3`. Hay que repetirla en el servidor del piloto con el certificado institucional y antes de cada cambio de Nginx, del compose o de los scripts de respaldo.
 
+### 10.6 Runbook y decisiones Q1–Q5 (TSK-88)
+
+```bash
+./scripts/check_runbook.py
+```
+
+Estático (no levanta contenedores; el CI lo ejecuta en cada cambio). Comprueba que las cinco decisiones de infraestructura siguen cumpliéndose en la configuración —50/60 MB idénticos en `.env`, Nginx, Django y Angular, solo `web` publicando 80/443, ubicaciones internas con `X-Accel-Redirect`, respaldo diario con 30 días— y que `docs/RUNBOOK.md` no contiene secretos ni menciona MySQL, que cada script, comando de `manage.py` y variable de entorno que cita existe, y que sus enlaces internos son válidos. Avisa (sin fallar) de que `backup.sh` no cifra ni copia fuera del servidor (D-30).
+
 ---
 
 ## 11. Seguridad
 
 - PostgreSQL no publica puertos al host.
-- Solo el servicio `web` expone el puerto `80`.
+- Solo el servicio `web` publica puertos: `80` (solo redirige) y `443` (TLS 1.2/1.3).
 - El backend ejecuta con el usuario no root `app`.
 - `.env` debe tener permisos `0600`.
 - No se versionan secretos reales.
@@ -650,26 +665,9 @@ Requiere Docker, `openssl` y `python3`. Hay que repetirla en el servidor del pil
 
 ## 12. Estado del proyecto
 
-Este repositorio está en **Fase 0: Fundación**.
+Fases 0 a 5 completas (identidad, autor, editor, revisor, catálogo, auditoría, avisos y corrección de veredictos) y Fase 6 (endurecimiento) en curso: pipeline de calidad en CI (TSK-85), prueba de carga de 50 MB (TSK-86), restauración y superficie expuesta (TSK-87) y runbook del piloto (TSK-88).
 
-Ya está implementada la base de:
-
-- Estructura `/backend` y `/frontend`.
-- PostgreSQL 16.
-- Docker Compose.
-- Nginx.
-- Volumen `media_data`.
-- Respaldo y restauración.
-- Pipeline de integración continua.
-- Documentación operativa inicial.
-
-Las fases siguientes agregan:
-
-- Apps de dominio y salud del backend.
-- Autenticación institucional.
-- Panel unificado.
-- Manuscritos, evaluaciones, veredictos y catálogo.
-- Endurecimiento y prueba de carga.
+Lo que resta antes de abrir el piloto a usuarios reales está en la sección 13 del [runbook](docs/RUNBOOK.md#13-criterios-de-aceptación-del-piloto) (certificado institucional, respaldo cifrado fuera del servidor, cron en el servidor, rotación de la credencial publicada) y en `.spec-kit/compliance.md` (matriz de cumplimiento y deuda técnica). Tareas posteriores: auditoría de seguridad e IDOR (TSK-89), consultas y cobertura (TSK-90), E2E con Playwright (TSK-91) y accesibilidad (TSK-92).
 
 ---
 
