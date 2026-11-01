@@ -19,6 +19,8 @@ concurrency:
 env:
   PYTHONDONTWRITEBYTECODE: "1"
   PYTHONUNBUFFERED: "1"
+  # Cobertura mínima (en %) del dominio y los permisos del backend (TSK-85).
+  COVERAGE_MIN: "80"
 
 jobs:
   backend-check:
@@ -50,6 +52,7 @@ jobs:
   backend-tests:
     name: Backend tests on PostgreSQL
     runs-on: ubuntu-latest
+    timeout-minutes: 90
 
     services:
       postgres:
@@ -104,17 +107,92 @@ jobs:
             exit 1
           fi
 
-      - name: Run backend tests
+      - name: Verify the test database engine is PostgreSQL
         run: |
-          set +e
+          python manage.py shell -c "
+          from django.db import connection
+          connection.ensure_connection()
+          assert connection.vendor == 'postgresql', connection.vendor
+          print('Motor de base de datos:', connection.vendor)
+          "
+
+      - name: Verify there are no pending migrations
+        run: python manage.py makemigrations --check --dry-run
+
+      # Ya no se tolera «ninguna prueba recolectada» (exit 5): sin pruebas, el job falla.
+      - name: Run backend tests with coverage
+        run: >-
           pytest --ds=config.settings.development
-          status=$?
-          set -e
-          if [ "${status}" -eq 5 ]; then
-            printf 'No backend tests collected yet; PostgreSQL job completed without tests.\n'
-            exit 0
-          fi
-          exit "${status}"
+          --cov --cov-report=xml:coverage.xml --cov-report=html:htmlcov
+          --cov-report=term:skip-covered
+
+      # El umbral aplica al dominio (servicios) y a los permisos, no a admin ni migraciones.
+      - name: Enforce minimum coverage on domain and permissions
+        run: >-
+          coverage report --skip-empty --fail-under="${COVERAGE_MIN}"
+          --include="*/apps/*/services/*.py,*/apps/*/services.py,*/apps/*/permissions.py,*/apps/*/authentication.py"
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: |
+            backend/coverage.xml
+            backend/htmlcov
+          if-no-files-found: warn
+          retention-days: 14
+
+  backend-audit:
+    name: Backend dependency audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # pip-audit no clasifica por severidad: cualquier vulnerabilidad conocida
+      # falla el job. Una excepción justificada se documenta con --ignore-vuln.
+      - name: Audit pinned Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pip-audit==2.10.1
+          pip-audit --requirement backend/requirements/production.txt
+          pip-audit --requirement backend/requirements/development.txt
+
+  frontend-tests:
+    name: Angular type check and unit tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Type check application and specs
+        run: |
+          npx tsc -p tsconfig.app.json --noEmit
+          npx tsc -p tsconfig.spec.json --noEmit
+
+      - name: Run unit tests
+        run: npx ng test --watch=false
 
   frontend-build:
     name: Angular production build
@@ -140,6 +218,40 @@ jobs:
       - name: Build Angular production bundle
         run: npx ng build --configuration production
 
+      - name: Upload production build
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist/gpc-frontend
+          retention-days: 14
+
+  frontend-audit:
+    name: Frontend dependency audit
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # Lo que se entrega al navegador: críticas y altas fallan el job.
+      - name: Audit runtime dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+      # Herramientas de desarrollo (no viajan en el build): se informan sin bloquear.
+      - name: Audit development tooling (informational)
+        continue-on-error: true
+        run: npm audit --audit-level=high
+
   compose-config:
     name: Docker Compose validation
     runs-on: ubuntu-latest
@@ -153,6 +265,13 @@ jobs:
 
       - name: Validate Docker Compose configuration
         run: docker compose config --quiet
+
+      - name: Verify no secrets are tracked
+        run: |
+          if git ls-files | grep -E '^(\.env|credentials\.txt)$'; then
+            printf 'ERROR: hay secretos versionados.\n' >&2
+            exit 1
+          fi
 
   media-isolation:
     name: Media volume isolation

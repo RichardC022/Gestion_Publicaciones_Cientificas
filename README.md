@@ -509,14 +509,23 @@ El pipeline está en:
 Jobs incluidos:
 
 - Django system check.
-- Backend tests sobre PostgreSQL 16.
+- Backend tests sobre PostgreSQL 16, sin tolerar «ninguna prueba recolectada». Antes de las pruebas verifica que el motor sea PostgreSQL y que no haya migraciones pendientes (`makemigrations --check`). Mide cobertura y **falla si el dominio (servicios) y los permisos bajan del 80 %** (`COVERAGE_MIN`); la configuración está en `backend/.coveragerc`.
+- Auditoría de dependencias del backend (`pip-audit` sobre `requirements/production.txt` y `development.txt`). Falla con cualquier vulnerabilidad conocida: la herramienta no clasifica por severidad. Una excepción justificada se documenta con `--ignore-vuln`.
+- Angular: comprobación de tipos (`tsc` de la aplicación y de los specs) y `ng test --watch=false`.
 - Angular production build.
-- Docker Compose validation.
+- Auditoría de dependencias del frontend: `npm audit --omit=dev --audit-level=high` falla con críticas o altas; las herramientas de desarrollo se auditan solo de forma informativa.
+- Docker Compose validation y verificación de que `.env` y `credentials.txt` no están versionados.
 - Aislamiento del volumen de archivos (`scripts/smoke_media_isolation.sh`).
+
+Artefactos disponibles en cada ejecución (14 días): `backend-coverage` (`coverage.xml` y `htmlcov/`) y `frontend-dist` (el build de producción).
 
 El pipeline usa PostgreSQL, nunca SQLite, y no consume secretos de producción.
 
-> **Nota de fase:** el job de Angular falla hasta que `TSK-13` cree el proyecto en `frontend/`. Ese comportamiento es intencional: el pipeline debe impedir publicar un frontend que no compila.
+Para medir la cobertura en local:
+
+```bash
+docker compose run --rm --no-deps -v "$PWD/backend:/app" backend sh -c "python -m pip install --quiet --user -r requirements/development.txt; python -m pytest -q -p no:cacheprovider --cov --cov-report=term:skip-covered"
+```
 
 ---
 

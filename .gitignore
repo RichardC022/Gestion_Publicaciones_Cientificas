@@ -16,3 +16,10 @@ SHA256SUMS
 /.claude/
 /graphify-out/
 credentials.txt
+
+# Cobertura (TSK-85)
+.coverage
+.coverage.*
+coverage.xml
+coverage.json
+htmlcov/

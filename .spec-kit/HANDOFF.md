@@ -1,7 +1,7 @@
 # HANDOFF — 29/10/2026
 
-**Estado:** Fases 0–4 completas · Fase 5: **completa, TSK-71 a TSK-84** (TSK-84 sin commit todavía) · **siguiente: Fase 6**, empezando por TSK-85 (pipeline de calidad) · rama `dev/jostin-setup`.
-**Detalle solo si hace falta:** `.spec-kit/compliance.md` (matriz de 58 filas, §2.6 Fase 5, §3 deuda, §4 siguiente paso). Código: `graphify query "<pregunta>"` antes de leer archivos.
+**Estado:** Fases 0–4 completas · Fase 5 completa · Fase 6: **TSK-85 hecha** (sin commit todavía) · **siguiente: TSK-86** (carga de 50 MB y concurrencia) · rama `dev/jostin-setup`.
+**Detalle solo si hace falta:** `.spec-kit/compliance.md` (matriz de 59 filas, §2.6 Fase 5, §3 deuda, §4 siguiente paso). Código: `graphify query "<pregunta>"` antes de leer archivos.
 
 ## Últimos commits (Fase 5)
 ```
@@ -13,12 +13,13 @@ fd65399 TSK 74 catálogo público (rotulado «TSK 73» por error) a7c261e TSK 73
 af289de TSK 72 rol sin UPDATE/DELETE en auditoría             fd87eaf TSK 71 cron de avisos, limpieza e integridad
 e686f7b TSK 76 comandos de avisos, limpieza e integridad
 ```
-**Sin commit:** TSK-84 (pruebas de errores HTTP del frontend) y esta actualización de `HANDOFF.md`/`compliance.md`.
+Último commit: `14c3b44` TSK 84 (errores 403/404/409/410 en avisos, catálogo y auditoría).
+**Sin commit:** TSK-85 (pipeline de calidad, `djangorestframework` 3.18.3, README §9) y esta actualización de `HANDOFF.md`/`compliance.md`.
 
 ## Pruebas (último resultado)
 | Suite | Resultado | Comando |
 |---|---|---|
-| Backend | 1580 ✅ · 11 omitidas · 0 `xfail` (antes 1312 · 8 · 1; el `xfail` de D-10 se cerró) — corrida completa del 29/10 | `docker compose run --rm --no-deps -v "$PWD/backend:/app" backend sh -c "python -m pip install --quiet --user -r requirements/development.txt; python -m pytest -q -p no:cacheprovider"` (≈ 42 min; añade una carpeta de `tests/` para acotar) |
+| Backend | 1580 ✅ · 11 omitidas · 0 `xfail`; cobertura 98 % (97 % en servicios y permisos) — corrida completa del 31/10 con DRF 3.18.3 (≈ 16 min) | `docker compose run --rm --no-deps -v "$PWD/backend:/app" backend sh -c "python -m pip install --quiet --user -r requirements/development.txt; python -m pytest -q -p no:cacheprovider"` (≈ 42 min; añade una carpeta de `tests/` para acotar) |
 | Frontend | 1302 ✅ (74 archivos) · `ng build --configuration production` OK (solo el aviso NG8113, D-13) | `cd frontend && npx ng test --watch=false` · `npx ng build --configuration production` |
 | Volumen | ✅ (TSK-58, no repetido) | `./scripts/smoke_media_isolation.sh` |
 | Migraciones | sin pendientes (`publications/0009_verdict_correction` y `notifications/0001_initial` son las nuevas de la Fase 5) | `docker compose run --rm --no-deps -v "$PWD/backend:/app" backend python manage.py makemigrations --check --dry-run` |
@@ -46,7 +47,8 @@ Docker (tras cambios): `docker compose up -d --build backend web` · apagar: `do
 - **84** (sin commit) no añade código: contrasta sus tres criterios con los specs y cierra los huecos. `core/testing/http-error.fixtures.ts` (`HTTP_ERROR_CASES`, `errorResponse`) simula `403/404/409/410` con el sobre real; se usa en avisos, catálogo y lista de auditoría.
 
 ## Pendiente / decisiones abiertas
-- **Fase 6 (TSK-85 a TSK-92):** pipeline de calidad (cierra D-07 y D-16), carga de 50 MB, restauración, runbook (D-18, D-21), auditoría de seguridad/IDOR, cobertura, E2E y accesibilidad. Confirmar el inicio antes de empezar.
+- **Fase 6:** TSK-85 hecha. Siguen TSK-86 carga de 50 MB, TSK-87 restauración e integridad, TSK-88 runbook (D-18, D-21), TSK-89 seguridad/IDOR, TSK-90 consultas y cobertura, TSK-91 E2E Playwright, TSK-92 accesibilidad y responsive. Confirmar el inicio de cada una.
+- **TSK-85 (cómo quedó):** `ci.yml` con 8 jobs, `backend/.coveragerc` y umbral `COVERAGE_MIN=80` sobre servicios y permisos (medido 97 %). **Aún no se ha ejecutado en GitHub Actions:** revisar la primera corrida. `pip-audit` falla con cualquier aviso; los de herramientas de desarrollo del frontend solo se informan (D-25).
 - **Contador de la campana (D-23):** se lee al entrar al área autenticada y se ajusta al marcar; no hay sondeo, así que un aviso que llega mientras se navega no aparece hasta recargar o abrir la lista.
 - **Avisos del Autor/Revisor** nunca llevan identidades cruzadas por construcción (`payloads.py`); `test_notifications.py` y `test_phase5_notifications.py` lo prueban sobre la notificación construida (cierra el pendiente de la Fase 4).
 - **D-11:** las cuatro secciones del panel siguen devolviendo `{}`.
@@ -69,4 +71,4 @@ Docker (tras cambios): `docker compose up -d --build backend web` · apagar: `do
 Constitución: código en inglés; comentarios, docs y commits en español; SOLID/KISS/DRY/YAGNI; doble ciego estricto. **Sin commits ni push salvo orden** (entregar resultados de pruebas + sugerencia de commit + comandos Docker si aplican). Antes de explorar código: `graphify query`; al terminar: `graphify update .` y actualizar `compliance.md` solo si cambia el estado de la deuda.
 
 ## Deuda abierta (una línea)
-D-02 TLS · D-03 `db` (5432) y `adminer` (8888) publicados · D-11 panel con 4 secciones `{}` · D-07/D-16/D-18 CI (tolera «sin pruebas», sin pruebas del frontend), linter, logrotate (ahora 5 logs de cron) · D-04/D-12/D-13/D-14/D-15 menores · D-20/D-21/D-22/D-23/D-24 bajas. **Resueltas en la Fase 5:** D-09 (`verify_integrity`), D-10 (retirada del catálogo y receptores de las señales), D-17 (catálogo público).
+D-02 TLS · D-03 `db` (5432) y `adminer` (8888) publicados · D-11 panel con 4 secciones `{}` · D-16 sin linter (`ruff`), D-18 logrotate (ahora 5 logs de cron) · D-04/D-12/D-13/D-14/D-15 menores · D-20/D-21/D-22/D-23/D-24/D-25/D-26 bajas. **Resueltas en las Fases 5 y 6:** D-07 (TSK-85), D-09 (`verify_integrity`), D-10 (retirada del catálogo y receptores de las señales), D-17 (catálogo público).
