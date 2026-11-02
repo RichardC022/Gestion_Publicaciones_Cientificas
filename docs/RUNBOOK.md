@@ -140,10 +140,10 @@ docker compose up -d --build
 
 ```bash
 docker compose exec backend python manage.py seed_roles
-docker compose exec backend python manage.py createsuperuser
+docker compose exec backend python manage.py create_user <identificador> --first-name <Nombre> --last-name <Apellidos> --email <correo> --role ADMIN
 ```
 
-*Por qué:* `seed_roles` crea los cuatro roles (es idempotente: repetirlo no duplica nada). El superusuario es **solo para soporte** (Django Admin en `https://<host>/admin/`); no sustituye al flujo editorial. Las cuentas de las personas se crean según §11.
+*Por qué:* `seed_roles` crea los cuatro roles (es idempotente: repetirlo no duplica nada). `create_user` da de alta la primera cuenta (anota la contraseña que muestra: sale una sola vez). **No hay Django Admin en producción** (`/admin/` responde `404`): todas las cuentas se crean así. Las demás se crean según §11.
 
 ### 4.6 Verificar
 
@@ -442,30 +442,44 @@ Los logs guardan conteos y códigos de error, **nunca** el contenido de los avis
 | `APP_DB_USER` / `APP_DB_PASSWORD` | `.env` | La aplicación en ejecución (rol restringido) |
 | `DJANGO_SECRET_KEY` | `.env` | Firma de sesiones y tokens |
 | `EMAIL_HOST_USER` / `EMAIL_HOST_PASSWORD` | `.env` | Envío de correo institucional |
-| Superusuario de soporte | Base de datos | Django Admin (`/admin/`) |
 | Certificado TLS (`privkey.pem`) | `nginx/certs/` | Nginx |
 | Clave de cifrado de respaldos | **Fuera del servidor** | Quien restaura |
 | Cuentas de las personas | Base de datos | Autores, Revisores, Editores y Administradores |
 
 Ninguna se versiona ni se escribe en esta guía. `.env` es `0600`; el certificado privado, `0600`.
 
-### 11.2 Crear una cuenta institucional
+### 11.2 Crear y gestionar cuentas institucionales
 
-Las cuentas las provisiona el soporte desde **Django Admin** (`https://<host>/admin/`), con el superusuario. Es una herramienta de **soporte**, no del flujo editorial, y una superficie sensible:
+No existe Django Admin en producción (D-31): `/admin/` responde `404`. Las cuentas se gestionan con comandos, desde el servidor, y cada uno queda en el historial de la terminal: evita `--password` y usa la contraseña generada.
 
-- Usa una contraseña **robusta y única** para cada superusuario; las cuentas de las personas no son `staff` y no pueden entrar (se comprueba en `verify_pilot.sh`).
-- Nginx limita el login del Admin a **5 intentos por minuto por IP** (responde `429`; espera un minuto). El Admin de Django no bloquea intentos por sí mismo.
-- Si la red institucional lo permite, restringe además `/admin/` por IP: en `nginx/conf.d/default.conf` crea un `location ^~ /admin/` propio (con el mismo `proxy_pass` y cabeceras que el de la API) y dentro `allow <red-institucional>; deny all;`. Hoy comparte bloque con la API.
-- Revisa de vez en cuando Admin → *Login attempts* y la auditoría.
+**Crear una cuenta** (o añadirle roles; es idempotente):
 
-Pasos:
+```bash
+docker compose exec backend python manage.py create_user <identificador> \
+  --first-name <Nombre> --last-name <Apellidos> --email <correo> \
+  --role AUTHOR [--role REVIEWER] [--areas "Agronomía,Medicina"]
+```
 
-1. **Users → Añadir:** `institutional_id` (con el que la persona inicia sesión), `username`, correo y una contraseña inicial; indícale que la cambie.
-2. **User roles → Añadir:** asigna el rol (`AUTHOR`, `REVIEWER`, `EDITOR` o `ADMIN`). Una persona puede tener varios y verá todos sus apartados.
-3. Para un **Revisor**, crea además su **Reviewer profile** con las áreas de pericia y `is_available` activo; sin eso el Editor no puede asignarle.
-4. Para dar de baja: desactiva la cuenta (`is_active`). No se borran cuentas: la auditoría las referencia.
+- `<identificador>` es con lo que la persona inicia sesión (y su usuario). Los roles son `AUTHOR`, `REVIEWER`, `EDITOR` y `ADMIN`; una persona puede tener varios y verá todos sus apartados.
+- Imprime una **contraseña inicial aleatoria una sola vez**: entrégala por un canal seguro e indica que la cambie. Si repites el comando sobre una cuenta existente, conserva su contraseña.
+- Un **Revisor** necesita `--areas` (las áreas de pericia, escritas como las usan los manuscritos) y queda disponible; sin áreas coincidentes el Editor no puede asignarle.
+- El correo de un **Autor** debe coincidir con el del autor registrado en sus manuscritos, y no puede repetirse entre cuentas.
 
-El correo de la cuenta de un Autor debe coincidir con el del autor registrado en sus manuscritos.
+**Cambiar una contraseña:** `docker compose exec backend python manage.py changepassword <identificador>`.
+
+**Dar de baja una cuenta** (no se borran: la auditoría las referencia):
+
+```bash
+docker compose exec backend python manage.py shell -c "from apps.users.models import User; User.objects.filter(institutional_id='<identificador>').update(is_active=False)"
+```
+
+**Retirar un rol** (el historial de roles se conserva; la persona lo pierde en su siguiente petición):
+
+```bash
+docker compose exec backend python manage.py shell -c "from django.utils import timezone; from apps.users.models import UserRole; UserRole.objects.filter(user__institutional_id='<identificador>', role__code='EDITOR', is_active=True).update(is_active=False, revoked_at=timezone.now())"
+```
+
+En un entorno de **desarrollo** hay además `seed_dev_users` (README §3.8.1), que se niega a correr sin `ALLOW_DEV_USERS=1`; **no lo uses en el piloto**.
 
 ### 11.3 Rotar credenciales
 
@@ -476,11 +490,11 @@ El correo de la cuenta de un Autor debe coincidir con el del autor registrado en
 | `DJANGO_SECRET_KEY` | Cambia `.env` y recrea `backend` | Invalida las sesiones abiertas: todos deben iniciar sesión de nuevo |
 | `EMAIL_HOST_PASSWORD` | Cambia `.env` y recrea `backend` | Los avisos fallidos entretanto se reintentan solos |
 | Certificado | §5.1 | Sin corte |
-| Superusuario | Admin → Users, o `docker compose exec backend python manage.py changepassword <usuario>` | — |
+| Contraseña de una cuenta | `docker compose exec backend python manage.py changepassword <identificador>` | Sus sesiones abiertas siguen hasta que caduquen o cierre sesión |
 
 Tras cualquier rotación, comprueba `curl -ks https://localhost/api/health/` e inicia sesión.
 
-> **Credencial publicada (D-01).** Hay un archivo de credenciales que estuvo versionado y **sigue en el historial de Git** (commit `ad22b2c`, presente en varias ramas remotas). Aunque ya no se versione, hay que tratarla como comprometida: **rótala en el sistema al que pertenece**. Reescribir el historial requiere `push --force` y la aprobación del responsable del repositorio; nadie debe hacerlo sin ella.
+> **Credencial publicada (D-01) — cerrada.** Un archivo de credenciales estuvo versionado y **sigue en el historial de Git** (commit `ad22b2c`). El responsable del proyecto declara que **ya la rotó manualmente en el proveedor externo**, de modo que la credencial publicada dejó de ser válida (esto no pudo verificarse desde el repositorio). El archivo seguirá en el historial; reescribirlo requeriría `push --force` y la aprobación del responsable del repositorio, y ya no es necesario para contener el riesgo.
 
 ---
 
@@ -559,8 +573,7 @@ El **panel funciona igual** (los avisos son visibles ahí). Los correos fallidos
 ### 12.9 Una persona no puede iniciar sesión
 
 - Tras **5 intentos fallidos en 15 minutos** la cuenta se bloquea (`429` con el tiempo de espera). **Se desbloquea sola** al pasar la ventana; no hay desbloqueo manual, y los intentos bloqueados no la alargan. Los intentos se ven (solo lectura) en Admin → Login attempts.
-- Cuenta desactivada o sin rol: Admin → Users / User roles.
-- El login del **Admin** responde `429` si se superan 5 intentos por minuto desde la misma IP: espera un minuto.
+- Cuenta desactivada o sin rol: se revisa y corrige con los comandos de §11.2 (no hay Django Admin en producción: `/admin/` responde `404`).
 - Tras rotar `DJANGO_SECRET_KEY`, todos deben volver a iniciar sesión.
 
 ### 12.10 Error `503` / `AUDIT_UNAVAILABLE`
@@ -596,19 +609,19 @@ El piloto se acepta cuando **todo** lo siguiente se cumple. «Hecho» indica la 
 | 8 | Respaldo diario instalado, un respaldo reciente válido y **cifrado y copiado fuera** | §8.2, §8.3 | **Pendiente en el servidor** |
 | 9 | Cron y logrotate instalados y ejecutándose | §10.2 | **Pendiente en el servidor** |
 | 10 | Certificado institucional instalado y vigente | §5.2 | **Pendiente en el servidor** |
-| 11 | Credencial publicada (D-01) rotada | §11.3 | **Pendiente** |
+| 11 | Credencial publicada (D-01) rotada | Declarado por el responsable (rotación manual en el proveedor) | **Hecho** (no verificable desde el repositorio) |
 | 12 | `.env` con secretos únicos y permisos `0600` | `stat -c %a .env` → `600` | **Pendiente en el servidor** |
 | 13 | Cuentas institucionales y Revisores con perfil creados | §11.2 | **Pendiente en el servidor** |
 | 14 | `./scripts/check_runbook.py` termina sin fallos | En el CI | Hecho (TSK-88) |
 | 15 | Matriz de acceso de la API: cada ruta × cada tipo de actor responde 401/403/404/acceso según lo planeado; el Administrador no alcanza manuscritos, evaluaciones ni PDF | `pytest tests/security` (37 pruebas; falla si se añade una ruta sin clasificar) | Hecho (TSK-89) |
-| 16 | Django Admin accesible solo con credenciales de superusuario, con límite de intentos | `./scripts/verify_pilot.sh` | Hecho (TSK-89) |
+| 16 | El Django Admin no existe en producción (`/admin/`, `/static/admin/` → `404`) y las cuentas se crean con `create_user` | `./scripts/verify_pilot.sh` (85 criterios), `./scripts/e2e.sh` | Hecho (D-31) |
 | 17 | Los diez flujos críticos funcionan por las pantallas reales (login multirrol, envío, revisión, veredicto, catálogo, baja, auditoría, corrección, fuga de identidad) | `./scripts/e2e.sh` (Playwright contra un stack aislado) | Hecho (TSK-91) |
 | 18 | Accesibilidad WCAG A/AA, teclado y foco, y diseño responsive (escritorio y tableta) en todas las pantallas | `./scripts/e2e.sh` (suites 05 a 07) | Hecho (TSK-92) |
 | 19 | El build de producción no incluye `sourceMap` ni dependencias de desarrollo | `python3 scripts/check_frontend_build.py` | Hecho (TSK-92) |
 
 ### 13.2 Funcionales (criterios de éxito SC-01 a SC-15 de la especificación)
 
-Los comprueban las pruebas automáticas del repositorio (1580 de backend y 1302 de frontend en verde en la última corrida completa); varios exigen además revisión de personas:
+Los comprueban las pruebas automáticas del repositorio (backend, 1302 de frontend y 34 de extremo a extremo con Playwright en verde en la última corrida); varios exigen además revisión de personas:
 
 | Criterio | Automatizado | Requiere personas |
 |---|---|---|
@@ -619,7 +632,7 @@ Los comprueban las pruebas automáticas del repositorio (1580 de backend y 1302 
 
 ### 13.3 Qué NO prueba este piloto todavía
 
-El recorrido manual completo en navegador (Playwright, TSK-91), la accesibilidad (TSK-92) y la auditoría de seguridad e IDOR (TSK-89) son tareas posteriores; el piloto con usuarios reales debe esperar a que se cierren o aceptar el riesgo por escrito.
+Los diez flujos críticos, la accesibilidad automática, el teclado y el diseño responsive ya los recorre Playwright (`./scripts/e2e.sh`), pero **no sustituyen**: una revisión manual con lector de pantalla, la prueba de usabilidad con personas reales (SC-01, SC-02, SC-12), el SMTP real, ni la verificación en el servidor. El piloto con usuarios reales cubre esos huecos.
 
 ---
 

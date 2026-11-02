@@ -33,7 +33,7 @@ import tempfile
 import time
 from pathlib import Path
 from types import SimpleNamespace
-from urllib.parse import urlencode, urlparse
+from urllib.parse import urlparse
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts" / "load"))
@@ -417,65 +417,40 @@ class Verifier:
                    "; ".join(c.split(";")[0].split("=")[0] for c in cookies))
 
     def phase_admin(self) -> None:
-        print("\n8. Django Admin a través de Nginx (alta de cuentas)", flush=True)
-        password = self.args.password
-        created = compose("exec", "-T", "-e", "DJANGO_SUPERUSER_USERNAME=soporte",
-                          "-e", "DJANGO_SUPERUSER_EMAIL=soporte@example.invalid",
-                          "-e", f"DJANGO_SUPERUSER_PASSWORD={password}",
-                          "backend", "python", "manage.py", "createsuperuser", "--noinput")
-        self.check("se crea el superusuario de soporte", created.returncode == 0, text(created).strip()[-80:])
-
-        def request(method, path, cookies, fields=None):
-            connection = self.api.connect()
-            headers = {"Cookie": "; ".join(f"{k}={v}" for k, v in cookies.items()),
-                       "Referer": f"{self.args.base_url}/admin/login/"}
-            body = None
-            if fields is not None:
-                body = urlencode(fields)
-                headers["Content-Type"] = "application/x-www-form-urlencoded"
-            try:
-                connection.request(method, path, body=body, headers=headers)
-                response = connection.getresponse()
-                payload = response.read().decode(errors="replace")
-                for key, value in response.getheaders():
-                    if key.lower() == "set-cookie":
-                        name, _, rest = value.partition("=")
-                        cookies[name] = rest.partition(";")[0]
-                return response.status, response.getheaders(), payload
-            finally:
-                connection.close()
-
-        def login(user, secret):
-            cookies: dict[str, str] = {}
-            status, hdrs, page = request("GET", "/admin/login/", cookies)
-            token = re.search(r'name="csrfmiddlewaretoken" value="([^"]+)"', page)
-            if status != 200 or not token:
-                return status, cookies, hdrs, page
-            status, hdrs, page = request("POST", "/admin/login/", cookies, {
-                "username": user, "password": secret, "next": "/admin/",
-                "csrfmiddlewaretoken": token.group(1)})
-            return status, cookies, hdrs, page
-
-        status, cookies, hdrs, _ = login("soporte", password)
-        cookie_lines = [v for k, v in hdrs if k.lower() == "set-cookie"]
-        self.check("el superusuario entra al Admin por HTTPS (302)", status == 302 and "sessionid" in cookies, str(status))
-        self.check("la cookie de sesión del Admin es Secure y HttpOnly",
-                   any("sessionid" in c and "Secure" in c and "HttpOnly" in c for c in cookie_lines))
-        status, hdrs, page = request("GET", "/admin/users/user/add/", cookies)
-        self.check("el formulario de alta de cuentas carga", status == 200 and "institutional_id" in page, str(status))
-        names = [k.lower() for k, _ in hdrs]
+        print("\n8. Django Admin apagado y alta de cuentas sin Admin (D-31)", flush=True)
+        probes = ["/admin", "/admin/", "/admin/login/", "/admin/users/user/add/",
+                  "/static/admin/css/base.css", "/static/admin/js/core.js"]
+        for path in probes:
+            status, _, body = self.raw(self.api, path)
+            self.check(f"{path} responde 404 y no cae en la SPA", status == 404 and b"<app-root" not in body, str(status))
+        status, hdrs, _ = self.raw(self.api, "/admin/")
         values = {k.lower(): v for k, v in hdrs}
-        self.check("cabeceras de seguridad, una sola vez, en el Admin",
-                   all(values.get(h) == v for h, v in SECURITY_HEADERS.items())
-                   and all(names.count(h) == 1 for h in SECURITY_HEADERS))
-        status, _, _ = request("GET", "/static/admin/css/base.css", {})
-        self.check("los estáticos del Admin los sirve Nginx", status == 200, str(status))
+        self.check("el 404 del Admin lleva las cabeceras de seguridad del borde",
+                   all(values.get(h) == v for h, v in SECURITY_HEADERS.items()))
+        status, _, _ = self.raw(self.api, "/api/health/")
+        self.check("la API sigue respondiendo por el mismo servidor", status == 200, str(status))
 
-        status, cookies, _, _ = login("load-author-00", password)
-        self.check("una cuenta de autor (sin staff) no entra al Admin", status == 200 and "sessionid" not in cookies, str(status))
-
-        results = [login("soporte", "contraseña-equivocada")[0] for _ in range(12)]
-        self.check("Nginx limita los intentos del login del Admin (429)", 429 in results, str(results))
+        password = self.args.password
+        base = ["exec", "-T", "backend", "python", "manage.py", "create_user", "alta-prueba",
+                "--first-name", "Alta", "--last-name", "Prueba", "--email", "alta.prueba@example.invalid",
+                "--role", "AUTHOR", "--role", "REVIEWER", "--areas", "Agronomía", "--password", password]
+        created = compose(*base)
+        self.check("create_user da de alta una cuenta con dos roles", created.returncode == 0, text(created).strip()[-80:])
+        connection = self.api.connect()
+        connection.request("POST", "/api/auth/login/", body=json.dumps({"identifier": "alta-prueba", "password": password}),
+                           headers={"Content-Type": "application/json"})
+        response = connection.getresponse()
+        payload = json.loads(response.read() or b"{}")
+        connection.close()
+        self.check("la cuenta nueva inicia sesión por la API", response.status == 200 and "access" in payload, str(response.status))
+        again = compose(*base)
+        self.check("repetir create_user es idempotente", again.returncode == 0 and "ninguno" in text(again), text(again).strip()[-80:])
+        wrong = compose("exec", "-T", "backend", "python", "manage.py", "create_user", "x", "--first-name", "X",
+                        "--last-name", "X", "--email", "x@example.invalid", "--role", "JEFE")
+        self.check("un rol inexistente se rechaza", wrong.returncode != 0 and "Roles no válidos" in text(wrong))
+        guarded = compose("exec", "-T", "backend", "python", "manage.py", "seed_dev_users")
+        self.check("seed_dev_users se niega a correr sin ALLOW_DEV_USERS (no crea cuentas de prueba)",
+                   guarded.returncode != 0 and "ALLOW_DEV_USERS=1" in text(guarded))
 
     # -- orquestación -----------------------------------------------------
     def run(self) -> int:

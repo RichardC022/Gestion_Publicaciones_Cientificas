@@ -202,13 +202,24 @@ docker compose run --rm backend python manage.py seed_roles
 
 Este comando es idempotente y forma parte de la Fase 1 del plan. Cuando se ejecuta en una base vacía, crea exactamente los cuatro roles; si ya existen, no duplica registros.
 
-### 3.8 Crear el superusuario operativo
+### 3.8 Crear cuentas institucionales
+
+El Django Admin **no existe en producción** (`/admin/` responde `404`, D-31): las cuentas se dan de alta con un comando.
 
 ```bash
-docker compose run --rm backend python manage.py createsuperuser
+docker compose run --rm backend python manage.py create_user <identificador> \
+  --first-name <Nombre> --last-name <Apellidos> --email <correo> --role EDITOR [--role REVIEWER] [--areas "Agronomía,Medicina"]
 ```
 
-El superusuario es solo para soporte operativo y Django Admin. No reemplaza el flujo editorial de la API ni la SPA.
+Sin `--password` genera una contraseña aleatoria y la muestra **una sola vez**. Es idempotente: repetirlo añade roles sin duplicar la cuenta. Los roles son `AUTHOR`, `REVIEWER`, `EDITOR` y `ADMIN`; un Revisor necesita `--areas` para que el Editor pueda asignarle manuscritos (`docs/RUNBOOK.md` §11.2).
+
+#### 3.8.1 Cuentas de prueba para desarrollo
+
+```bash
+docker compose exec -e ALLOW_DEV_USERS=1 backend python manage.py seed_dev_users
+```
+
+Crea siete cuentas con la contraseña `Gpc-dev-2026` (cámbiala con `--password`): `autor`, `autor2`, `editor`, `revisor`, `revisor2`, `admin` y `autor.revisor` (Autor y Revisor a la vez). Inicia sesión con el identificador. **Solo para desarrollo:** se niega a correr sin `ALLOW_DEV_USERS=1` (el contenedor usa ajustes de producción incluso en local, así que `DEBUG` no basta como señal). Repetirlo restablece las contraseñas sin duplicar nada. No lo ejecutes en el piloto real.
 
 ### 3.9 Levantar el sistema completo
 
@@ -336,15 +347,9 @@ docker compose exec -e DB_USE_ADMIN=1 backend python manage.py migrate --noinput
 docker compose exec backend python manage.py collectstatic --noinput
 ```
 
-### 5.6 Django Admin
+### 5.6 Django Admin (deshabilitado en producción)
 
-Django Admin queda disponible para soporte operativo (alta de cuentas y roles) en:
-
-```text
-https://<host>/admin/
-```
-
-No es la interfaz del flujo editorial. El flujo funcional se expone por `/api/` y se consume desde Angular. Nginx lo reenvía igual que la API y limita su login a 5 intentos por minuto por IP (el Admin de Django no bloquea intentos por sí mismo); usa contraseñas robustas en los superusuarios (`docs/RUNBOOK.md` §11.2).
+En producción **no hay Django Admin**: `/admin/` (y sus estáticos) responde `404`, tanto en Nginx como en Django, y ninguna variable de entorno lo enciende (D-31). Las cuentas se crean con `manage.py create_user` (§3.8) y el flujo funcional se expone por `/api/` y se consume desde Angular. Solo el entorno de desarrollo local (`config.settings.development`) lo monta, para inspeccionar datos con `createsuperuser`; ahí se apaga con `ADMIN_ENABLED=0`.
 
 ---
 

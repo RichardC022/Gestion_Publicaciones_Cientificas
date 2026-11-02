@@ -26,6 +26,10 @@ def required_env(name: str) -> str:
 
 DEBUG = False
 
+# D-31: el Django Admin NO se monta en producción (`/admin/` responde 404). No hay variable
+# de entorno que lo encienda: las cuentas se dan de alta con `manage.py create_user`.
+ADMIN_ENABLED = False
+
 SECRET_KEY = required_env("DJANGO_SECRET_KEY")
 POSTGRES_DB = required_env("POSTGRES_DB")
 POSTGRES_USER = required_env("POSTGRES_USER")

@@ -53,4 +53,18 @@ test.describe('Flujo 1 — sesión y panel multirrol', () => {
     await page.goto('/app/admin/audit');
     await expect(page.getByRole('heading', { name: 'Acceso denegado' })).toBeVisible();
   });
+
+  test('el Django Admin no existe: responde 404 y no cae en la aplicación', async ({
+    page,
+    request,
+  }) => {
+    for (const path of ['/admin', '/admin/', '/admin/login/', '/static/admin/css/base.css']) {
+      const response = await request.get(path);
+      expect(response.status(), path).toBe(404);
+      expect(await response.text(), path).not.toContain('<app-root');
+    }
+    // En el navegador tampoco aparece: ni formulario de Django ni la SPA en esa ruta.
+    const navigation = await page.goto('/admin/');
+    expect(navigation?.status()).toBe(404);
+  });
 });

@@ -1,9 +1,12 @@
 """Development settings for local execution and tests."""
 
 from .base import *  # noqa: F401,F403
-from .base import env_list
+from .base import env_bool, env_list
 
 DEBUG = True
+
+# En desarrollo el Admin está disponible para inspeccionar datos (en producción nunca).
+ADMIN_ENABLED = env_bool("ADMIN_ENABLED", True)
 
 ALLOWED_HOSTS = env_list(
     "ALLOWED_HOSTS",

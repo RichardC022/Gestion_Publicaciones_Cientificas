@@ -140,3 +140,10 @@ def test_production_requires_the_restricted_role(monkeypatch: pytest.MonkeyPatch
         from config.settings import production
 
         importlib.reload(production)
+
+
+def test_production_never_mounts_the_django_admin(monkeypatch: pytest.MonkeyPatch) -> None:
+    """D-31: producción apaga el Admin y ninguna variable de entorno lo enciende."""
+    production = _import_production(monkeypatch, ADMIN_ENABLED="1")
+
+    assert production.ADMIN_ENABLED is False

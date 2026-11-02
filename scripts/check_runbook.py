@@ -144,6 +144,8 @@ def hygiene() -> None:
     check(f"los {len(used)} comandos de manage.py que cita existen", not unknown, ", ".join(unknown))
 
     known = set(re.findall(r"^([A-Z][A-Z0-9_]+)=", read(".env.example"), re.M))
+    # Variables de UNA sola ejecución (`docker compose exec -e …`): a propósito NO viven en `.env`.
+    known |= {"ALLOW_DEV_USERS"}
     assigned = set(re.findall(r"\b([A-Z][A-Z0-9_]+)=", text))
     check("las variables de entorno que cita existen en .env.example", not (assigned - known),
           ", ".join(sorted(assigned - known)))
