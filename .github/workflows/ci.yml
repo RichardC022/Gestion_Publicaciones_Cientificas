@@ -218,6 +218,11 @@ jobs:
       - name: Build Angular production bundle
         run: npx ng build --configuration production
 
+      # TSK-92: sin sourceMap, sin dependencias de desarrollo y con una imagen final solo de Nginx.
+      - name: Check the build is a production build
+        working-directory: .
+        run: python3 scripts/check_frontend_build.py
+
       - name: Upload production build
         uses: actions/upload-artifact@v4
         with:
@@ -287,6 +292,51 @@ jobs:
             printf 'ERROR: hay secretos versionados.\n' >&2
             exit 1
           fi
+
+  # E2E de los flujos críticos (TSK-91): Playwright contra el stack real de Compose
+  # (Nginx + Django + PostgreSQL). scripts/e2e.sh lo levanta aislado y lo borra al terminar.
+  e2e:
+    name: Playwright E2E (Docker Compose stack)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: frontend
+
+      - name: Type check the E2E suite
+        run: npx tsc -p e2e/tsconfig.json
+        working-directory: frontend
+
+      # Producción rechaza los valores «change-me»: se usan secretos desechables de la corrida.
+      - name: Create environment file with throwaway secrets
+        run: |
+          cp .env.example .env
+          for name in DJANGO_SECRET_KEY POSTGRES_PASSWORD APP_DB_PASSWORD EMAIL_HOST_PASSWORD; do
+            sed -i "s|^${name}=change-me$|${name}=$(openssl rand -hex 24)|" .env
+          done
+
+      - name: Run the critical-flow E2E tests
+        run: ./scripts/e2e.sh
+
+      - name: Upload Playwright traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-test-results
+          path: frontend/test-results
+          if-no-files-found: ignore
 
   media-isolation:
     name: Media volume isolation

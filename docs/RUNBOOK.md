@@ -602,6 +602,9 @@ El piloto se acepta cuando **todo** lo siguiente se cumple. «Hecho» indica la 
 | 14 | `./scripts/check_runbook.py` termina sin fallos | En el CI | Hecho (TSK-88) |
 | 15 | Matriz de acceso de la API: cada ruta × cada tipo de actor responde 401/403/404/acceso según lo planeado; el Administrador no alcanza manuscritos, evaluaciones ni PDF | `pytest tests/security` (37 pruebas; falla si se añade una ruta sin clasificar) | Hecho (TSK-89) |
 | 16 | Django Admin accesible solo con credenciales de superusuario, con límite de intentos | `./scripts/verify_pilot.sh` | Hecho (TSK-89) |
+| 17 | Los diez flujos críticos funcionan por las pantallas reales (login multirrol, envío, revisión, veredicto, catálogo, baja, auditoría, corrección, fuga de identidad) | `./scripts/e2e.sh` (Playwright contra un stack aislado) | Hecho (TSK-91) |
+| 18 | Accesibilidad WCAG A/AA, teclado y foco, y diseño responsive (escritorio y tableta) en todas las pantallas | `./scripts/e2e.sh` (suites 05 a 07) | Hecho (TSK-92) |
+| 19 | El build de producción no incluye `sourceMap` ni dependencias de desarrollo | `python3 scripts/check_frontend_build.py` | Hecho (TSK-92) |
 
 ### 13.2 Funcionales (criterios de éxito SC-01 a SC-15 de la especificación)
 

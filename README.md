@@ -666,6 +666,25 @@ docker compose run --rm --no-deps -v "$PWD/backend:/app" backend sh -c \
 
 `backend/tests/performance/test_query_scaling.py` mide cada lectura (bandejas, detalles, historial, catálogo, auditoría, avisos) con 2 y con 9 filas de cada tipo y exige que el número de consultas SQL no cambie: si crece con las filas hay un N+1. La cobertura se mide como en la CI (`pytest --cov`, y `coverage report --fail-under=80` sobre servicios y permisos, que hoy está en 98 %).
 
+### 10.9 Pruebas E2E de los flujos críticos (TSK-91)
+
+```bash
+cd frontend && npm ci          # una vez: instala @playwright/test (sin navegadores)
+cd .. && ./scripts/e2e.sh      # los 10 flujos (≈ 3 min, más la primera construcción)
+./scripts/e2e.sh -g "Flujo 9"  # uno solo
+```
+
+`scripts/e2e.sh` levanta un stack **aislado** (`gpc_e2e`, HTTPS en `https://localhost:20443`; no toca tu base ni tus PDF), siembra cinco personas con una contraseña aleatoria, ejecuta Playwright en la imagen oficial `mcr.microsoft.com/playwright` (trae Chromium: el host no instala navegadores) y **borra el stack al terminar**. Los flujos están en `frontend/e2e/`: login multirrol; Autor → Editor → Revisor → veredicto → catálogo público → baja → auditoría; corrección administrativa; y fuga de identidad. Si fallan, las capturas y trazas quedan en `frontend/test-results/` (`npx playwright show-trace <trace.zip>`). Para iterar: `E2E_KEEP=1 ./scripts/e2e.sh` deja el stack y `E2E_REUSE=1 ./scripts/e2e.sh -g "…"` lo reutiliza. El CI lo ejecuta en el trabajo `e2e`.
+
+### 10.10 Accesibilidad, responsive y build de producción (TSK-92)
+
+```bash
+./scripts/e2e.sh -g "Accesibilidad|teclado|Tab alcanza|diálogo atrapa|sin desbordes"   # las tres suites
+cd frontend && npx ng build --configuration production && cd .. && python3 scripts/check_frontend_build.py
+```
+
+Las suites `05` a `07` de `frontend/e2e/` recorren las pantallas de cada rol con datos reales: **axe-core** (WCAG A/AA, contraste incluido), **teclado y foco** (todo control se alcanza con Tab y muestra un indicador de foco; los diálogos atrapan el foco y lo devuelven) y **responsive** (1920×1080, 1366×768 y tableta 1024×768 y 768×1024: sin desbordes ni controles tapados). La lista de pantallas está en `frontend/e2e/support/world.ts` (`screens()`): al añadir una, añádela allí. `scripts/check_frontend_build.py` comprueba que el build es de producción: sin `sourceMap` ni `.map`, sin dependencias de desarrollo en el bundle, `dependencies` solo con el runtime de Angular y una imagen final solo de Nginx (`--container gpc_e2e-web-1` lo comprueba también en un contenedor en marcha). Los axe y el resto son verificaciones automáticas: no sustituyen una prueba manual con lector de pantalla.
+
 ## 11. Seguridad
 
 - PostgreSQL no publica puertos al host.
