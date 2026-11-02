@@ -78,6 +78,8 @@ El directorio `frontend/` está reservado para la SPA Angular. Su proyecto base 
 
 ## 3. Instalación en un entorno limpio
 
+> **¿Solo quieres levantarlo?** [`QUICKSTART.md`](QUICKSTART.md) tiene los comandos para copiar y pegar, uno por entorno (producción/piloto y desarrollo), con certificado autofirmado y cuentas incluidas. Esta sección es la versión explicada paso a paso.
+
 Ejecuta todos los comandos desde la raíz del repositorio.
 
 ### 3.1 Clonar el repositorio
