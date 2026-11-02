@@ -1,6 +1,6 @@
 # HANDOFF — 29/10/2026
 
-**Estado:** Fases 0–6 completas (TSK-01 a TSK-92) · D-01 cerrada por el responsable (rotó la credencial) · D-31 resuelta (Django Admin apagado en producción; cuentas con `manage.py create_user`) · **sin commit:** la decisión D-31 · **siguiente: la aceptación del piloto** (runbook §13), casi toda en el servidor · rama `dev/jostin-setup`.
+**Estado:** Fases 0–6 completas (TSK-01 a TSK-92) · D-01 cerrada por el responsable (rotó la credencial) · D-31 resuelta (Django Admin apagado en producción; cuentas con `manage.py create_user`) · commit de la decisión D-31: `2d5df11` · **siguiente: la aceptación del piloto** (runbook §13), casi toda en el servidor · rama `dev/jostin-setup`.
 **Detalle solo si hace falta:** `.spec-kit/compliance.md` (matriz de 67 filas, §2.6 Fase 5, §3 deuda, §4 siguiente paso). Código: `graphify query "<pregunta>"` antes de leer archivos.
 
 ## Últimos commits (Fase 5)
@@ -13,8 +13,8 @@ fd65399 TSK 74 catálogo público (rotulado «TSK 73» por error) a7c261e TSK 73
 af289de TSK 72 rol sin UPDATE/DELETE en auditoría             fd87eaf TSK 71 cron de avisos, limpieza e integridad
 e686f7b TSK 76 comandos de avisos, limpieza e integridad
 ```
-Último commit: `7dcefd9` TSK 91 y 92 (E2E, accesibilidad, responsive y build).
-**Sin commit:** decisión D-31 y cuentas de prueba (`backend/config/urls.py` y ajustes con `ADMIN_ENABLED`, `apps/users/services/provisioning.py`, comandos `create_user` y `seed_dev_users`, `tests/users/test_provisioning.py`, `test_urls.py`, `test_settings.py`, `nginx/conf.d/default.conf`, fase 8 de `scripts/verify/verify_pilot.py`, prueba E2E del 404 en `01-sesion`, `scripts/check_runbook.py`, README §3.8/§5.6, runbook §4.5/§11.2/§13) y esta actualización de `HANDOFF.md`/`compliance.md`.
+Último commit: `2d5df11` D-31 Django Admin apagado en producción (`ADMIN_ENABLED`, Nginx con 404, comandos `create_user` y `seed_dev_users`, fase 8 de `verify_pilot.py`, prueba E2E del 404, README §3.8/§5.6, runbook §4.5/§11.2/§13). Anterior: `7dcefd9` TSK 91 y 92 (E2E, accesibilidad, responsive y build).
+**Sin commit:** solo la actualización de cierre de `HANDOFF.md` y `compliance.md` (el hash `2d5df11`).
 
 ## Pruebas (último resultado)
 | Suite | Resultado | Comando |
@@ -45,7 +45,7 @@ Docker (tras cambios): `docker compose up -d --build backend web` · apagar: `do
 - **81** `/app/admin/audit` (tabla paginada, filtros en la URL) y `/audit/:id` (hashes, datos de lista blanca, sin PII).
 - **82** `features/admin/verdict-correction-dialog/` (motivo 10–1000, avisa que la decisión anterior se conserva); el botón «Habilitar corrección» aparece solo si `can_authorize_correction` es `true` y desaparece al confirmar. `VerdictFormComponent` recibe `correction` (`SubmissionDetail.correction_authorization`): muestra el veredicto que sustituiría, nace vacío, nunca envía `previous_verdict_id` y el historial marca ambas decisiones.
 - **83** `core/models/notification.model.ts`, `core/services/notification.service.ts` (guarda el contador de no leídos en una señal), `features/notifications/notification-item/` y `notification-list/` (filtro Todos/No leídos y página en la URL, marcar uno o todos, el enlace solo se activa si es `/app/…`), y `ShellComponent` pasa el contador real a la campana. Para las pruebas que montan el shell real existe `core/testing/notification.service.stub.ts`.
-- **84** (sin commit) no añade código: contrasta sus tres criterios con los specs y cierra los huecos. `core/testing/http-error.fixtures.ts` (`HTTP_ERROR_CASES`, `errorResponse`) simula `403/404/409/410` con el sobre real; se usa en avisos, catálogo y lista de auditoría.
+- **84** no añade código: contrasta sus tres criterios con los specs y cierra los huecos. `core/testing/http-error.fixtures.ts` (`HTTP_ERROR_CASES`, `errorResponse`) simula `403/404/409/410` con el sobre real; se usa en avisos, catálogo y lista de auditoría.
 
 ## Pendiente / decisiones abiertas
 - **Fase 6 completa** (TSK-85 a TSK-92). No quedan tareas en `tasks.md`: sigue la **aceptación del piloto** (runbook §13). D-01 y D-31 están resueltas.
