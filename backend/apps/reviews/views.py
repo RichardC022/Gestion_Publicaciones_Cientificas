@@ -1,4 +1,4 @@
-"""Editor endpoints (plan section 2.4, TSK-47).
+"""Editor (plan section 2.4, TSK-47) and reviewer (section 2.5, TSK-61) endpoints.
 
 Every view requires an authenticated account with the active ``EDITOR``
 role (``403`` otherwise). The scope is :meth:`Manuscript.objects.for_editor`,
@@ -6,6 +6,10 @@ which leaves out drafts and any manuscript the editor registered or
 co-authored: those answer ``404``, so a conflict of interest never
 reveals that the manuscript exists, and the editor can neither assign
 nor judge it.
+
+The reviewer's views start at :meth:`Assignment.objects.for_reviewer`,
+never at the global manuscript repository: a foreign assignment, a
+withdrawn manuscript or one the reviewer authored answers ``404``.
 """
 
 from __future__ import annotations
@@ -14,6 +18,7 @@ import json
 
 from django.db.models import OuterRef, Q, QuerySet, Subquery
 from django.db.models.functions import Now
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.generics import GenericAPIView
@@ -23,7 +28,8 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 
 from apps.publications.filters import apply_filters
-from apps.publications.models import Manuscript, ManuscriptVersion
+from apps.publications.models import Manuscript, ManuscriptVersion, Verdict
+from apps.publications.services.downloads import authorize_sanitized_download, xaccel_response
 from apps.publications.services.idempotency import (
     IdempotencyScope,
     IdempotentReplay,
@@ -36,13 +42,24 @@ from apps.publications.views import (
     parse_if_match,
     replayed,
 )
-from apps.reviews.models import Assignment, Evaluation
+from apps.reviews.models import Assignment, Evaluation, IncidentReport
 from apps.reviews.serializers import (
     AssignmentSerializer,
     AssignReviewerSerializer,
+    DeclareConflictSerializer,
     EditorEvaluationSerializer,
+    EditorIncidentSerializer,
+    EvaluationDraftSerializer,
     EligibleReviewerSerializer,
     RegisterVerdictSerializer,
+    ReportIncidentSerializer,
+    ResolveIncidentSerializer,
+    ReviewerAssignmentDetailSerializer,
+    ReviewerAssignmentSerializer,
+    ReviewerEvaluationHistoryDetailSerializer,
+    ReviewerEvaluationHistorySerializer,
+    ReviewerEvaluationSerializer,
+    ReviewerIncidentSerializer,
     ReviewerFilterSerializer,
     RevokeAssignmentSerializer,
     StartReviewSerializer,
@@ -51,8 +68,11 @@ from apps.reviews.serializers import (
     VerdictSerializer,
 )
 from apps.reviews.services.assignments import assign_reviewer, revoke_assignment, start_review
+from apps.reviews.services.incidents import report_incident, resolve_incident
+from apps.reviews.services.evaluations import declare_conflict, save_draft, submit_evaluation
 from apps.reviews.services.eligibility import eligibility_breakdown, eligible_reviewers
-from apps.users.permissions import IsEditor
+from apps.reviews.permissions import IsActiveAssignedReviewer, IsAssignedReviewer
+from apps.users.permissions import IsEditor, IsReviewer
 from config.exceptions import DomainError, ErrorCode
 from config.request_context import audit_request_context
 
@@ -75,6 +95,12 @@ class EditorBaseView(GenericAPIView):
             Assignment.objects.filter(manuscript__in=in_scope)
             .select_related("manuscript", "version", "reviewer", "assigned_by", "revoked_by")
             .with_overdue()
+        )
+
+    def scoped_incidents(self) -> QuerySet:
+        """Confidential reports over the manuscripts in the editor's scope."""
+        return IncidentReport.objects.for_editor(self.request.user).select_related(
+            "manuscript", "reporter", "resolved_by", "correction_round"
         )
 
     def represent_assignment(self, assignment: Assignment) -> dict:
@@ -352,3 +378,264 @@ class ManuscriptEvaluationsView(EditorBaseView):
         )
         page = self.paginate_queryset(evaluations)
         return self.get_paginated_response(EditorEvaluationSerializer(page, many=True).data)
+
+
+class IncidentListView(EditorBaseView):
+    """``GET /api/editor/incidents/``: the confidential reports, open ones first.
+
+    ``?status=OPEN|RESOLVED`` narrows the list. Reports over a manuscript
+    the editor registered or co-authored are left out.
+    """
+
+    def get(self, request: Request) -> Response:
+        incidents = self.scoped_incidents()
+        status_filter = request.query_params.get("status")
+        if status_filter is not None:
+            if status_filter not in IncidentReport.Status.values:
+                raise DomainError(
+                    "El estado debe ser OPEN o RESOLVED.",
+                    code=ErrorCode.VALIDATION_ERROR,
+                    details={"status": ["El estado debe ser OPEN o RESOLVED."]},
+                )
+            incidents = incidents.filter(status=status_filter)
+        # "OPEN" va antes que "RESOLVED" en orden alfabético.
+        page = self.paginate_queryset(incidents.order_by("status", "-created_at", "-id"))
+        return self.get_paginated_response(EditorIncidentSerializer(page, many=True).data)
+
+
+class IncidentResolveView(EditorBaseView):
+    """``POST /api/editor/incidents/{id}/resolve/``: resolve once (``409`` the second time)."""
+
+    def post(self, request: Request, pk) -> Response:
+        get_object_or_404(self.scoped_incidents(), pk=pk)
+        body = ResolveIncidentSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        resolve_incident(
+            incident_id=pk,
+            editor=request.user,
+            resolution=body.validated_data["resolution"],
+            context=audit_request_context(request),
+        )
+        resolved = self.scoped_incidents().get(pk=pk)
+        return Response(EditorIncidentSerializer(resolved).data)
+
+
+class ReviewerBaseView(GenericAPIView):
+    """Shared permissions and assignment scope of the reviewer module."""
+
+    permission_classes = [IsAuthenticated, IsReviewer, IsAssignedReviewer]
+
+    def scoped_assignments(self) -> QuerySet:
+        return (
+            Assignment.objects.for_reviewer(self.request.user)
+            .with_overdue()
+            .with_evaluation_started()
+        )
+
+    def get_assignment(self, pk) -> Assignment:
+        """The reviewer's own assignment; anything else answers ``404``."""
+        return get_object_or_404(self.scoped_assignments(), pk=pk)
+
+
+class ReviewerAssignmentListView(ReviewerBaseView):
+    """``GET /api/reviewer/assignments/``: the reviewer's own inbox."""
+
+    def get(self, request: Request) -> Response:
+        page = self.paginate_queryset(self.scoped_assignments())
+        return self.get_paginated_response(ReviewerAssignmentSerializer(page, many=True).data)
+
+
+class ReviewerAssignmentDetailView(ReviewerBaseView):
+    """``GET /api/reviewer/assignments/{id}/``: blind detail of an ``ACTIVE`` or ``COMPLETED`` one."""
+
+    def get(self, request: Request, pk) -> Response:
+        assignment = self.get_assignment(pk)
+        self.check_object_permissions(request, assignment)
+        return Response(
+            ReviewerAssignmentDetailSerializer(assignment, context={"request": request}).data
+        )
+
+
+class ReviewerAssignmentDocumentView(ReviewerBaseView):
+    """``GET /api/reviewer/assignments/{id}/document/``: the sanitized PDF.
+
+    Only an ``ACTIVE`` assignment downloads; any other status of the
+    reviewer's own assignment answers ``410``. The internal path always
+    ends in ``sanitized.pdf`` and the name is generic, so the original
+    and the author's file name never reach the reviewer. The download is
+    audited first; if the audit fails the answer is ``503`` without redirect.
+    """
+
+    permission_classes = [IsAuthenticated, IsReviewer, IsActiveAssignedReviewer]
+
+    def get(self, request: Request, pk) -> HttpResponse:
+        assignment = self.get_assignment(pk)
+        if assignment.status != Assignment.Status.ACTIVE:
+            raise DomainError(
+                "Esta asignación ya no permite descargar el documento.",
+                code=ErrorCode.STATE_CONFLICT,
+                status_code=410,
+            )
+        self.check_object_permissions(request, assignment)
+
+        manuscript, version = assignment.manuscript, assignment.version
+        internal_uri = authorize_sanitized_download(
+            manuscript=manuscript,
+            version=version,
+            user=request.user,
+            context=audit_request_context(request),
+        )
+        return xaccel_response(
+            internal_uri, f"manuscript-{manuscript.code}-v{version.version_number}.pdf"
+        )
+
+
+def evaluation_response(evaluation: Evaluation) -> Response:
+    """The reviewer's evaluation with its optimistic lock as the ``ETag``."""
+    response = Response(ReviewerEvaluationSerializer(evaluation).data)
+    response["ETag"] = etag_for(evaluation)
+    return response
+
+
+class ReviewerEvaluationView(ReviewerBaseView):
+    """``GET``/``PUT /api/reviewer/assignments/{id}/evaluation/``: the private draft or the final.
+
+    ``GET`` answers an empty draft before the first save. ``PUT`` needs
+    ``If-Match`` with the ``ETag`` read (``"0"`` for the empty draft) and
+    changes only the fields sent; the service decides whether the
+    assignment still accepts writes. Neither shows the draft to anyone
+    but the reviewer who owns the assignment.
+    """
+
+    def get_permissions(self):
+        if self.request.method == "GET":
+            return super().get_permissions()
+        return [IsAuthenticated(), IsReviewer()]
+
+    def get(self, request: Request, pk) -> Response:
+        assignment = self.get_assignment(pk)
+        self.check_object_permissions(request, assignment)
+        evaluation = Evaluation.objects.filter(assignment=assignment).first()
+        if evaluation is None:
+            evaluation = Evaluation(id=None, assignment=assignment)
+        return evaluation_response(evaluation)
+
+    def put(self, request: Request, pk) -> Response:
+        self.get_assignment(pk)
+        body = EvaluationDraftSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        evaluation = save_draft(
+            assignment_id=pk,
+            reviewer=request.user,
+            values=body.validated_data,
+            expected_lock_version=parse_if_match(request, "de la evaluación"),
+        )
+        return evaluation_response(evaluation)
+
+
+class ReviewerEvaluationSubmitView(ReviewerBaseView):
+    """``POST /api/reviewer/assignments/{id}/evaluation/submit/``: the immutable final."""
+
+    permission_classes = [IsAuthenticated, IsReviewer]
+
+    def post(self, request: Request, pk) -> Response:
+        self.get_assignment(pk)
+        evaluation = submit_evaluation(
+            assignment_id=pk,
+            reviewer=request.user,
+            expected_lock_version=parse_if_match(request, "de la evaluación"),
+            context=audit_request_context(request),
+        )
+        return evaluation_response(evaluation)
+
+
+class ReviewerConflictView(ReviewerBaseView):
+    """``POST /api/reviewer/assignments/{id}/conflict/``: declare a conflict of interest.
+
+    Blocks the evaluation (no more saves or submission) and tells the
+    editor; the assignment stays ``ACTIVE`` until the editor decides.
+    """
+
+    permission_classes = [IsAuthenticated, IsReviewer]
+
+    def post(self, request: Request, pk) -> Response:
+        self.get_assignment(pk)
+        body = DeclareConflictSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        evaluation = declare_conflict(
+            assignment_id=pk,
+            reviewer=request.user,
+            reason=(body.validated_data.get("reason") or "").strip() or None,
+            context=audit_request_context(request),
+        )
+        return evaluation_response(evaluation)
+
+
+class ReviewerHistoryBaseView(GenericAPIView):
+    """The reviewer's own final evaluations, through the same scope as the inbox.
+
+    Starting from :meth:`Assignment.objects.for_reviewer` keeps a
+    withdrawn manuscript and one the reviewer co-authored out of the
+    history. Drafts are never listed. The permission of the module role is
+    enough here: :class:`IsAssignedReviewer` reads an object with a
+    ``reviewer_id`` as an assignment, which an evaluation is not.
+    """
+
+    permission_classes = [IsAuthenticated, IsReviewer]
+
+    def scoped_evaluations(self) -> QuerySet:
+        own = Assignment.objects.for_reviewer(self.request.user).values("pk")
+        latest_verdict = Verdict.objects.filter(evaluation=OuterRef("pk")).order_by(
+            "-created_at", "-id"
+        )
+        return (
+            Evaluation.objects.filter(assignment__in=own, status=Evaluation.Status.FINAL)
+            .select_related("manuscript", "version")
+            .annotate(
+                editorial_decision=Subquery(latest_verdict.values("decision")[:1]),
+                editorial_decided_at=Subquery(latest_verdict.values("created_at")[:1]),
+            )
+            .order_by("-submitted_at", "-id")
+        )
+
+
+class ReviewerEvaluationListView(ReviewerHistoryBaseView):
+    """``GET /api/reviewer/evaluations/``: history of the reviewer's final evaluations."""
+
+    def get(self, request: Request) -> Response:
+        page = self.paginate_queryset(self.scoped_evaluations())
+        return self.get_paginated_response(
+            ReviewerEvaluationHistorySerializer(page, many=True).data
+        )
+
+
+class ReviewerEvaluationDetailView(ReviewerHistoryBaseView):
+    """``GET /api/reviewer/evaluations/{id}/``: one final evaluation, read-only."""
+
+    def get(self, request: Request, pk) -> Response:
+        evaluation = get_object_or_404(self.scoped_evaluations(), pk=pk)
+        return Response(ReviewerEvaluationHistoryDetailSerializer(evaluation).data)
+
+
+class ReviewerIdentityLeakView(ReviewerBaseView):
+    """``POST /api/reviewer/assignments/{id}/identity-leak/``: a confidential report.
+
+    Private: it changes neither the evaluation, the PDF nor the manuscript,
+    and the author never learns it exists. Only the owner of an ``ACTIVE``
+    assignment files it; a second open report answers ``409``.
+    """
+
+    permission_classes = [IsAuthenticated, IsReviewer]
+
+    def post(self, request: Request, pk) -> Response:
+        self.get_assignment(pk)
+        body = ReportIncidentSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        incident = report_incident(
+            assignment_id=pk,
+            reviewer=request.user,
+            report_type=body.validated_data["report_type"],
+            description=body.validated_data["description"],
+            context=audit_request_context(request),
+        )
+        return Response(ReviewerIncidentSerializer(incident).data, status=status.HTTP_201_CREATED)

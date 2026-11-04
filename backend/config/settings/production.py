@@ -26,12 +26,22 @@ def required_env(name: str) -> str:
 
 DEBUG = False
 
+# D-31: el Django Admin NO se monta en producción (`/admin/` responde 404). No hay variable
+# de entorno que lo encienda: las cuentas se dan de alta con `manage.py create_user`.
+ADMIN_ENABLED = False
+
 SECRET_KEY = required_env("DJANGO_SECRET_KEY")
 POSTGRES_DB = required_env("POSTGRES_DB")
 POSTGRES_USER = required_env("POSTGRES_USER")
 POSTGRES_PASSWORD = required_env("POSTGRES_PASSWORD")
 POSTGRES_HOST = required_env("POSTGRES_HOST")
 POSTGRES_PORT = required_env("POSTGRES_PORT")
+# Rol de ejecución (TSK-72): sin superusuario y sin UPDATE/DELETE sobre la
+# auditoría. POSTGRES_USER es el administrador que migra; solo se usa en
+# runtime cuando el entrypoint o una operación manual fijan DB_USE_ADMIN=1.
+APP_DB_USER = required_env("APP_DB_USER")
+APP_DB_PASSWORD = required_env("APP_DB_PASSWORD")
+DB_USE_ADMIN = os.environ.get("DB_USE_ADMIN") == "1"
 
 ALLOWED_HOSTS = env_list("ALLOWED_HOSTS")
 if not ALLOWED_HOSTS:
@@ -69,8 +79,8 @@ DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
         "NAME": POSTGRES_DB,
-        "USER": POSTGRES_USER,
-        "PASSWORD": POSTGRES_PASSWORD,
+        "USER": POSTGRES_USER if DB_USE_ADMIN else APP_DB_USER,
+        "PASSWORD": POSTGRES_PASSWORD if DB_USE_ADMIN else APP_DB_PASSWORD,
         "HOST": POSTGRES_HOST,
         "PORT": POSTGRES_PORT,
     }
@@ -82,3 +92,4 @@ EMAIL_USE_TLS = os.environ.get("EMAIL_USE_TLS", "1") == "1"
 EMAIL_HOST_USER = required_env("EMAIL_HOST_USER")
 EMAIL_HOST_PASSWORD = required_env("EMAIL_HOST_PASSWORD")
 DEFAULT_FROM_EMAIL = required_env("DEFAULT_FROM_EMAIL")
+EMAIL_TIMEOUT = int(os.environ.get("EMAIL_TIMEOUT", "10"))

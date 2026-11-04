@@ -1,7 +1,9 @@
 import {
   Assignment,
+  CorrectionAuthorization,
   EditorEvaluation,
   EligibleReviewer,
+  Incident,
   SubmissionDetail,
   SubmissionRow,
   Verdict,
@@ -34,9 +36,7 @@ export function buildSubmissionPage(
   return { count, next: null, previous: null, results };
 }
 
-export function buildSubmissionDetail(
-  overrides: Partial<SubmissionDetail> = {},
-): SubmissionDetail {
+export function buildSubmissionDetail(overrides: Partial<SubmissionDetail> = {}): SubmissionDetail {
   return {
     id: 's-1',
     code: 'GPC-2026-000001',
@@ -102,6 +102,7 @@ export function buildSubmissionDetail(
       },
     ],
     open_assignment: null,
+    correction_authorization: null,
     created_at: '2026-10-20T15:30:00Z',
     updated_at: '2026-10-21T15:30:00Z',
     ...overrides,
@@ -163,6 +164,17 @@ export function buildEvaluation(overrides: Partial<EditorEvaluation> = {}): Edit
   };
 }
 
+export function buildCorrectionAuthorization(
+  overrides: Partial<CorrectionAuthorization> = {},
+): CorrectionAuthorization {
+  return {
+    id: 'co-1',
+    verdict_id: 'vd-1',
+    authorized_at: '2026-11-10T15:00:00Z',
+    ...overrides,
+  };
+}
+
 export function buildVerdict(overrides: Partial<Verdict> = {}): Verdict {
   return {
     id: 'vd-1',
@@ -194,4 +206,32 @@ export function buildVerdictResult(overrides: Partial<VerdictResult> = {}): Verd
     history: [verdict],
     ...overrides,
   };
+}
+
+/** Reporte confidencial abierto de un Revisor. */
+export function buildIncident(overrides: Partial<Incident> = {}): Incident {
+  return {
+    id: 'i-1',
+    status: 'OPEN',
+    report_type: 'IDENTITY_LEAK',
+    description: 'La portada del PDF trae el nombre de una autora.',
+    manuscript: 's-1',
+    manuscript_code: 'GPC-2026-000001',
+    manuscript_title: 'Efecto del clima en cultivos andinos',
+    assignment: 'a-1',
+    reporter: { id: 'r-1', full_name: 'Marta Ruiz', email: 'marta@unl.edu.ec' },
+    created_at: '2026-10-25T20:00:00Z',
+    resolution: null,
+    resolved_by: null,
+    resolved_at: null,
+    correction_round_number: null,
+    ...overrides,
+  };
+}
+
+export function buildIncidentPage(
+  results: Incident[],
+  count: number = results.length,
+): Paginated<Incident> {
+  return { count, next: null, previous: null, results };
 }

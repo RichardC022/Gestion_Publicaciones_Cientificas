@@ -26,3 +26,6 @@ scripts/
 .spec-kit/
 .github/
 nginx/certs/
+e2e/
+playwright.config.ts
+test-results/

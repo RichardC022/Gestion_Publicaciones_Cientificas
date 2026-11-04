@@ -1,0 +1,29 @@
+# Rotación de los logs del cron de GPC (D-18). Instálala como /etc/logrotate.d/gpc
+# con permisos 0644 y propietario root:
+#
+#   sudo cp scripts/cron/gpc.logrotate /etc/logrotate.d/gpc
+#
+# El cron añade con `>>` y abre el archivo en cada ejecución, así que `create`
+# basta (no hace falta `copytruncate`).
+
+# Corren cada minuto y solo escriben si hubo trabajo o un error: rotación semanal.
+/var/log/gpc-expire.log /var/log/gpc-notify.log /var/log/gpc-cleanup.log {
+    weekly
+    rotate 8
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 0640 root adm
+}
+
+# Son evidencia operativa (cuándo se respaldó, qué integridad se verificó): un año.
+/var/log/gpc-backup.log /var/log/gpc-integrity.log {
+    monthly
+    rotate 12
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 0640 root adm
+}

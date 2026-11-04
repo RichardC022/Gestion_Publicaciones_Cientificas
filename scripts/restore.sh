@@ -110,6 +110,13 @@ ${COMPOSE} exec -T db pg_restore \
   --no-privileges \
   < "${backup_dir}/database.dump"
 
+# El volcado se toma con --no-privileges: no trae el rol de ejecución de la
+# aplicación ni sus permisos (TSK-72). En una base nueva el rol ni siquiera
+# existe, así que se recrea con el administrador antes de verificar nada.
+printf 'Recreando el rol de la aplicación y sus privilegios...\n'
+${COMPOSE} run --rm --no-deps -T -e DB_USE_ADMIN=1 backend \
+  python manage.py apply_db_privileges
+
 printf 'Restaurando volumen media_data...\n'
 ${COMPOSE} run --rm --no-deps -T backend sh -c '
   find /data/media -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +

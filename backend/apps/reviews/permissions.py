@@ -13,17 +13,20 @@ def resolve_assignment(obj):
     """Find the reviewer assignment behind ``obj``: itself or a related object.
 
     The permission works against the model contract of the plan
-    (section 1.13): an assignment carries ``reviewer_id`` and
-    ``status``; related objects such as evaluations reach it through
-    their ``assignment`` relation.
+    (section 1.13): an assignment carries ``reviewer_id`` and ``status``.
+    A related object, such as an evaluation, reaches it through its
+    ``assignment`` relation, and that relation is followed *first*: an
+    evaluation also has a ``reviewer_id`` and a ``status`` (``DRAFT`` or
+    ``FINAL``), so reading them as an assignment's would be wrong (D-20).
     """
     current = obj
     for _ in range(5):
         if current is None:
             return None
-        if hasattr(current, "reviewer_id"):
-            return current
-        current = getattr(current, "assignment", None)
+        parent = getattr(current, "assignment", None)
+        if parent is None:
+            return current if hasattr(current, "reviewer_id") else None
+        current = parent
     return None
 
 

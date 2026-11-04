@@ -9,6 +9,7 @@ import { EditorEvaluation, SubmissionDetail, Verdict } from '../../../core/model
 import { errorEnvelope } from '../../author/testing/manuscript.fixtures';
 import {
   buildAssignment,
+  buildCorrectionAuthorization,
   buildEvaluation,
   buildReviewer,
   buildSubmissionDetail,
@@ -601,6 +602,84 @@ describe('SubmissionDetailComponent', () => {
         status: 'UNDER_REVIEW',
         is_active: false,
         withdrawn_at: '2026-10-22T15:00:00Z',
+      });
+
+      expect(verdictSection(element)!.querySelector('form')).toBeNull();
+    });
+
+    it('un aceptado sin autorización de corrección no ofrece registrar de nuevo', async () => {
+      verdictData = {
+        evaluations: [buildEvaluation()],
+        verdicts: [buildVerdict({ id: 'vd-1', decision: 'ACCEPTED' })],
+      };
+      const { element } = await open({ status: 'ACCEPTED' });
+
+      expect(verdictSection(element)!.querySelector('form')).toBeNull();
+      expect(verdictSection(element)!.querySelector('.verdict__correction')).toBeNull();
+    });
+
+    it('con una autorización activa habilita la nueva decisión y la envía con el ETag del detalle', async () => {
+      verdictData = {
+        evaluations: [buildEvaluation()],
+        verdicts: [buildVerdict({ id: 'vd-1', decision: 'ACCEPTED' })],
+      };
+      const { element, settle } = await open(
+        {
+          status: 'ACCEPTED',
+          correction_authorization: buildCorrectionAuthorization({ verdict_id: 'vd-1' }),
+        },
+        '"9"',
+      );
+
+      expect(text(verdictSection(element)!.querySelector('.verdict__correction'))).toContain(
+        'Sustituirá a la decisión Aceptado',
+      );
+      (element.querySelectorAll('app-verdict-form .verdict__option input')[2] as HTMLInputElement).click();
+      await settle();
+      const area = element.querySelector('textarea[name="justification"]') as HTMLTextAreaElement;
+      area.value = 'Error en la primera decisión.';
+      area.dispatchEvent(new Event('input'));
+      await settle();
+      (element.querySelector('app-verdict-form form button[type="submit"]') as HTMLButtonElement).click();
+      await settle();
+      (Array.from(element.querySelectorAll('app-verdict-form app-confirm-dialog dialog button')).find(
+        (b) => text(b) === 'Registrar decisión corregida',
+      ) as HTMLButtonElement).click();
+      await settle();
+
+      const request = http.expectOne((r) => r.method === 'POST' && r.url === VERDICT_URL);
+      expect(request.request.headers.get('If-Match')).toBe('"9"');
+      expect(request.request.body).not.toHaveProperty('previous_verdict_id');
+      const corrected = buildVerdict({ id: 'vd-2', previous_verdict: 'vd-1', decision: 'REJECTED' });
+      request.flush(
+        buildVerdictResult({ verdict: corrected, history: [verdictData.verdicts[0], corrected], catalog_entry: null }),
+        { status: 201, statusText: 'Created', headers: { ETag: '"10"' } },
+      );
+      await settle();
+      // La autorización se consumió: el detalle releído ya no la trae.
+      http
+        .expectOne(DETAIL_URL)
+        .flush(buildSubmissionDetail({ status: 'REJECTED' }), { headers: { ETag: '"10"' } });
+      await settle();
+
+      expect(text(element)).toContain(
+        'Decisión corregida registrada (la anterior se conserva en el historial): el manuscrito fue rechazado.',
+      );
+      expect(verdictSection(element)!.querySelector('form')).toBeNull();
+      expect(verdictSection(element)!.querySelector('.verdict__correction')).toBeNull();
+      expect(verdictSection(element)!.querySelectorAll('.verdict__history li').length).toBe(2);
+    });
+
+    it('con una autorización activa pero el envío dado de baja no ofrece registrar', async () => {
+      verdictData = {
+        evaluations: [buildEvaluation()],
+        verdicts: [buildVerdict({ id: 'vd-1' })],
+      };
+      const { element } = await open({
+        status: 'ACCEPTED',
+        is_active: false,
+        withdrawn_at: '2026-10-22T15:00:00Z',
+        correction_authorization: buildCorrectionAuthorization({ verdict_id: 'vd-1' }),
       });
 
       expect(verdictSection(element)!.querySelector('form')).toBeNull();

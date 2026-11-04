@@ -12,16 +12,18 @@ import { Component, input } from '@angular/core';
     <article class="summary" aria-labelledby="admin-summary-title">
       <h3 id="admin-summary-title">Administrador</h3>
       <p class="summary__hint">Auditoría y habilitación de corrección.</p>
-      <dl class="summary__data">
-        @for (entry of entries(); track entry.key) {
-          <div class="summary__row">
-            <dt>{{ entry.key }}</dt>
-            <dd>{{ entry.value }}</dd>
-          </div>
-        } @empty {
-          <p class="summary__empty">Sin datos por ahora.</p>
-        }
-      </dl>
+      @if (entries().length > 0) {
+        <dl class="summary__data">
+          @for (entry of entries(); track entry.key) {
+            <div class="summary__row">
+              <dt>{{ entry.key }}</dt>
+              <dd>{{ entry.value }}</dd>
+            </div>
+          }
+        </dl>
+      } @else {
+        <p class="summary__empty">Sin datos por ahora.</p>
+      }
     </article>
   `,
 })

@@ -181,7 +181,10 @@ const INSTITUTIONAL_OFFSET = '-0500';
               [manuscriptId]="m.id"
               [version]="m.current_version"
               [etag]="etag()"
-              [canRegister]="m.status === 'UNDER_REVIEW' && m.is_active"
+              [canRegister]="
+                m.is_active && (m.status === 'UNDER_REVIEW' || m.correction_authorization !== null)
+              "
+              [correction]="m.correction_authorization"
               (registered)="verdictRegistered($event)"
               (stale)="load(true)"
             />
@@ -549,12 +552,19 @@ export class SubmissionDetailComponent {
   /** Informa del efecto del veredicto y vuelve a leer el detalle (estado y `ETag` nuevos). */
   protected verdictRegistered({ result }: VerdictRegistered): void {
     this.startError.set('');
-    this.notice.set(
+    const corrected = result.verdict.previous_verdict !== null;
+    const effect =
       result.verdict.decision === 'ACCEPTED'
-        ? 'Veredicto registrado: el artículo se publicó en el catálogo.'
+        ? 'el artículo se publicó en el catálogo.'
         : result.verdict.decision === 'REJECTED'
-          ? 'Veredicto registrado: el manuscrito fue rechazado.'
-          : `Veredicto registrado: se abrió la ronda ${result.opened_round} para que el Autor envíe una nueva versión.`,
+          ? 'el manuscrito fue rechazado.'
+          : result.opened_round !== null
+            ? `se abrió la ronda ${result.opened_round} para que el Autor envíe una nueva versión.`
+            : 'el manuscrito requiere correcciones.';
+    this.notice.set(
+      corrected
+        ? `Decisión corregida registrada (la anterior se conserva en el historial): ${effect}`
+        : `Veredicto registrado: ${effect}`,
     );
     this.load(true);
   }

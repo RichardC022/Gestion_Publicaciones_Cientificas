@@ -32,8 +32,15 @@ manuscript_withdrawing = Signal()
 manuscript_withdrawn = Signal()
 
 #: The editor registered a verdict and the transaction committed. Args:
-#: ``manuscript_id``, ``verdict_id``, ``decision``, ``editor_id``. The
-#: justification and observations are left out on purpose: receivers
+#: ``manuscript_id``, ``verdict_id``, ``decision``, ``editor_id`` and
+#: ``previous_verdict_id`` (sent ONLY by an administrative correction that
+#: replaces an earlier verdict, TSK-78). The justification and observations are left out on purpose: receivers
 #: build their own sanitized payloads (the author gets the observations,
 #: never the editor's internal justification).
 verdict_registered = Signal()
+
+#: An administrator enabled a new decision over a verdict (CA-HU-13-12) and the
+#: transaction committed. Args: ``manuscript_id``, ``verdict_id``,
+#: ``correction_id``. The administrator's reason is left out on purpose: the
+#: editor is told that the correction is enabled, nothing else.
+verdict_correction_authorized = Signal()

@@ -10,6 +10,7 @@ import { AuthService } from '../auth/auth.service';
 import { AuthStore } from '../auth/auth.store';
 import { API_BASE_URL } from '../http/api-base-url.token';
 import { ApiFeedbackStore } from '../http/api-feedback.store';
+import { NotificationService } from '../services/notification.service';
 import { ShellComponent } from './shell.component';
 
 describe('ShellComponent', () => {
@@ -173,5 +174,56 @@ describe('ShellComponent', () => {
       ?.click();
     await fixture.whenStable();
     expect(element().querySelector('.app-feedback')).toBeNull();
+  });
+
+  describe('campana de avisos', () => {
+    const bell = (fixture: Awaited<ReturnType<typeof render>>) =>
+      (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>(
+        'app-notification-bell button',
+      )!;
+
+    it('al entrar lee el contador de no leídos y lo muestra en la campana', async () => {
+      setSession();
+      const fixture = await render();
+
+      const request = httpMock.expectOne((r) => r.url === '/api/notifications/');
+      expect(request.request.params.get('read')).toBe('false');
+      expect(request.request.params.get('page_size')).toBe('1');
+      request.flush({ count: 3, next: null, previous: null, results: [], unread_count: 3 });
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      expect(bell(fixture).getAttribute('aria-label')).toBe('Avisos: 3 sin leer');
+      expect(bell(fixture).textContent).toContain('3');
+    });
+
+    it('el contador se actualiza cuando cambia en el servicio, sin recargar', async () => {
+      setSession();
+      const fixture = await render();
+      httpMock
+        .expectOne((r) => r.url === '/api/notifications/')
+        .flush({ count: 3, next: null, previous: null, results: [], unread_count: 3 });
+
+      TestBed.inject(NotificationService).markAllRead().subscribe();
+      httpMock.expectOne('/api/notifications/read-all/').flush(null, { status: 204, statusText: 'No Content' });
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      expect(bell(fixture).getAttribute('aria-label')).toBe('Avisos: sin notificaciones sin leer');
+    });
+
+    it('si el contador no se puede leer, la campana queda en cero sin romper el layout', async () => {
+      setSession();
+      const fixture = await render();
+
+      httpMock
+        .expectOne((r) => r.url === '/api/notifications/')
+        .flush({ error: { code: 'SERVER_ERROR', message: 'Error.' } }, { status: 500, statusText: 'Error' });
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      expect(bell(fixture).getAttribute('aria-label')).toBe('Avisos: sin notificaciones sin leer');
+      expect((fixture.nativeElement as HTMLElement).textContent).toContain('Ana López');
+    });
   });
 });

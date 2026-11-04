@@ -72,12 +72,12 @@ def etag_for(manuscript: Manuscript) -> str:
     return f'"{manuscript.lock_version}"'
 
 
-def parse_if_match(request: Request) -> int:
+def parse_if_match(request: Request, subject: str = "del manuscrito") -> int:
     """The ``lock_version`` the client saw; the header is mandatory."""
     match = _IF_MATCH_PATTERN.match((request.headers.get("If-Match") or "").strip())
     if match is None:
         raise DomainError(
-            "Envíe la cabecera If-Match con el ETag vigente del manuscrito.",
+            f"Envíe la cabecera If-Match con el ETag vigente {subject}.",
             code=ErrorCode.VALIDATION_ERROR,
         )
     return int(match.group(1))

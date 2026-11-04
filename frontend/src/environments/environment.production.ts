@@ -6,6 +6,7 @@
  * relativa al origen.
  */
 export const environment = {
-  production: true,
+  production: false,
+  apiUrl: '/api/',
   apiBaseUrl: '/api/'
 };

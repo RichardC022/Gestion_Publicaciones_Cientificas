@@ -23,5 +23,10 @@ urlpatterns = [
     path("auth/", include("apps.users.urls")),
     path("dashboard/", DashboardView.as_view(), name="dashboard"),
     path("manuscripts/", include("apps.publications.urls")),
+    path("catalog/", include("apps.publications.catalog_urls")),
     path("editor/", include("apps.reviews.urls")),
+    path("reviewer/", include("apps.reviews.reviewer_urls")),
+    path("admin/audit/", include("apps.audit.urls")),
+    path("admin/verdicts/", include("apps.publications.admin_urls")),
+    path("notifications/", include("apps.notifications.urls")),
 ]

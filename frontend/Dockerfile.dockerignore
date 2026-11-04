@@ -23,3 +23,6 @@ scripts/
 .spec-kit/
 .github/
 nginx/certs/
+frontend/e2e/
+frontend/playwright.config.ts
+frontend/test-results/

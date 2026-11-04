@@ -1,6 +1,6 @@
-"""Domain models of reviewer assignments and evaluations (TSK-46).
+"""Domain models of reviewer assignments, evaluations and incidents (TSK-46, TSK-59).
 
-They follow the implementation plan (sections 1.13, 1.14 and 1.20):
+They follow the implementation plan (sections 1.13, 1.14, 1.14.1 and 1.20):
 
 * ``Assignment`` links one reviewer to one manuscript version. The
   database allows a single ``ACTIVE`` assignment per manuscript and fixes
@@ -9,6 +9,9 @@ They follow the implementation plan (sections 1.13, 1.14 and 1.20):
   immutable evaluation. A trigger (migration ``0002``) rejects any
   ``UPDATE`` or ``DELETE`` over a ``FINAL`` row; the submission logic
   that performs the ``DRAFT`` → ``FINAL`` transition arrives in Phase 4.
+* ``IncidentReport`` is the reviewer's confidential report of a possible
+  identity leak (CA-HU-16-06). It only stores the report: it never
+  touches the PDF, the evaluation or the manuscript status.
 """
 
 from __future__ import annotations
@@ -18,11 +21,11 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.db import models
-from django.db.models import BooleanField, ExpressionWrapper, F, Q
+from django.db.models import BooleanField, Exists, ExpressionWrapper, F, OuterRef, Q
 from django.db.models.functions import Now
 from django.utils import timezone
 
-from apps.publications.models import Manuscript, ManuscriptVersion
+from apps.publications.models import CorrectionRound, Manuscript, ManuscriptVersion
 
 #: Calendar days a reviewer has to evaluate (RN-05).
 ASSIGNMENT_DAYS = 20
@@ -54,6 +57,30 @@ class AssignmentQuerySet(models.QuerySet):
                 Q(status=Assignment.Status.ACTIVE, due_at__lte=Now()),
                 output_field=BooleanField(),
             )
+        )
+
+    def with_evaluation_started(self) -> "AssignmentQuerySet":
+        """Annotate ``has_evaluation``: the reviewer already saved a draft or a final."""
+        return self.annotate(
+            has_evaluation=Exists(Evaluation.objects.filter(assignment=OuterRef("pk")))
+        )
+
+    def for_reviewer(self, user) -> "AssignmentQuerySet":
+        """Assignments a reviewer may reach: their own, over active manuscripts.
+
+        The reviewer's endpoints start here and never at the global
+        manuscript repository (plan section 2.9, layer 1). A manuscript the
+        reviewer registered or co-authored — by account or by e-mail, the
+        same rule as the eligibility check — is left out, and so is a
+        withdrawn one. Whether the assignment is ``ACTIVE`` or
+        ``COMPLETED`` is up to the object permission, not to this scope.
+        """
+        return (
+            self.filter(reviewer=user, manuscript__is_active=True)
+            .exclude(manuscript__created_by=user)
+            .exclude(manuscript__authors__user=user)
+            .exclude(manuscript__authors__email__iexact=user.email)
+            .select_related("manuscript", "version")
         )
 
 
@@ -254,3 +281,132 @@ class Evaluation(models.Model):
 
     def __str__(self) -> str:
         return f"{self.assignment_id} · {self.status}"
+
+
+class IncidentReportQuerySet(models.QuerySet):
+    """Scopes over incident reports."""
+
+    def for_editor(self, user) -> "IncidentReportQuerySet":
+        """Reports over manuscripts in the editor's scope.
+
+        The same conflict-of-interest rule as the editor's inbox: an editor
+        who registered or co-authored the manuscript never reaches its
+        reports, which answer ``404``.
+        """
+        return self.filter(manuscript__in=Manuscript.objects.for_editor(user).values("pk"))
+
+
+class IncidentReport(models.Model):
+    """Reviewer's confidential report about an assignment (CA-HU-16-06).
+
+    The report is private to the reviewer and the editor; the author never
+    sees it. The database allows one ``OPEN`` report per assignment and
+    requires ``resolution`` and ``resolved_at`` once it is ``RESOLVED``.
+    The effects of each resolution belong to the editor's service, not to
+    this model.
+    """
+
+    class ReportType(models.TextChoices):
+        IDENTITY_LEAK = "IDENTITY_LEAK", "Posible fuga de identidad"
+        OTHER = "OTHER", "Otro"
+
+    class Status(models.TextChoices):
+        OPEN = "OPEN", "Abierto"
+        RESOLVED = "RESOLVED", "Resuelto"
+
+    class Resolution(models.TextChoices):
+        REQUEST_ANONYMIZED_VERSION = (
+            "REQUEST_ANONYMIZED_VERSION",
+            "Solicitar versión anonimizada",
+        )
+        REASSIGN = "REASSIGN", "Reasignar"
+        DISMISS = "DISMISS", "Descartar"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4)
+    assignment = models.ForeignKey(
+        Assignment,
+        on_delete=models.PROTECT,
+        related_name="incident_reports",
+    )
+    manuscript = models.ForeignKey(
+        Manuscript,
+        on_delete=models.PROTECT,
+        related_name="incident_reports",
+    )
+    reporter = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="incident_reports",
+    )
+    report_type = models.CharField(max_length=24, choices=ReportType.choices)
+    description = models.TextField()
+    status = models.CharField(
+        max_length=16,
+        choices=Status.choices,
+        default=Status.OPEN,
+    )
+    resolution = models.CharField(
+        max_length=32,
+        choices=Resolution.choices,
+        null=True,
+        blank=True,
+    )
+    # Ronda que abre `REQUEST_ANONYMIZED_VERSION`; nula en otro caso.
+    correction_round = models.ForeignKey(
+        CorrectionRound,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="incident_reports",
+    )
+    resolved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="resolved_incident_reports",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+
+    objects = IncidentReportQuerySet.as_manager()
+
+    class Meta:
+        db_table = "reviews_incident_report"
+        ordering = ("-created_at",)
+        indexes = [
+            models.Index(
+                fields=("status", "created_at"),
+                name="idx_incident_status_date",
+            ),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(report_type__in=("IDENTITY_LEAK", "OTHER")),
+                name="ck_incident_report_type",
+            ),
+            models.CheckConstraint(
+                condition=Q(status__in=("OPEN", "RESOLVED")),
+                name="ck_incident_status",
+            ),
+            models.CheckConstraint(
+                condition=Q(resolution__isnull=True)
+                | Q(resolution__in=("REQUEST_ANONYMIZED_VERSION", "REASSIGN", "DISMISS")),
+                name="ck_incident_resolution",
+            ),
+            # Un reporte resuelto registra cómo y cuándo se resolvió.
+            models.CheckConstraint(
+                condition=Q(status="OPEN")
+                | Q(resolution__isnull=False, resolved_at__isnull=False),
+                name="ck_incident_resolved_complete",
+            ),
+            # Un solo reporte abierto por asignación.
+            models.UniqueConstraint(
+                fields=("assignment",),
+                condition=Q(status="OPEN"),
+                name="uq_incident_open",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.assignment_id} · {self.report_type} · {self.status}"

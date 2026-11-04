@@ -1,0 +1,16 @@
+# Cobertura del backend (TSK-85). El umbral de 80 % se aplica solo al dominio
+# y a los permisos (ver .github/workflows/ci.yml), no a migraciones ni a admin.
+[run]
+source = apps
+branch = True
+omit =
+    */migrations/*
+    */tests.py
+    */tests/*
+    */__init__.py
+
+[report]
+exclude_lines =
+    pragma: no cover
+    if TYPE_CHECKING:
+    raise NotImplementedError

@@ -44,13 +44,14 @@ La restauración:
 1. Verifica los checksums del respaldo.
 2. Detiene `web` y `backend`.
 3. Restaura PostgreSQL con `pg_restore --clean --if-exists`.
-4. Reemplaza el contenido de `media_data` y extrae `media.tar.gz`.
-5. Normaliza permisos con `scripts/init_media.sh`.
-6. Ejecuta `scripts/verify_integrity.sh`.
-7. Levanta `db`, `backend` y `web`.
-8. Ejecuta `python manage.py check` y valida la estructura del volumen.
+4. Recrea el rol de ejecución de la aplicación y sus privilegios (`apply_db_privileges`, con el administrador): el volcado se toma con `--no-privileges`, así que en una base nueva ese rol no existe.
+5. Reemplaza el contenido de `media_data` y extrae `media.tar.gz`.
+6. Normaliza permisos con `scripts/init_media.sh`.
+7. Ejecuta `scripts/verify_integrity.sh`.
+8. Levanta `db`, `backend` y `web`.
+9. Ejecuta `python manage.py check` y valida la estructura del volumen.
 
-No restaures sobre el entorno institucional sin haber probado antes el respaldo en un entorno aislado.
+No restaures sobre el entorno institucional sin haber probado antes el respaldo en un entorno aislado. `./scripts/verify_pilot.sh` automatiza esa prueba (respaldo → desastre → restauración sobre una base vacía → huella idéntica → integridad).
 
 ## Verificación de integridad
 
@@ -85,10 +86,39 @@ sudo chown root:root /etc/cron.d/gpc
 sudo chmod 0644 /etc/cron.d/gpc
 ```
 
-Ajusta la ruta `/opt/gpc` si el repositorio está en otro directorio.
+Ajusta la ruta `/opt/gpc` si el repositorio está en otro directorio. Para rotar los cinco logs (D-18): `sudo cp scripts/cron/gpc.logrotate /etc/logrotate.d/gpc`.
+
+El procedimiento completo, paso a paso y para quien no conoce el código, está en [`docs/RUNBOOK.md`](../docs/RUNBOOK.md) (respaldo cifrado y copia externa en §8.3).
 
 La plantilla incluye también la expiración de asignaciones (TSK-45 y TSK-49): cada minuto ejecuta `mark_expired_assignments`, que marca como `EXPIRED` las asignaciones `ACTIVE` con `due_at <= now()`, sin revocar ni reasignar, y escribe en `/var/log/gpc-expire.log` solo cuando hubo trabajo o un error. El contenedor `backend` debe estar en ejecución. Para probarla a mano:
 
 ```bash
 docker compose exec backend python manage.py mark_expired_assignments
 ```
+
+La plantilla incluye además las tareas de la Fase 5 (TSK-71 y TSK-76), todas dentro del contenedor `backend` y con un `flock` propio cada una:
+
+| Tarea | Comando | Frecuencia | Log |
+|---|---|---|---|
+| Avisos por correo | `send_pending_notifications` | Cada minuto | `/var/log/gpc-notify.log` |
+| Limpieza de idempotencia | `cleanup_idempotency_keys` | Diaria, 03:00 | `/var/log/gpc-cleanup.log` |
+| Verificación de integridad | `verify_integrity` | Día 1 de cada mes, 03:30 | `/var/log/gpc-integrity.log` |
+
+- **Reintentos de avisos:** un aviso de correo fallido queda en `FAILED` y se reintenta tras 1 min, 5 min, 15 min, 1 h y 4 h; tras el sexto intento fallido deja de reintentarse y permanece `FAILED` con su `last_error`. Un aviso `SENT` no se reenvía y el aviso del panel no depende del correo. `EMAIL_TIMEOUT` (10 s por defecto) limita la espera al SMTP.
+- **Limpieza:** solo elimina las claves con `expires_at` vencido (24 h tras guardarse); las vigentes no se tocan.
+- **Verificación:** solo lee. Si encuentra discrepancias de hash en PDFs o en la cadena de auditoría las lista en el log y termina con código distinto de cero; no corrige nada.
+- Los logs registran conteos y códigos de error, nunca el contenido de los avisos, correos ni credenciales.
+
+Para probarlas a mano:
+
+```bash
+docker compose exec backend python manage.py send_pending_notifications
+docker compose exec backend python manage.py cleanup_idempotency_keys
+docker compose exec backend python manage.py verify_integrity
+```
+
+## Respaldo y privilegios de base de datos (TSK-72)
+
+- El respaldo diario de las 02:15 usa `pg_dump` con el administrador (`POSTGRES_USER`), que puede leer todo, incluida la auditoría; las restricciones del rol de aplicación (`APP_DB_USER`) no lo afectan.
+- Los respaldos se toman y se restauran con `--no-privileges`: no guardan los permisos del rol de aplicación. Tras una restauración, `pg_restore --clean` recrea las tablas con los permisos por defecto, incluida `audit_audit_log`. Al levantar `backend`, el entrypoint ejecuta `migrate` y `apply_db_privileges` con el administrador y vuelve a quitar `UPDATE`/`DELETE`/`TRUNCATE` sobre la auditoría. No arranques ni expongas la aplicación por otra vía antes de ese paso.
+- Comprueba el respaldo con `scripts/verify_integrity.sh` y, tras restaurar, el `DELETE` sobre la auditoría descrito en el README §3.6.1.

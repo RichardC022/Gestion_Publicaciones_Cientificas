@@ -5,6 +5,7 @@ import { Router, provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 
 import { routes } from '../../app.routes';
+import { NOTIFICATION_SERVICE_STUB } from '../../core/testing/notification.service.stub';
 import { AuthStore } from '../../core/auth/auth.store';
 import { API_BASE_URL } from '../../core/http/api-base-url.token';
 import { Role } from '../../core/models/role.model';
@@ -59,6 +60,7 @@ describe('Módulo Editor: integración con las rutas reales', () => {
     TestBed.configureTestingModule({
       providers: [
         provideRouter(routes),
+        NOTIFICATION_SERVICE_STUB,
         provideHttpClient(),
         provideHttpClientTesting(),
         { provide: API_BASE_URL, useValue: '/api/' },
@@ -76,6 +78,7 @@ describe('Módulo Editor: integración con las rutas reales', () => {
   const inbox = () => http.expectOne((r) => r.url === '/api/editor/submissions/');
   const detail = () => http.expectOne('/api/editor/submissions/s-1/');
   const expired = () => http.expectOne((r) => r.url === '/api/editor/assignments/expired/');
+  const incidents = () => http.expectOne((r) => r.url === '/api/editor/incidents/');
 
   /** Abre una URL; `settle` además responde lo que el formulario de veredicto pide al montarse. */
   const open = async (url: string) => {
@@ -109,6 +112,7 @@ describe('Módulo Editor: integración con las rutas reales', () => {
         if (selector === 'app-submission-inbox') inbox().flush(emptyPage);
         else if (selector === 'app-submission-detail') detail().flush(buildSubmissionDetail());
         else if (selector === 'app-expired-assignments') expired().flush(emptyPage);
+        else if (selector === 'app-incident-list') incidents().flush(emptyPage);
         await settle();
 
         expect(element.querySelector(selector)).not.toBeNull();

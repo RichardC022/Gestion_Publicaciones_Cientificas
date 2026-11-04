@@ -2,7 +2,6 @@ venv/
 db.sqlite3
 *.pyc
 __pycache__/
-.pytest_cache/
 .env
 !.env.example
 .idea/
@@ -17,3 +16,17 @@ SHA256SUMS
 /.claude/
 /graphify-out/
 credentials.txt
+
+# Cobertura (TSK-85)
+.coverage
+.coverage.*
+coverage.xml
+coverage.json
+htmlcov/
+
+# Informes de la prueba de carga (TSK-86)
+load-report*.json
+
+# Playwright (TSK-91)
+frontend/test-results/
+frontend/playwright-report/

@@ -84,6 +84,16 @@ a {
   border: 0;
 }
 
+/*
+ * Contenedor con desplazamiento horizontal de las tablas anchas. Debe ser posicionado: si no,
+ * los elementos `.visually-hidden` (position: absolute) de las celdas escapan de su recorte y
+ * ensanchan toda la página en pantallas estrechas (TSK-92).
+ */
+.table-wrap {
+  position: relative;
+  overflow-x: auto;
+}
+
 /* Enlace de salto al contenido (accesibilidad) */
 .skip-link {
   position: absolute;

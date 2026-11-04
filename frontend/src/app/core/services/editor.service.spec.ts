@@ -5,6 +5,8 @@ import { TestBed } from '@angular/core/testing';
 import {
   buildAssignment,
   buildEvaluation,
+  buildIncident,
+  buildIncidentPage,
   buildSubmissionDetail,
   buildSubmissionPage,
   buildSubmissionRow,
@@ -103,7 +105,12 @@ describe('EditorService', () => {
       const request = http.expectOne('/api/editor/submissions/s-1/start-review/');
       expect(request.request.method).toBe('POST');
       expect(request.request.body).toEqual({});
-      request.flush({ id: 's-1', code: 'GPC-2026-000001', status: 'UNDER_REVIEW', assignment: null });
+      request.flush({
+        id: 's-1',
+        code: 'GPC-2026-000001',
+        status: 'UNDER_REVIEW',
+        assignment: null,
+      });
 
       expect(status).toBe('UNDER_REVIEW');
     });
@@ -114,10 +121,13 @@ describe('EditorService', () => {
 
       http
         .expectOne('/api/editor/submissions/s-1/start-review/')
-        .flush(errorEnvelope('STATE_CONFLICT', 'Solo un manuscrito enviado puede pasar a revisión.'), {
-          status: 409,
-          statusText: 'Conflict',
-        });
+        .flush(
+          errorEnvelope('STATE_CONFLICT', 'Solo un manuscrito enviado puede pasar a revisión.'),
+          {
+            status: 409,
+            statusText: 'Conflict',
+          },
+        );
 
       expect(error?.status).toBe(409);
       expect(error?.code).toBe('STATE_CONFLICT');
@@ -204,7 +214,9 @@ describe('EditorService · asignaciones', () => {
 
   it('una causa temprana inválida llega como 400', () => {
     let error: ApiError | undefined;
-    service.revokeAssignment('a-1', 'OVERDUE', 'x').subscribe({ error: (e: ApiError) => (error = e) });
+    service
+      .revokeAssignment('a-1', 'OVERDUE', 'x')
+      .subscribe({ error: (e: ApiError) => (error = e) });
 
     http
       .expectOne('/api/editor/assignments/a-1/revoke/')
@@ -235,11 +247,18 @@ describe('EditorService · veredicto', () => {
 
   afterEach(() => http.verify());
 
-  const page = <T>(results: T[]) => ({ count: results.length, next: null, previous: null, results });
+  const page = <T>(results: T[]) => ({
+    count: results.length,
+    next: null,
+    previous: null,
+    results,
+  });
 
   it('lista las evaluaciones finales del manuscrito con la identidad del Revisor', () => {
     let reviewer: string | undefined;
-    service.listEvaluations('s-1').subscribe((value) => (reviewer = value.results[0].reviewer.full_name));
+    service
+      .listEvaluations('s-1')
+      .subscribe((value) => (reviewer = value.results[0].reviewer.full_name));
 
     const request = http.expectOne((r) => r.url === '/api/editor/manuscripts/s-1/evaluations/');
     expect(request.request.method).toBe('GET');
@@ -251,11 +270,18 @@ describe('EditorService · veredicto', () => {
 
   it('lista el historial de veredictos', () => {
     let decisions: string[] = [];
-    service.listVerdicts('s-1').subscribe((value) => (decisions = value.results.map((v) => v.decision)));
+    service
+      .listVerdicts('s-1')
+      .subscribe((value) => (decisions = value.results.map((v) => v.decision)));
 
     http
       .expectOne((r) => r.url === '/api/editor/manuscripts/s-1/verdicts/')
-      .flush(page([buildVerdict({ decision: 'REQUIRES_CORRECTIONS' }), buildVerdict({ decision: 'ACCEPTED' })]));
+      .flush(
+        page([
+          buildVerdict({ decision: 'REQUIRES_CORRECTIONS' }),
+          buildVerdict({ decision: 'ACCEPTED' }),
+        ]),
+      );
 
     expect(decisions).toEqual(['REQUIRES_CORRECTIONS', 'ACCEPTED']);
   });
@@ -289,7 +315,12 @@ describe('EditorService · veredicto', () => {
   it('un segundo veredicto llega como 409 VERDICT_CONFLICT', () => {
     let error: ApiError | undefined;
     service
-      .createVerdict('s-1', { decision: 'ACCEPTED', justification: null, observations: null }, '"4"', 'k')
+      .createVerdict(
+        's-1',
+        { decision: 'ACCEPTED', justification: null, observations: null },
+        '"4"',
+        'k',
+      )
       .subscribe({ error: (e: ApiError) => (error = e) });
 
     http
@@ -306,7 +337,12 @@ describe('EditorService · veredicto', () => {
   it('un editor con conflicto de interés recibe 403', () => {
     let error: ApiError | undefined;
     service
-      .createVerdict('s-1', { decision: 'ACCEPTED', justification: null, observations: null }, '"4"', 'k')
+      .createVerdict(
+        's-1',
+        { decision: 'ACCEPTED', justification: null, observations: null },
+        '"4"',
+        'k',
+      )
       .subscribe({ error: (e: ApiError) => (error = e) });
 
     http
@@ -340,9 +376,9 @@ describe('EditorService · vencidas', () => {
 
   it('pide solo la lectura de las vencidas, con la página pedida', () => {
     let codes: string[] = [];
-    service.listExpiredAssignments(2, 20).subscribe(
-      (value) => (codes = value.results.map((a) => a.manuscript_code)),
-    );
+    service
+      .listExpiredAssignments(2, 20)
+      .subscribe((value) => (codes = value.results.map((a) => a.manuscript_code)));
 
     const request = http.expectOne((r) => r.url === '/api/editor/assignments/expired/');
     expect(request.request.method).toBe('GET');
@@ -372,8 +408,65 @@ describe('EditorService · vencidas', () => {
 
     http
       .expectOne((r) => r.url === '/api/editor/assignments/expired/')
-      .flush(errorEnvelope('FORBIDDEN', 'Acceso denegado.'), { status: 403, statusText: 'Forbidden' });
+      .flush(errorEnvelope('FORBIDDEN', 'Acceso denegado.'), {
+        status: 403,
+        statusText: 'Forbidden',
+      });
 
     expect(error?.status).toBe(403);
+  });
+
+  describe('incidentes', () => {
+    it('lista los abiertos con el filtro de estado', () => {
+      const page = buildIncidentPage([buildIncident()]);
+      let result: unknown;
+      service.listIncidents('OPEN', 2, 20).subscribe((value) => (result = value));
+
+      const request = http.expectOne((r) => r.url === '/api/editor/incidents/');
+      expect(request.request.method).toBe('GET');
+      expect(request.request.params.get('status')).toBe('OPEN');
+      expect(request.request.params.get('page')).toBe('2');
+      expect(request.request.params.get('page_size')).toBe('20');
+      request.flush(page);
+
+      expect(result).toEqual(page);
+    });
+
+    it('«todos» no envía el parámetro de estado', () => {
+      service.listIncidents('ALL').subscribe();
+
+      const request = http.expectOne((r) => r.url === '/api/editor/incidents/');
+      expect(request.request.params.has('status')).toBe(false);
+      expect(request.request.params.has('page')).toBe(false);
+      request.flush(buildIncidentPage([]));
+    });
+
+    it('resuelve con POST y la resolución elegida', () => {
+      const resolved = buildIncident({ status: 'RESOLVED', resolution: 'DISMISS' });
+      let result: unknown;
+      service.resolveIncident('i-1', 'DISMISS').subscribe((value) => (result = value));
+
+      const request = http.expectOne('/api/editor/incidents/i-1/resolve/');
+      expect(request.request.method).toBe('POST');
+      expect(request.request.body).toEqual({ resolution: 'DISMISS' });
+      request.flush(resolved);
+
+      expect(result).toEqual(resolved);
+    });
+
+    it('un segundo intento de resolución responde 409', () => {
+      let error: ApiError | undefined;
+      service.resolveIncident('i-1', 'REASSIGN').subscribe({ error: (e: ApiError) => (error = e) });
+
+      http
+        .expectOne('/api/editor/incidents/i-1/resolve/')
+        .flush(errorEnvelope('STATE_CONFLICT', 'El incidente ya fue resuelto.'), {
+          status: 409,
+          statusText: 'Conflict',
+        });
+
+      expect(error?.status).toBe(409);
+      expect(error?.message).toBe('El incidente ya fue resuelto.');
+    });
   });
 });

@@ -32,6 +32,10 @@ SECRET_KEY = os.environ.get(
 
 DEBUG = env_bool("DEBUG", False)
 
+# Django Admin (D-31): fuera de la URL salvo que el entorno lo pida. Producción lo
+# deja siempre apagado (`/admin/` responde 404); solo desarrollo lo enciende.
+ADMIN_ENABLED = False
+
 ALLOWED_HOSTS = env_list("ALLOWED_HOSTS", ("localhost", "127.0.0.1", "testserver"))
 CSRF_TRUSTED_ORIGINS = env_list("CSRF_TRUSTED_ORIGINS")
 

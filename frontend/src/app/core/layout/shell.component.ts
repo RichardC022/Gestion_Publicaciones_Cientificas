@@ -4,6 +4,7 @@ import { Router, RouterOutlet } from '@angular/router';
 import { AuthService } from '../auth/auth.service';
 import { AuthStore } from '../auth/auth.store';
 import { ApiFeedbackStore } from '../http/api-feedback.store';
+import { NotificationService } from '../services/notification.service';
 import { HeaderComponent } from './header.component';
 import { SideNavComponent } from './side-nav.component';
 
@@ -14,8 +15,9 @@ import { SideNavComponent } from './side-nav.component';
  * TSK-26: se conecta al `AuthStore` (nombre, roles activos) y al
  * `AuthService` (cierre de sesión) y renderiza los mensajes
  * accionables de la API publicados por el interceptor de errores
- * (`ApiFeedbackStore`). El contador de avisos se alimenta del
- * backend de notificaciones en la TSK-75/83; hasta entonces vale 0.
+ * (`ApiFeedbackStore`). El contador de la campana sale de
+ * `NotificationService` (TSK-83): se lee al entrar al área y se ajusta al
+ * marcar avisos como leídos.
  */
 @Component({
   selector: 'app-shell',
@@ -46,7 +48,7 @@ import { SideNavComponent } from './side-nav.component';
       <app-header
         [userName]="userName()"
         [roles]="roles()"
-        [unreadCount]="0"
+        [unreadCount]="unreadCount()"
         (logout)="logout()"
         (bellOpened)="openNotifications()"
       />
@@ -114,7 +116,15 @@ export class ShellComponent {
   private readonly store = inject(AuthStore);
   private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
+  private readonly notifications = inject(NotificationService);
   readonly feedback = inject(ApiFeedbackStore);
+
+  /** Avisos propios sin leer. */
+  protected readonly unreadCount = this.notifications.unreadCount;
+
+  constructor() {
+    this.notifications.refresh();
+  }
 
   /** Nombre visible de la persona autenticada (null si anónima). */
   protected readonly userName = computed(() => this.store.user()?.full_name ?? null);
