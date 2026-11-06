@@ -63,7 +63,10 @@ def build_success_envelope(
     request_id: str | None = None,
     pagination: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Return the universal envelope of a successful response."""
+    """Devuelve el sobre universal de una respuesta exitosa.
+
+    ``meta`` siempre lleva ``request_id`` y, en una lista, también ``pagination``.
+    """
     meta: dict[str, Any] = {"request_id": request_id}
     if pagination is not None:
         meta["pagination"] = pagination
@@ -77,7 +80,11 @@ def build_success_envelope(
 
 
 class EnvelopeJSONRenderer(JSONRenderer):
-    """JSON renderer that applies the universal response contract."""
+    """Renderer JSON que aplica el contrato universal de respuesta.
+
+    Envuelve los éxitos, deja pasar tal cual lo que ya cumple el contrato (los errores que
+    produce ``config.exceptions``) y no toca las respuestas ``204``.
+    """
 
     def render(
         self,

@@ -1,4 +1,8 @@
-"""Development settings for local execution and tests."""
+"""Ajustes de desarrollo, para la ejecución local y las pruebas.
+
+Parten de ``base.py`` y activan lo que ayuda a trabajar: ``DEBUG``, el Django Admin, la
+documentación interactiva de la API y el correo por consola. **Nunca** se usan en producción.
+"""
 
 from .base import *  # noqa: F401,F403
 from .base import env_bool, env_list
@@ -21,4 +25,5 @@ CSRF_TRUSTED_ORIGINS = env_list(
     ("http://localhost", "http://127.0.0.1"),
 )
 
+# Los correos no se envían: se imprimen en la consola, así no hace falta un servidor SMTP.
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"

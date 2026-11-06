@@ -1,0 +1,234 @@
+---
+title: "Arquitectura"
+subtitle: "Contexto, contenedores, componentes y flujos clave (modelo C4)"
+---
+
+Esta página describe el sistema con los niveles del modelo **C4**: contexto (C1), contenedores (C2) y componentes (C3). Los diagramas son Mermaid, así que se versionan junto al código y se renderizan en el navegador.
+
+## C1 · Contexto del sistema
+
+Quién usa el sistema y con qué sistemas externos se relaciona.
+
+```{mermaid}
+flowchart TB
+    autor(["Autor<br/>registra y corrige manuscritos"])
+    revisor(["Revisor<br/>evalúa a ciegas"])
+    editor(["Editor<br/>coordina y decide"])
+    admin(["Administrador<br/>audita"])
+    publico(["Público<br/>lee el catálogo"])
+
+    sistema["Sistema de Gestión<br/>de Publicaciones Científicas"]
+    smtp[("Servidor de correo<br/>institucional (SMTP)")]
+
+    autor --> sistema
+    revisor --> sistema
+    editor --> sistema
+    admin --> sistema
+    publico --> sistema
+    sistema -->|"notificaciones por correo"| smtp
+```
+
+El sistema **no** se integra con proveedores de identidad externos, repositorios, servicios de similitud ni pagos: las cuentas son institucionales y las gestiona el responsable técnico.
+
+## C2 · Contenedores
+
+Las piezas desplegables y cómo se comunican.
+
+```{mermaid}
+flowchart LR
+    usuario(["Usuario / Público"])
+
+    subgraph servidor["Servidor Linux on-premise (Docker Compose)"]
+        direction LR
+        nginx["web · Nginx 1.27<br/>TLS, SPA estática,<br/>proxy /api/, límite 60 MB"]
+        spa["SPA Angular<br/>(archivos compilados)"]
+        api["backend · Gunicorn + Django/DRF<br/>reglas editoriales, autorización,<br/>auditoría, almacenamiento"]
+        db[("db · PostgreSQL 16")]
+        vol[("Volumen media_data<br/>PDF originales, sanitizados<br/>y copias públicas")]
+    end
+
+    cron["cron del host<br/>plazos, notificaciones,<br/>respaldos, integridad"]
+    smtp[("SMTP institucional")]
+
+    usuario -->|"HTTPS 443"| nginx
+    nginx --- spa
+    nginx -->|"/api/ (proxy)"| api
+    api -->|SQL| db
+    api -->|"lee y escribe"| vol
+    nginx -.->|"X-Accel-Redirect (ubicación interna)"| vol
+    api -->|"correo"| smtp
+    cron -->|"manage.py"| api
+    cron -->|"pg_dump · tar"| db
+    cron --> vol
+```
+
+| Contenedor | Responsabilidad |
+|---|---|
+| **Nginx** (`web`) | Único servicio que publica puertos (80/443). Termina TLS, sirve Angular, aplica cabeceras de seguridad y el límite de 60 MB, reenvía `/api/` y entrega los PDF por ubicaciones internas. |
+| **Django/DRF** (`backend`) | Autenticación, autorización por rol **y** objeto, reglas editoriales, serializadores, auditoría y orquestación del almacenamiento. |
+| **PostgreSQL** (`db`) | Estado editorial, metadatos, versiones, asignaciones, evaluaciones, veredictos, auditoría y avisos. |
+| **Volumen `media_data`** | PDF originales, copias sanitizadas, instantáneas de metadatos y copias públicas del catálogo. |
+| **cron del host** | Marca plazos vencidos, reintenta avisos, respalda y verifica la integridad. |
+
+## C3 · Componentes del backend
+
+El backend es un monolito modular: cinco *apps* de Django con una capa de servicios entre las vistas y los modelos.
+
+```{mermaid}
+flowchart TB
+    subgraph borde["Capa HTTP (config/)"]
+        mw["Middleware de request_id"]
+        rend["Renderer del contrato JSON"]
+        exc["Manejador de excepciones"]
+        pag["Paginación estándar"]
+        oas["OpenAPI / Swagger UI"]
+    end
+
+    subgraph apps["apps/"]
+        users["users<br/>JWT · roles · sesión · tablero"]
+        pubs["publications<br/>manuscritos · versiones ·<br/>veredictos · catálogo"]
+        revs["reviews<br/>asignaciones · evaluaciones ·<br/>incidentes"]
+        audit["audit<br/>auditoría encadenada"]
+        notif["notifications<br/>avisos · correo"]
+    end
+
+    mw --> users & pubs & revs
+    users --> audit
+    pubs --> audit
+    revs --> audit
+    pubs --> notif
+    revs --> notif
+    revs -->|"asignaciones y evaluaciones<br/>de un manuscrito"| pubs
+    rend -.-> users & pubs & revs
+    exc -.-> users & pubs & revs
+```
+
+Dentro de cada *app* se repite el mismo patrón, que es lo que mantiene el acoplamiento bajo:
+
+```{mermaid}
+flowchart LR
+    V["views.py<br/>HTTP y permisos"] --> S["services/<br/>reglas de negocio<br/>y transacciones"]
+    V --> Z["serializers.py<br/>entrada y salida"]
+    S --> M["models.py<br/>datos e invariantes"]
+    S --> A["audit<br/>AuditService.record"]
+```
+
+- **Vistas:** declaran permisos, validan la entrada con serializadores y llaman a un servicio. No contienen reglas.
+- **Servicios:** concentran la regla de negocio y la transacción (`transaction.atomic`), bloqueando filas cuando hace falta.
+- **Modelos:** guardan datos y las invariantes que la base puede garantizar (restricciones y disparadores).
+- **Servicios transversales:** auditoría, almacenamiento de PDF e idempotencia, usados por varios módulos.
+
+### Piezas transversales de `config/`
+
+| Pieza | Archivo | Qué hace |
+|---|---|---|
+| Identificador de solicitud | `middleware.py` | Asigna `X-Request-ID` y lo inyecta en cada línea de log. |
+| Contrato de respuesta | `renderers.py` | Envuelve toda respuesta JSON en `{success, message, data, errors, meta}`. |
+| Errores | `exceptions.py` | Catálogo `ErrorCode`, `DomainError` y manejador que produce el sobre de error sin filtrar detalles internos. |
+| Paginación | `pagination.py` | `page` y `page_size` validados estrictamente; los contadores van a `meta.pagination`. |
+| Documentación | `openapi.py` | Hace que el schema OpenAPI describa el contrato tal como lo emite la API. |
+| Health | `health.py` | Comprueba PostgreSQL y el volumen de medios. |
+
+## Flujos clave
+
+### Descarga de un PDF protegido
+
+Los PDF no pasan por la aplicación: Django solo **decide**, Nginx **entrega**.
+
+```{mermaid}
+sequenceDiagram
+    autonumber
+    actor U as Usuario
+    participant N as Nginx
+    participant D as Django/DRF
+    participant P as PostgreSQL
+    participant V as Volumen media_data
+
+    U->>N: GET /api/v1/manuscripts/{id}/versions/{v}/file/ (Bearer)
+    N->>D: proxy /api/
+    D->>P: valida rol, relación con el manuscrito, estado y versión
+    D->>P: registra la descarga en la auditoría
+    alt auditoría no disponible
+        D-->>U: 503 sin redirección
+    else autorizado
+        D-->>N: 200 + X-Accel-Redirect: /_protected/...
+        N->>V: lee el archivo (ubicación interna)
+        N-->>U: PDF
+    end
+```
+
+La descarga pública del catálogo usa el mismo mecanismo hacia `/_catalog/...`, con la copia pública del artículo aceptado.
+
+### Envío de un manuscrito
+
+```{mermaid}
+sequenceDiagram
+    autonumber
+    actor A as Autor
+    participant D as Django/DRF
+    participant P as PostgreSQL
+    participant V as Volumen
+
+    A->>D: POST /manuscripts/{id}/submit/ (Idempotency-Key)
+    D->>P: ¿la clave ya existe? (repite la respuesta guardada)
+    D->>P: valida estado DRAFT y metadatos completos
+    D->>V: copia el PDF exacto y la copia sanitizada (sin sobrescribir)
+    D->>P: crea versión 1, ronda 0, sello SHA-256 y evento de estado
+    D->>P: registra la auditoría (misma transacción)
+    D-->>A: 201 con código de seguimiento y sello de integridad
+    Note over D,P: Si algo falla, nada queda a medias
+```
+
+### Despliegue
+
+Solo Nginx expone puertos; la base de datos y el backend viven en la red interna de Compose.
+
+```{mermaid}
+flowchart TB
+    internet(["Internet / red institucional"]) -->|"80 → 443"| web
+    subgraph compose["Red interna de Docker Compose"]
+        web["web (Nginx)"] --> backend["backend (Gunicorn)"]
+        backend --> db[("db (PostgreSQL)")]
+        backend --- media[("media_data")]
+        web --- static[("static_data")]
+        web -.-> media
+    end
+    host["Host Linux"] -->|"cron + scripts/"| backend
+    host -->|"respaldo diario"| bk[("/backups")]
+```
+
+## Modelo C4 formal
+
+Los diagramas de arriba son bocetos en Mermaid. El modelo C4 formal vive en **Structurizr** (niveles 1 a 3) y en **PlantUML** (nivel 4, código). Las fuentes se versionan junto al código y el CI las renderiza a SVG en cada publicación.
+
+| Nivel | Fuente | Qué muestra |
+|---|---|---|
+| C1 · Contexto | [`workspace.dsl`](../diagrams/workspace.dsl) | Personas, el sistema y el servidor de correo. |
+| C2 · Contenedores | [`workspace.dsl`](../diagrams/workspace.dsl) | SPA, Nginx, API, PostgreSQL, volumen de PDF y tareas programadas. |
+| C3 · Componentes | [`workspace.dsl`](../diagrams/workspace.dsl) | Las *apps* del backend y las piezas transversales. |
+| C4 · Código | [`c4-codigo-envio.puml`](../diagrams/c4-codigo-envio.puml) | Clases y funciones del envío formal de un manuscrito. |
+
+### C1 · Contexto
+
+![C1 · Contexto del sistema](../diagrams/out/c1-contexto.svg){fig-alt="Diagrama C1 de contexto del sistema"}
+
+### C2 · Contenedores
+
+![C2 · Contenedores](../diagrams/out/c2-contenedores.svg){fig-alt="Diagrama C2 de contenedores"}
+
+### C3 · Componentes del backend
+
+![C3 · Componentes del backend](../diagrams/out/c3-backend.svg){fig-alt="Diagrama C3 de componentes del backend"}
+
+### C4 · Código del envío formal
+
+Es el nivel de detalle de una sola operación, la más crítica del sistema: valida el PDF, lo copia **sin sobrescribir**, congela los metadatos, crea la versión 1 y la ronda 0, y audita, todo en una transacción.
+
+![C4 · Código del envío formal](../diagrams/out/c4-codigo-envio.svg){fig-alt="Diagrama de clases del envío formal de un manuscrito"}
+
+::: {.callout-note}
+## Cómo se generan
+`scripts/build_docs_diagrams.sh c4` exporta `workspace.dsl` con la imagen oficial `structurizr/cli` y renderiza con PlantUML. Para ver un diagrama mientras lo edita, pegue el `.dsl` en [Structurizr Lite](https://docs.structurizr.com/lite) o el `.puml` en cualquier editor de PlantUML.
+:::
+
+Para el detalle operativo (TLS, respaldos, restauración, cron, incidentes) vea [Despliegue y operación](despliegue.qmd) y `docs/RUNBOOK.md`.

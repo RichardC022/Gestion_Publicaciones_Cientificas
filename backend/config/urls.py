@@ -1,4 +1,8 @@
-"""Root URL configuration for the Django project."""
+"""Configuración de rutas raíz del proyecto Django.
+
+Toda la API vive bajo ``/api/v1/`` (ver ``config/api.py``). Además de ella solo existen el alias
+sin versión del health y, únicamente en desarrollo, el Django Admin.
+"""
 
 from django.conf import settings
 from django.contrib import admin
@@ -11,6 +15,7 @@ handler404 = "config.exceptions.not_found_handler"
 handler500 = "config.exceptions.server_error_handler"
 
 urlpatterns = [
+    # Toda la API versionada.
     path("api/v1/", include("config.api")),
     # Alias sin versión: lo usan el healthcheck de Docker y los scripts de operación,
     # que no deben cambiar cuando la API cambie de versión.

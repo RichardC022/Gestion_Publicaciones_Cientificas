@@ -1,0 +1,87 @@
+---
+title: "Visión general"
+subtitle: "Qué es el sistema, con qué está hecho y cómo se organiza el repositorio"
+---
+
+## Propósito
+
+Centralizar el ciclo editorial de manuscritos científicos en un flujo único, trazable y confidencial. El problema de partida es conocido: comunicaciones dispersas, versiones perdidas, anonimato vulnerado y decisiones sin evidencia verificable.
+
+Los objetivos que guían el diseño:
+
+1. Cada persona accede **solo** a las funciones y documentos que le corresponden.
+2. Todo manuscrito sigue un flujo de estados claro y verificable.
+3. Se protege la identidad del Autor y del Revisor durante la evaluación.
+4. Versiones, metadatos y decisiones se conservan de forma **inmutable**.
+5. El plazo de evaluación (20 días) se controla sin revocaciones automáticas.
+6. El catálogo público solo muestra artículos aceptados y vigentes.
+7. El Administrador dispone de una auditoría completa e inalterable.
+
+## Stack tecnológico
+
+| Capa | Tecnología | Notas |
+|---|---|---|
+| Frontend | Angular (TypeScript), RxJS, Signals | SPA servida como estáticos por Nginx. |
+| Backend | Python 3.12, Django 5.2 LTS, Django REST Framework | Gunicorn con workers síncronos. |
+| Autenticación | JWT (`djangorestframework-simplejwt`) | Roles revalidados contra la base de datos en cada solicitud. |
+| Documentación de la API | `drf-spectacular` (OpenAPI 3) + Swagger UI | Ver [La API](api.qmd). |
+| Base de datos | PostgreSQL 16 | Obligatoria; SQLite, MySQL y MongoDB están prohibidos. |
+| PDF | `pikepdf` | Valida estructura, cifrado y contenido activo; sanitiza la copia del Revisor. |
+| Borde | Nginx 1.27 | TLS, estáticos, proxy `/api/`, límite de carga y entrega interna de PDF. |
+| Orquestación | Docker Compose v2 | Servicios `db`, `backend` y `web`; solo `web` publica puertos (80/443). |
+| Tareas programadas | `cron` del host + comandos de gestión de Django | Sin Redis ni Celery. |
+| Pruebas | pytest, pytest-django, factory-boy · Vitest · Playwright | Ver [Pruebas](pruebas.qmd). |
+
+::: {.callout-note}
+## Restricciones del proyecto
+Sin nube obligatoria, sin S3, sin Kubernetes y sin servicios gestionados externos: el piloto corre en **un solo servidor Linux** on-premise. Las decisiones de simplicidad (KISS/YAGNI) se prefieren sobre la infraestructura «por si acaso».
+:::
+
+## Estructura del repositorio
+
+```text
+.
+├── backend/                  Django + DRF
+│   ├── apps/
+│   │   ├── users/            cuentas, roles, JWT, sesión, tablero
+│   │   ├── publications/     manuscritos, versiones, rondas, veredictos, catálogo
+│   │   ├── reviews/          asignaciones, evaluaciones, incidentes
+│   │   ├── audit/            auditoría encadenada
+│   │   └── notifications/    avisos y correo
+│   ├── config/               ajustes, rutas, contrato de respuesta, OpenAPI, health
+│   └── tests/                suite de pytest
+├── frontend/                 Angular (SPA) y pruebas E2E con Playwright
+├── nginx/                    configuración del borde y certificados
+├── scripts/                  respaldo, restauración, verificación, carga, cron
+├── docs/RUNBOOK.md           guía de operación del servidor
+├── docs-site/                esta documentación (Quarto)
+├── .spec-kit/                constitución, especificación, plan y tareas (SpecKit)
+├── docker-compose.yml
+├── README.md · QUICKSTART.md
+└── .github/workflows/        integración continua y publicación de la documentación
+```
+
+## Principios de ingeniería
+
+La constitución del proyecto (`.spec-kit/constitution.md`) fija las reglas que el código debe respetar:
+
+- **Idioma:** el código, los endpoints y los identificadores en inglés; los comentarios, la documentación y los commits en español.
+- **SOLID, KISS, DRY y YAGNI.** Las vistas delegan en una **capa de servicios** por dominio (`apps/*/services/`); los modelos no conocen HTTP y las vistas no contienen reglas de negocio.
+- **Doble ciego a nivel de DRF:** si el token pertenece a un Revisor, el JSON nunca incluye nombre, correo ni filiación del Autor.
+- **Solo PDF**, validado en Angular **y** en Django; la extensión del nombre nunca basta.
+- **Versiones inmutables:** un PDF nuevo nunca sobrescribe a uno anterior.
+
+## Trazabilidad de la especificación
+
+El proyecto sigue la metodología SpecKit, y cada artefacto alimenta al siguiente:
+
+| Artefacto | Archivo | Contenido |
+|---|---|---|
+| Constitución | `.spec-kit/constitution.md` | Principios y restricciones inquebrantables. |
+| Especificación | `.spec-kit/specify.md` | 24 historias de usuario, reglas de negocio RN-01…RN-20 y casos límite. |
+| Clarificación | `.spec-kit/clarify.md` | Decisiones de infraestructura Q1–Q5. |
+| Plan | `.spec-kit/plan.md` | Modelo de datos, API, frontend, almacenamiento, despliegue, seguridad y pruebas. |
+| Tareas | `.spec-kit/tasks.md` | Tareas `TSK-xx` ordenadas por dependencias. |
+| Cumplimiento | `.spec-kit/compliance.md` | Matriz de cumplimiento y deuda técnica. |
+
+Las decisiones de arquitectura más relevantes se resumen en los [ADR](adr/index.qmd).

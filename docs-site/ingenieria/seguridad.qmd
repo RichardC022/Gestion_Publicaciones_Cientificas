@@ -1,0 +1,84 @@
+---
+title: "Seguridad"
+subtitle: "Autenticación, autorización, doble ciego, validación, secretos y auditoría"
+---
+
+La seguridad se apoya en capas independientes: si una falla, las demás siguen protegiendo. Esta página resume cada una y dónde vive en el código.
+
+## Autenticación
+
+| Aspecto | Implementación |
+|---|---|
+| Credenciales | Institucionales; sin autorregistro. Se acepta ID institucional, usuario o correo. |
+| Token de acceso | JWT de **15 minutos** (`JWT_ACCESS_MINUTES`). Vive solo en la memoria del cliente: nunca en `localStorage` ni en cookies. |
+| Token de renovación | **7 días** (`JWT_REFRESH_DAYS`), en la cookie `gpc_refresh` con `HttpOnly`, `SameSite=Strict` y `Secure` en producción. De un solo uso: al rotar, el anterior queda revocado; si alguien reutiliza uno ya consumido, se detecta y la cadena de reemplazo muere con él. |
+| Inactividad | La sesión se cierra tras 30 minutos (`SESSION_IDLE_MINUTES`). |
+| Fuerza bruta | Cinco intentos fallidos por identificador en quince minutos bloquean el acceso (`AUTH_LOCKED`, con `Retry-After`). |
+| No enumeración de cuentas | Cualquier falla (token mal formado, vencido, cuenta inexistente o deshabilitada, contraseña errónea) responde el **mismo** `AUTH_INVALID`. |
+
+Código: `apps/users/authentication.py` (`InstitutionalJWTAuthentication`) y `apps/users/services/auth.py`.
+
+## Autorización
+
+El control es **por rol y por objeto**; un rol nunca concede acceso a todos los documentos.
+
+1. **Rol del módulo.** Cada vista declara su permiso (`IsAuthor`, `IsReviewer`, `IsEditor`, `IsAdmin`). Los roles se releen de PostgreSQL en **cada solicitud**; la reclamación del JWT es solo una pista y no autoriza.
+2. **Alcance del objeto.** Los *querysets* parten del alcance del usuario (`Manuscript.objects.visible_to`, `for_editor`, `Assignment.objects.for_reviewer`), nunca del repositorio global. Un objeto ajeno responde `404`, idéntico al de uno inexistente, para no revelar su existencia.
+3. **Separación de funciones.** Nadie evalúa ni decide sobre un manuscrito propio o coescrito; el intento se bloquea y se audita.
+
+La prueba `tests/security/test_access_matrix.py` clasifica **cada ruta** de la API por rol y alcance y la ejecuta contra ocho tipos de actor (sin credenciales, autor propietario, otro autor, revisor asignado, otro revisor, editor, administrador y usuario sin rol). **Falla si se añade una ruta sin clasificarla.**
+
+## Doble ciego
+
+Es una regla de negocio inquebrantable que se aplica en varias capas:
+
+- **Serializadores de lista blanca** para el Revisor: nunca incluyen nombre, correo ni filiación del Autor.
+- **Querysets por asignación**: el Revisor solo alcanza la versión que se le asignó.
+- **Copia sanitizada del PDF**: sin `/Info`, XMP, `/PieceInfo`, anotaciones ni contenido activo; con nombre genérico. El original nunca llega al Revisor.
+- **Avisos** que respetan el ciego en ambos sentidos.
+- **Reportes confidenciales** de fuga de identidad que el Autor nunca ve.
+
+Las pruebas lo comprueban con personas de nombre conocido: `tests/reviews/test_double_blind.py` y el escenario de `tests/phase5.py` buscan esos nombres en todos los artefactos (respuestas, avisos, auditoría, páginas públicas y correo), y el E2E de fuga de identidad verifica que el Autor ni siquiera sepa que existió un reporte.
+
+## Validación de entradas
+
+- **Serializadores de DRF** validan cada cuerpo y cada parámetro de consulta; un valor mal formado responde `400`, no se ignora.
+- **PDF:** la barrera es el servidor (la validación de Angular es solo UX). Se rechaza, en este orden: tamaño (`413`), vacío, sin la firma `%PDF-`, ilegible, cifrado, sin páginas y con contenido activo. La extensión del nombre nunca basta. Los hashes SHA-256 se calculan en *streaming*, sin cargar los 50 MB en memoria.
+- **Cargas:** Nginx limita la solicitud a 60 MB y Django el archivo a 50 MB (`MAX_PDF_SIZE_MB`).
+- **Escrituras concurrentes:** `ETag`/`If-Match` (bloqueo optimista) e `Idempotency-Key` para reintentos seguros.
+
+## Secretos y configuración
+
+| Regla | Dónde se cumple |
+|---|---|
+| Ningún secreto en el repositorio | `.env` está en `.gitignore`; solo se versiona `.env.example` con `change-me`. |
+| El arranque falla con valores de ejemplo | `settings/production.py` (`required_env`) y `scripts/check_env.sh` rechazan `change-me` y variables vacías. |
+| Secretos únicos y permisos mínimos | El QUICKSTART los genera con `openssl rand` y deja `.env` en `chmod 600`. |
+| Producción estricta | `DEBUG=False`, `SECRET_KEY` obligatoria, `ALLOWED_HOSTS` y `CSRF_TRUSTED_ORIGINS` obligatorios, HSTS de un año, cookies `Secure`. |
+| Contraseñas iniciales | `create_user` genera una aleatoria y la muestra **una sola vez**. |
+
+::: {.callout-warning}
+## Nunca subir credenciales
+Los archivos de credenciales locales (por ejemplo `credentials.txt`) están ignorados por Git. Si una credencial llegó a versionarse alguna vez, hay que **rotarla** en el proveedor: quitar el archivo del árbol no la quita del historial.
+:::
+
+## Superficie expuesta
+
+- Solo Nginx publica puertos (80 → 443); `db` y `backend` viven en la red interna de Compose.
+- **Cabeceras de seguridad** en todas las respuestas (SPA, API, errores y PDF): `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy` y una `Content-Security-Policy` estricta (`script-src 'self'`, sin `unsafe-eval`). Nginx es el único dueño de esa política y oculta las que Django también emite.
+- **Django Admin apagado en producción:** `/admin/` responde `404` en Nginx y en Django, y ninguna variable lo enciende.
+- **Documentación de la API** controlada por `API_DOCS_ENABLED` y compatible con la CSP (Swagger UI sin `<script>` en línea).
+- **PDF por rutas internas:** `/_protected/` y `/_catalog/` son `internal`; `/media/` no se sirve. Una prueba de humo (`scripts/smoke_media_isolation.sh`) verifica el aislamiento.
+- **Errores sin filtraciones:** los `500` son genéricos; el detalle va al log con el mismo `request_id`.
+
+## Auditoría inmutable
+
+- Toda acción crítica genera un evento; **si no se puede auditar, la acción no se completa** (transacción compartida).
+- Cada evento guarda la huella SHA-256 del anterior (`previous_hash`, `entry_hash`): alterar uno rompe la cadena.
+- La base de datos rechaza `UPDATE` y `DELETE` sobre la tabla (disparador) y el rol de ejecución de la aplicación **no tiene** esos permisos.
+- La auditoría solo guarda identificadores y códigos: nunca contraseñas, contenido de manuscritos ni comentarios confidenciales.
+- `manage.py verify_integrity` recorre la cadena; corre mensualmente por `cron`.
+
+## Dependencias
+
+La integración continua audita las dependencias en cada cambio: `pip-audit` (backend) y `npm audit --omit=dev --audit-level=high` (frontend). Cualquier vulnerabilidad conocida del backend falla el *pipeline*.

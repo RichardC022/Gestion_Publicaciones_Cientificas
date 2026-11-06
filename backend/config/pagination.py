@@ -1,11 +1,14 @@
-"""Standard pagination for API list endpoints.
+"""Paginación estándar de los endpoints de lista de la API.
 
-Query parameters (implementation plan, section 2.1):
+Parámetros de consulta (plan de implementación, sección 2.1):
 
-* ``page``: 1-based page number. Malformed values return ``400``;
-  out-of-range pages keep DRF's ``404`` semantics.
-* ``page_size``: items per page. Malformed values or values above 100
-  return ``400``. The server default is 20 and never exceeds 100.
+* ``page``: número de página, desde 1. Un valor mal formado responde ``400``; una página
+  fuera de rango conserva la semántica ``404`` de DRF.
+* ``page_size``: elementos por página. Un valor mal formado o mayor que 100 responde
+  ``400``. Por defecto son 20 y nunca pasan de 100.
+
+La respuesta no usa el formato de DRF: el renderer mueve ``count``, ``next`` y ``previous``
+a ``meta.pagination`` (ver ``config.renderers``).
 """
 
 from __future__ import annotations
@@ -17,12 +20,17 @@ from rest_framework.response import Response
 from config.openapi import PAGINATED
 from config.renderers import PaginatedPayload
 
+# Elementos por página cuando el cliente no pide un tamaño, y tope que nadie puede superar.
 DEFAULT_PAGE_SIZE = 20
 MAX_PAGE_SIZE = 100
 
 
 class StandardPagination(PageNumberPagination):
-    """Page-based pagination with strict parameter validation."""
+    """Paginación por páginas con validación estricta de los parámetros.
+
+    A diferencia de DRF, que ignora en silencio un ``page_size`` inválido, aquí cualquier
+    valor mal formado es un error ``400`` con el detalle del parámetro.
+    """
 
     page_size = DEFAULT_PAGE_SIZE
     page_query_param = "page"
@@ -35,7 +43,11 @@ class StandardPagination(PageNumberPagination):
         return {"type": "array", "items": schema, PAGINATED: True}
 
     def get_paginated_response(self, data):
-        """Return the page marked so the renderer moves the counters to ``meta``."""
+        """Devuelve la página marcada (``PaginatedPayload``) para que el renderer mueva los contadores a ``meta``.
+
+        Dentro del proceso, ``response.data`` conserva ``count``, ``next``, ``previous`` y
+        ``results``; el cambio de forma ocurre solo al serializar la respuesta.
+        """
         return Response(
             PaginatedPayload(
                 count=self.page.paginator.count,
@@ -46,7 +58,7 @@ class StandardPagination(PageNumberPagination):
         )
 
     def get_page_size(self, request) -> int:
-        """Return the requested page size or raise a ``400`` error."""
+        """Devuelve el tamaño de página pedido o lanza un error ``400`` si no es un entero de 1 a 100."""
         raw = request.query_params.get(self.page_size_query_param)
         if raw is None:
             return self.page_size
@@ -65,7 +77,10 @@ class StandardPagination(PageNumberPagination):
         return size
 
     def get_page_number(self, request, paginator) -> int:
-        """Return a validated page number or raise a ``400`` error."""
+        """Devuelve un número de página válido o lanza un error ``400``.
+
+        Acepta ``last`` como alias de la última página.
+        """
         raw = request.query_params.get(self.page_query_param) or 1
         if raw in self.last_page_strings:
             return paginator.num_pages

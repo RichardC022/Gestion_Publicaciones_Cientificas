@@ -1,9 +1,9 @@
 """
-ASGI config for config project.
+Configuración ASGI del proyecto.
 
-It exposes the ASGI callable as a module-level variable named ``application``.
+Expone el invocable ASGI como la variable de módulo ``application``.
 
-For more information on this file, see
+Más información sobre este archivo en
 https://docs.djangoproject.com/en/6.1/howto/deployment/asgi/
 """
 
@@ -11,6 +11,7 @@ import os
 
 from django.core.asgi import get_asgi_application
 
+# Si el entorno no define los ajustes, se usan los de producción (el valor más estricto).
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings.production')
 
 application = get_asgi_application()

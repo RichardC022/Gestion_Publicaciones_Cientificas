@@ -1,0 +1,70 @@
+---
+title: "Estados y glosario"
+subtitle: "Qué significa cada estado y cada término"
+---
+
+## Estados de un manuscrito
+
+| Estado | Significado | Qué puede hacer el Autor | Quién lo activa |
+|---|---|---|---|
+| **Borrador** | En preparación. | Editar metadatos, adjuntar PDF, enviar, retirar. | Autor |
+| **Enviado** | Pendiente de la revisión inicial del Editor. | Consultar y retirar. | Autor, al enviar |
+| **En revisión** | Con un Revisor activo o pendiente de asignación. | Solo consultar y retirar. | Editor |
+| **Requiere correcciones** | El Editor pidió ajustes. | Editar metadatos, enviar nueva versión, retirar. | Editor |
+| **Aceptado** | Veredicto favorable; visible en el catálogo. | Consultar y retirar (lo quita del catálogo). | Editor |
+| **Rechazado** | Veredicto desfavorable; no se publica. | Consultar y retirar (archivar). | Editor |
+
+El **retiro** no es un estado: es una marca que puede ponerse en cualquier estado y saca el manuscrito de los listados activos y del catálogo, conservando todo su historial.
+
+## Transiciones permitidas
+
+```{mermaid}
+stateDiagram-v2
+    direction LR
+    [*] --> Borrador
+    Borrador --> Enviado: Autor envía
+    Enviado --> EnRevision: Editor pasa a revisión
+    EnRevision --> EnRevision: Revocar y reasignar
+    EnRevision --> Aceptado: Editor decide
+    EnRevision --> Rechazado: Editor decide
+    EnRevision --> RequiereCorrecciones: Editor decide
+    RequiereCorrecciones --> Enviado: Autor envía versión nueva
+```
+
+Cualquier otro cambio de estado se bloquea y queda registrado. En particular, no se puede pasar de *Borrador* a *En revisión*, ni de *Enviado* a *Aceptado* o *Rechazado*, ni editar un manuscrito *Aceptado* o *Rechazado*.
+
+## Versiones y rondas
+
+El **envío inicial** crea la **versión 1** y la **ronda 0**. Cada veredicto *Requiere correcciones* abre la ronda siguiente (1, 2, 3…); la respuesta del Autor se guarda como la versión consecutiva (v2, v3…). Son contadores independientes: editar metadatos no crea versión ni ronda, y reasignar un Revisor tampoco.
+
+Ejemplo: `v1 / ronda 0` → correcciones → `v2 / ronda 1` → correcciones → `v3 / ronda 2` → aceptado.
+
+## Estados de una asignación
+
+| Estado | Significado |
+|---|---|
+| Activa | El Revisor puede evaluar (dentro de los 20 días). |
+| Completada | El Revisor envió su evaluación final. |
+| Vencida | Pasaron los 20 días sin evaluación final; el Editor decide. |
+| Revocada | El Editor la dejó sin efecto. |
+
+## Glosario
+
+| Término | Definición |
+|---|---|
+| **Manuscrito** | Documento académico registrado por un Autor, con metadatos, estado y una o varias versiones. |
+| **Versión** | PDF concreto enviado (v1, v2…). Es inmutable. |
+| **Iteración** | Envío formal de una versión junto con los metadatos vigentes en ese momento. |
+| **Ronda de corrección** | Ciclo que abre un veredicto *Requiere correcciones*. El envío inicial es la ronda 0. |
+| **Revisor activo** | El único Revisor con asignación vigente para un manuscrito. |
+| **Plazo de evaluación** | 20 días calendario desde el instante de la asignación. |
+| **Doble ciego** | El Revisor no conoce al Autor y el Autor no conoce al Revisor. |
+| **Veredicto** | Decisión editorial: Aceptado, Rechazado o Requiere correcciones. |
+| **Retiro (baja lógica)** | Marca que oculta un manuscrito sin borrar su historial. |
+| **Historial** | Cronología inmutable de un manuscrito (estados, versiones, rondas). |
+| **Auditoría** | Registro global e inmutable de acciones críticas; solo lo consulta el Administrador. |
+| **Catálogo** | Consulta pública de artículos aceptados y no retirados. |
+| **PDF exacto** | Copia íntegra del archivo recibido en una iteración, conservada sin sobrescritura. |
+| **Sello de integridad** | Huella SHA-256 que permite comprobar que el PDF conservado no cambió. |
+| **Copia sanitizada** | PDF limpio de metadatos que recibe el Revisor. |
+| **request_id** | Identificador de una solicitud; acompaña a los errores y sirve para rastrear incidencias. |

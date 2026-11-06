@@ -1,14 +1,16 @@
-"""Public health endpoint used by Docker Compose and monitoring.
+"""Endpoint público de salud que usan Docker Compose y la monitorización.
 
-``GET /api/health/`` verifies, without exposing sensitive details:
+``GET /api/v1/health/`` (y su alias sin versión ``GET /api/health/``) comprueba, sin
+exponer detalles sensibles:
 
-* basic application availability (the view itself responding),
-* PostgreSQL answering ``SELECT 1``,
-* the media volume accepting a temporary write/read cycle.
+* la disponibilidad básica de la aplicación (que la propia vista responda),
+* que PostgreSQL conteste ``SELECT 1``,
+* que el volumen de medios admita un ciclo temporal de escritura y lectura.
 
-A healthy system returns ``200 {"status": "ok"}``. Any failure returns a
-generic ``503`` envelope that keeps the request id; the failing component
-is logged with the same request id and never disclosed to the client.
+Un sistema sano responde ``200`` con el sobre universal y ``data`` igual a
+``{"status": "ok"}``. Cualquier falla responde un ``503`` genérico con el sobre de error,
+que conserva el identificador de la solicitud; el componente que falló se registra en el
+log con ese mismo identificador y **nunca** se revela al cliente.
 """
 
 from __future__ import annotations
@@ -32,11 +34,12 @@ from config.openapi import error_response
 
 logger = logging.getLogger(__name__)
 
+# Mensaje único para cualquier falla: no distingue qué componente falló.
 GENERIC_UNAVAILABLE_MESSAGE = "El servicio no está disponible temporalmente."
 
 
 def check_database() -> None:
-    """Fail if PostgreSQL cannot execute ``SELECT 1``."""
+    """Lanza una excepción si PostgreSQL no puede ejecutar ``SELECT 1``."""
     with connections["default"].cursor() as cursor:
         cursor.execute("SELECT 1")
         row = cursor.fetchone()
@@ -45,7 +48,11 @@ def check_database() -> None:
 
 
 def check_media_volume() -> None:
-    """Fail if ``MEDIA_ROOT`` does not accept a temporary write/read cycle."""
+    """Lanza una excepción si ``MEDIA_ROOT`` no admite un ciclo temporal de escritura y lectura.
+
+    Crea un archivo temporal en el volumen, escribe y relee unos bytes, y lo borra al cerrar.
+    No deja rastro en el volumen.
+    """
     media_root = settings.MEDIA_ROOT
     if not os.path.isdir(media_root):
         raise RuntimeError("MEDIA_ROOT is not available")
@@ -87,7 +94,10 @@ def check_media_volume() -> None:
     ),
 )
 class HealthView(APIView):
-    """Public health probe: ``200`` when everything works, ``503`` otherwise."""
+    """Sonda pública de salud: ``200`` si todo funciona, ``503`` en caso contrario.
+
+    Sin autenticación ni permisos: Docker y los scripts de operación la consultan sin sesión.
+    """
 
     authentication_classes = []
     permission_classes = [AllowAny]

@@ -1,0 +1,109 @@
+---
+title: "Pruebas"
+subtitle: "Qué se prueba, cómo ejecutarlo y qué garantiza la integración continua"
+---
+
+## Mapa de la estrategia
+
+| Nivel | Herramienta | Qué cubre |
+|---|---|---|
+| Unitarias y de servicio | pytest, pytest-django, factory-boy, freezegun | Reglas de negocio de cada `services/`, modelos y validaciones. |
+| Integración | pytest contra **PostgreSQL 16** real | Transacciones, disparadores, restricciones, concurrencia y privilegios de la base. |
+| API | `APIClient` de DRF | Contrato, permisos por rol, estados, errores, paginación e idempotencia. |
+| Seguridad | pytest | Matriz de acceso por ruta y actor, doble ciego, aislamiento del volumen. |
+| Rendimiento | pytest | Que el número de consultas no crezca con los datos (`tests/performance`). |
+| Frontend | Vitest + Angular | Componentes, servicios, *guards*, interceptores y módulos. |
+| Extremo a extremo | Playwright | Flujos críticos sobre el stack real con Nginx. |
+
+::: {.callout-note}
+## PostgreSQL, no SQLite
+Las pruebas del backend corren siempre contra PostgreSQL: dependen de disparadores, `SELECT … FOR UPDATE`, búsqueda de texto completo y roles de base de datos. El CI falla si encuentra el motor SQLite en la configuración.
+:::
+
+## Qué verifican los criterios de aceptación
+
+Las pruebas están escritas contra los criterios de las historias de usuario (`specify.md`). Algunos de los casos críticos:
+
+| Flujo crítico | Dónde se prueba |
+|---|---|
+| **PDF de exactamente 50 MB se acepta; 50 MB + 1 byte responde 413** | `tests/publications/test_pdf.py` |
+| PDF inválido, cifrado, sin páginas o con contenido activo se rechaza | `tests/publications/test_pdf.py`, `test_draft_file.py` |
+| Envío formal crea v1 y ronda 0, con sello y auditoría; es idempotente | `test_submission.py`, `test_idempotency.py` |
+| Nueva versión en correcciones; la anterior queda intacta | `test_new_version.py` |
+| Ciclo completo: envío → asignación → evaluación → veredicto | `test_lifecycle.py`, `test_phase5_*` |
+| Un solo Revisor activo; revocación y plazo de 20 días | `tests/reviews/test_assignment_service.py`, `test_expire_command.py` |
+| Doble ciego en todas las respuestas del Revisor | `tests/reviews/test_double_blind.py` |
+| Evaluación final inmutable (también en la base de datos) | `test_final_evaluation_immutable.py` |
+| Veredicto único y corrección solo con habilitación del Administrador | `test_verdict_*` |
+| Cadena de auditoría y privilegios de base de datos | `tests/audit/` |
+| Reintentos y fallos a mitad de operación no dejan rastros | `test_failure_injection.py`, `test_concurrency.py` |
+| Contrato de respuesta, paginación, health y OpenAPI | `test_envelope.py`, `test_contract_envelope.py`, `test_pagination.py`, `test_health.py`, `test_openapi.py` |
+
+## Cómo ejecutarlas
+
+### Backend
+
+```bash
+# Dentro de Docker (recomendado)
+docker compose run --rm backend sh -c \
+  "python -m pip install --user --requirement requirements/development.txt && python -m pytest"
+
+# Un archivo o una prueba
+docker compose run --rm backend python -m pytest tests/publications/test_pdf.py -q
+```
+
+La suite completa tarda varios minutos porque usa PostgreSQL real. Mientras itera, ejecute solo los archivos que toca.
+
+### Frontend
+
+```bash
+cd frontend
+npm ci
+npx tsc -p tsconfig.app.json --noEmit && npx tsc -p tsconfig.spec.json --noEmit
+npx ng test --watch=false
+```
+
+### Extremo a extremo
+
+```bash
+./scripts/e2e.sh          # todos los flujos
+```
+
+El script levanta un **stack aislado** (otro proyecto de Compose, volúmenes y puertos), siembra cuentas con contraseñas aleatorias, ejecuta Playwright sobre Nginx real y borra todo al terminar. Los flujos cubiertos son:
+
+| Archivo | Flujo |
+|---|---|
+| `01-sesion` | Una persona Autor y Revisor ve las dos secciones sin elegir rol (panel multirrol). |
+| `02-ciclo-completo` | Flujos 2 a 8 de punta a punta: el Autor envía, el Editor asigna, el Revisor evalúa, el Editor acepta, el público lo encuentra y descarga, el Autor lo retira y la auditoría guarda la huella. |
+| `03-correccion` | Corrección administrativa de un veredicto: el Administrador la habilita, el Editor decide de nuevo y el historial conserva ambas decisiones. |
+| `04-fuga-de-identidad` | El Revisor reporta; el Editor pide una versión anonimizada, se abre una ronda y el Autor no llega a conocer al Revisor. |
+| `05-accesibilidad` | Revisión de accesibilidad con axe-core. |
+| `06-teclado` | Todo el flujo por teclado. |
+| `07-responsive` | Diseños móvil y de escritorio. |
+
+### Otras verificaciones
+
+| Comando | Qué comprueba |
+|---|---|
+| `python3 scripts/check_runbook.py` | Que el runbook cite scripts, comandos y variables que existen. |
+| `python3 scripts/check_frontend_build.py` | Que el *build* de producción sea de producción (sin mapas de código ni herramientas de desarrollo). |
+| `./scripts/smoke_media_isolation.sh` | Aislamiento del volumen de PDF por Nginx. |
+| `./scripts/verify_pilot.sh` | Verificación completa del despliegue (restauración, puertos, TLS y cabeceras). |
+| `./scripts/load_test.sh` | Prueba de carga (50 usuarios en catálogo, cargas de 50 MB). |
+
+## Integración continua
+
+El flujo `.github/workflows/ci.yml` corre en cada *push* y *pull request*:
+
+| Trabajo | Qué hace |
+|---|---|
+| `backend-check` | `manage.py check`. |
+| `backend-tests` | Pytest sobre PostgreSQL 16, sin migraciones pendientes y con **cobertura mínima del 80 %** en servicios y permisos. |
+| `backend-audit` | `pip-audit` de las dependencias de producción y desarrollo. |
+| `frontend-tests` | Verificación de tipos de la aplicación y los *specs*, más las pruebas unitarias. |
+| `frontend-build` | *Build* de producción verificado. |
+| `frontend-audit` | `npm audit` de producción. |
+| `compose-config` | Validación de los archivos de Compose. |
+| `media-isolation` | Aislamiento de los PDF en Nginx. |
+
+Un flujo aparte, `.github/workflows/docs.yml`, valida y publica esta documentación: exporta el schema OpenAPI con `--fail-on-warn`, genera los diagramas, renderiza el sitio y comprueba que no queden enlaces rotos (`scripts/check_docs_site.py`). Vea [Cómo contribuir](contribuir.qmd).

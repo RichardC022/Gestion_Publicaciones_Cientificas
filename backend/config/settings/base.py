@@ -1,4 +1,10 @@
-"""Base Django settings shared by every environment."""
+"""Ajustes base de Django, compartidos por todos los entornos.
+
+Aquí vive todo lo que no cambia entre desarrollo y producción. ``development.py`` y
+``production.py`` importan este módulo y sobrescriben lo que necesiten; el entorno se elige
+con ``DJANGO_SETTINGS_MODULE``. Los valores que cambian por despliegue se leen de variables
+de entorno (plantilla en ``.env.example``) y nunca se escriben aquí.
+"""
 
 from __future__ import annotations
 
@@ -6,11 +12,17 @@ import os
 from datetime import timedelta
 from pathlib import Path
 
+# Raíz del backend (el directorio que contiene ``manage.py``).
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 
 def env_bool(name: str, default: bool = False) -> bool:
-    """Read a boolean value from the environment."""
+    """Lee un booleano de una variable de entorno.
+
+    Son verdaderos ``1``, ``true``, ``yes`` y ``on`` (sin distinguir mayúsculas ni espacios en
+    los extremos); cualquier otro valor definido es falso. Si la variable no existe, devuelve
+    ``default``.
+    """
     value = os.environ.get(name)
     if value is None:
         return default
@@ -18,18 +30,25 @@ def env_bool(name: str, default: bool = False) -> bool:
 
 
 def env_list(name: str, default: tuple[str, ...] = ()) -> list[str]:
-    """Read a comma-separated list from the environment."""
+    """Lee una lista separada por comas de una variable de entorno.
+
+    Recorta los espacios de cada elemento y descarta los vacíos. Si la variable no existe,
+    devuelve ``default`` como lista.
+    """
     value = os.environ.get(name)
     if value is None:
         return list(default)
     return [item.strip() for item in value.split(",") if item.strip()]
 
 
+# Clave de firma. El valor por defecto es solo para desarrollo y pruebas: producción exige
+# ``DJANGO_SECRET_KEY`` y falla si falta o vale ``change-me`` (ver ``production.py``).
 SECRET_KEY = os.environ.get(
     "DJANGO_SECRET_KEY",
     "django-insecure-development-key-change-me",
 )
 
+# Apagado salvo que el entorno lo pida; ``production.py`` lo fija en ``False`` sin excepción.
 DEBUG = env_bool("DEBUG", False)
 
 # Django Admin (D-31): fuera de la URL salvo que el entorno lo pida. Producción lo
@@ -40,6 +59,8 @@ ADMIN_ENABLED = False
 # defecto: en cada despliegue se decide con `API_DOCS_ENABLED=1`; desarrollo la enciende.
 API_DOCS_ENABLED = env_bool("API_DOCS_ENABLED", False)
 
+# Dominios y orígenes de confianza. Los valores por defecto sirven para trabajar en local;
+# producción los exige explícitos.
 ALLOWED_HOSTS = env_list("ALLOWED_HOSTS", ("localhost", "127.0.0.1", "testserver"))
 CSRF_TRUSTED_ORIGINS = env_list("CSRF_TRUSTED_ORIGINS")
 
@@ -95,6 +116,8 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "config.wsgi.application"
 
+# PostgreSQL es el único motor permitido (ADR-0002). Estos valores por defecto son para
+# desarrollo; ``production.py`` los reemplaza y usa el rol restringido de la aplicación.
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
@@ -165,6 +188,8 @@ SIMPLE_JWT = {
     "USER_ID_CLAIM": "user_id",
 }
 
+# Idioma y zona horaria institucionales: los plazos (20 días) y las fechas de la API se
+# expresan en esta zona. ``USE_TZ`` guarda las fechas en UTC en la base de datos.
 LANGUAGE_CODE = "es"
 TIME_ZONE = os.environ.get("TZ", "America/Guayaquil")
 USE_I18N = True
@@ -194,6 +219,8 @@ REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "apps.users.authentication.InstitutionalJWTAuthentication",
     ],
+    # Sin permisos por defecto (DRF aplicaría «permitir a todos»): cada vista declara los
+    # suyos, y ``tests/security/test_access_matrix.py`` falla si una ruta queda sin clasificar.
     "DEFAULT_PERMISSION_CLASSES": [],
     # Contrato JSON universal: {success, message, data, errors, meta}.
     "DEFAULT_RENDERER_CLASSES": [

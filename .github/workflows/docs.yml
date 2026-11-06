@@ -45,6 +45,11 @@ env:
   NODE_VERSION: "22"
   # Versión fija de Quarto: el sitio debe construirse igual hoy y dentro de seis meses.
   QUARTO_VERSION: "1.11.9"
+  # PlantUML se descarga como .jar: el paquete de apt en Ubuntu 24.04 es de 2020 y no
+  # entiende la sintaxis que exporta Structurizr (falla con "Some diagram description
+  # contains errors", código 200). Versión y huella fijas para un build reproducible.
+  PLANTUML_VERSION: "1.2026.9"
+  PLANTUML_SHA256: "aa4a1d06f8911c4b842beff4828dd955be431692b631a312d04c0e9fab9581de"
 
 jobs:
   build:
@@ -75,10 +80,18 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install --requirement backend/requirements/base.txt
 
-      - name: Install PlantUML and Graphviz
+      # Graphviz sí viene bien de apt (PlantUML lo usa para el trazado). Java ya está
+      # instalado en ubuntu-latest.
+      - name: Install Graphviz and PlantUML (jar)
         run: |
           sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends plantuml graphviz
+          sudo apt-get install --yes --no-install-recommends graphviz
+          wget --quiet --tries=3 --retry-connrefused \
+            "https://github.com/plantuml/plantuml/releases/download/v${PLANTUML_VERSION}/plantuml-${PLANTUML_VERSION}.jar" \
+            --output-document "${RUNNER_TEMP}/plantuml.jar"
+          echo "${PLANTUML_SHA256}  ${RUNNER_TEMP}/plantuml.jar" | sha256sum --check --strict -
+          echo "PLANTUML_JAR=${RUNNER_TEMP}/plantuml.jar" >> "$GITHUB_ENV"
+          java -jar "${RUNNER_TEMP}/plantuml.jar" -version | head -n 3
 
       - name: Build the static API reference (OpenAPI + Swagger UI)
         run: ./scripts/build_docs_api.sh
