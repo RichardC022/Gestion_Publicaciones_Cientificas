@@ -353,6 +353,25 @@ docker compose exec backend python manage.py collectstatic --noinput
 
 En producción **no hay Django Admin**: `/admin/` (y sus estáticos) responde `404`, tanto en Nginx como en Django, y ninguna variable de entorno lo enciende (D-31). Las cuentas se crean con `manage.py create_user` (§3.8) y el flujo funcional se expone por `/api/v1/` y se consume desde Angular. Solo el entorno de desarrollo local (`config.settings.development`) lo monta, para inspeccionar datos con `createsuperuser`; ahí se apaga con `ADMIN_ENABLED=0`.
 
+### 5.7 Documentación de la API (Swagger UI)
+
+La API publica su contrato OpenAPI 3 y una página interactiva de Swagger UI, generados desde el código con `drf-spectacular`:
+
+| Ruta | Contenido |
+|---|---|
+| `/api/v1/docs/` | Swagger UI: explora todos los endpoints y los prueba con «Try it out». |
+| `/api/v1/schema/` | El schema OpenAPI en YAML (`/api/v1/schema.json` en JSON). |
+
+Son rutas **públicas** (describen la API, no exponen datos) y se controlan con `API_DOCS_ENABLED` en `.env`: `1` las publica y `0` (el valor por defecto de `.env.example`) las apaga, y entonces responden `404`. El entorno de desarrollo las enciende solo.
+
+Para llamar a un endpoint protegido desde la página: inicia sesión con `POST /api/v1/auth/login/` (Try it out), copia `data.access` y pégalo en **Authorize**. Swagger UI se sirve desde `/static/` y sin `<script>` en línea, así que cumple la CSP `script-src 'self'` de Nginx sin excepciones.
+
+Todos los endpoints responden con el contrato `{success, message, data, errors, meta}`; el schema lo describe tal como lo emite la API. Para generarlo o validarlo sin levantar el servidor:
+
+```bash
+docker compose exec backend python manage.py spectacular --validate --fail-on-warn --file /tmp/openapi.yaml
+```
+
 ---
 
 ## 6. Volumen y almacenamiento
