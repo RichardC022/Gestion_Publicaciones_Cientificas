@@ -1,0 +1,323 @@
+openapi: 3.0.3
+info:
+  title: ScientificPub UNL — Editorial Workflow API
+  version: 1.0.0
+  description: >
+    API REST del flujo editorial de manuscritos científicos. Autenticación JWT
+    (djangorestframework-simplejwt) y autorización por roles (RBAC: Autor, Revisor,
+    Editor, Administrador). El acceso a identidad del Autor está prohibido para el
+    rol Revisor (doble ciego), aplicado en serializadores y en la capa de consulta.
+servers:
+  - url: /api/v1
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: auth
+  - name: manuscripts
+  - name: versions
+  - name: reviews
+  - name: editorial
+  - name: catalog
+  - name: audit
+
+paths:
+  /auth/login/:
+    post:
+      tags: [auth]
+      summary: Autenticación con credenciales institucionales
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, format: password }
+      responses:
+        "200":
+          description: Par de tokens emitido
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access: { type: string }
+                  refresh: { type: string }
+        "400": { description: Credenciales inválidas o cuenta inactiva (FR-001) }
+        "429": { description: Demasiados intentos fallidos; bloqueo temporal (FR-003) }
+
+  /auth/refresh/:
+    post:
+      tags: [auth]
+      summary: Renovar token de acceso (con rotación)
+      security: []
+      responses:
+        "200": { description: Nuevo access/refresh }
+        "401": { description: Refresh inválido o revocado }
+
+  /auth/switch-role/:
+    post:
+      tags: [auth]
+      summary: Seleccionar rol activo para la sesión
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              properties:
+                role: { type: string, enum: [AUTHOR, REVIEWER, EDITOR, ADMIN] }
+      responses:
+        "200": { description: Rol activo actualizado (FR-002) }
+        "400": { description: El usuario no está habilitado para ese rol }
+
+  /manuscripts/:
+    get:
+      tags: [manuscripts]
+      summary: Listar manuscritos del Autor autenticado (solo los propios)
+      responses:
+        "200":
+          description: Listado paginado del Autor principal actual (FR-011)
+        "403": { description: Requiere rol Autor }
+    post:
+      tags: [manuscripts]
+      summary: Registrar manuscrito (metadatos obligatorios + PDF)
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [title, abstract, keywords, language, research_area, category, doi, issn, funding, file]
+              properties:
+                title: { type: string }
+                abstract: { type: string }
+                keywords: { type: string }
+                language: { type: string }
+                research_area: { type: integer }
+                category: { type: integer }
+                doi: { type: string }
+                issn: { type: string }
+                funding: { type: string }
+                file: { type: string, format: binary, description: "PDF válido (FR-006)" }
+      responses:
+        "201":
+          description: Manuscrito creado en estado DRAFT (FR-007)
+        "400":
+          description: >
+            Metadatos faltantes (SC-012) o archivo no-PDF/corrupto/excedido (FR-006)
+        "403": { description: Requiere rol Autor }
+
+  /manuscripts/{id}/:
+    get:
+      tags: [manuscripts]
+      summary: Detalle de un manuscrito
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Detalle según rol (history completo para Autor/Editor/Admin) }
+        "403": { description: Sin acceso }
+        "404": { description: No encontrado }
+    patch:
+      tags: [manuscripts]
+      summary: Editar metadatos (solo DRAFT o REQUIRES_REVISION, solo Autor principal)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                version: { type: integer, description: "Versión esperada (bloqueo optimista)" }
+                title: { type: string }
+                abstract: { type: string }
+      responses:
+        "200": { description: Actualizado }
+        "403": { description: No es el Autor principal o estado no editable (FR-008, FR-011) }
+        "409": { description: Conflicto de concurrencia; recargar (FR-004a, SC-011) }
+
+  /manuscripts/{id}/withdraw/:
+    post:
+      tags: [manuscripts]
+      summary: Dar de baja el manuscrito (eliminación lógica)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Manuscrito marcado WITHDRAWN (FR-012) }
+        "403": { description: Solo el Autor principal }
+
+  /manuscripts/{id}/versions/:
+    get:
+      tags: [versions]
+      summary: Historial de versiones
+      description: >
+        Autor/Editor/Administrador ven el historial completo. El Revisor no accede (FR-010a).
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Listado de versiones con número y fecha }
+        "403": { description: Revisor no autorizado a versiones anteriores }
+    post:
+      tags: [versions]
+      summary: Entregar nueva versión corrigiendo el manuscrito
+      description: Solo en estado REQUIRES_REVISION; crea vN+1 sin sobrescribir (FR-009, FR-010).
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        "201": { description: Nueva versión creada }
+        "400": { description: Archivo inválido o estado distinto de REQUIRES_REVISION }
+        "403": { description: Solo el Autor principal }
+
+  /manuscripts/{id}/submit-review/:
+    post:
+      tags: [editorial]
+      summary: Poner el manuscrito en revisión
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: Estado pasa a UNDER_REVIEW (FR-013) }
+        "403": { description: Requiere rol Editor }
+
+  /manuscripts/{id}/assignments/:
+    post:
+      tags: [editorial]
+      summary: Asignar uno o más revisores
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reviewer_ids]
+              properties:
+                reviewer_ids:
+                  type: array
+                  items: { type: integer }
+      responses:
+        "201": { description: Asignaciones creadas y notificadas (FR-014) }
+        "400": { description: Revisor ya asignado o inválido (escenario 3.6) }
+        "403": { description: Requiere rol Editor }
+
+  /manuscripts/{id}/request-revision/:
+    post:
+      tags: [editorial]
+      summary: Solicitar correcciones al Autor con observaciones
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [observations]
+              properties:
+                observations: { type: string }
+      responses:
+        "200": { description: Estado REQUIRES_REVISION y notificación (FR-015) }
+        "403": { description: Requiere rol Editor }
+
+  /manuscripts/{id}/verdict/:
+    post:
+      tags: [editorial]
+      summary: Emitir veredicto final
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision]
+              properties:
+                decision: { type: string, enum: [ACCEPTED, REJECTED, REQUIRES_REVISION] }
+                observations: { type: string }
+      responses:
+        "200": { description: Veredicto registrado y notificado (FR-016) }
+        "400": { description: No existe ninguna evaluación; veredicto bloqueado (SC-005) }
+        "403": { description: Requiere rol Editor }
+
+  /reviews/assignments/:
+    get:
+      tags: [reviews]
+      summary: Asignaciones del Revisor autenticado (solo las propias)
+      description: Respuesta anonimizada; nunca incluye identidad del Autor (FR-019, FR-020).
+      responses:
+        "200": { description: Listado anonimizado }
+        "403": { description: Requiere rol Revisor }
+
+  /reviews/assignments/{id}/evaluation/:
+    post:
+      tags: [reviews]
+      summary: Registrar evaluación y recomendación
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [recommendation, comments_to_author]
+              properties:
+                recommendation: { type: string, enum: [ACCEPT, MINOR_REVISION, MAJOR_REVISION, REJECT] }
+                comments_to_author: { type: string }
+                comments_to_editor: { type: string }
+      responses:
+        "201": { description: Evaluación registrada (FR-018) }
+        "403": { description: Asignación ajena o rol incorrecto }
+
+  /catalog/:
+    get:
+      tags: [catalog]
+      summary: Catálogo público de artículos aprobados/publicados
+      security: []
+      parameters:
+        - { name: q, in: query, schema: { type: string }, description: Término de búsqueda }
+        - { name: research_area, in: query, schema: { type: integer } }
+        - { name: category, in: query, schema: { type: integer } }
+        - { name: language, in: query, schema: { type: string } }
+      responses:
+        "200": { description: Resultados paginados (solo ACCEPTED/PUBLISHED) (FR-024) }
+
+  /audit/:
+    get:
+      tags: [audit]
+      summary: Consultar bitácora de auditoría (solo Administrador, solo lectura)
+      responses:
+        "200": { description: Bitácora inmutable ordenada cronológicamente (FR-022) }
+        "403": { description: Requiere rol Administrador }
+        "405": { description: Métodos de escritura no permitidos (inmutable) }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    Error:
+      type: object
+      properties:
+        detail: { type: string }
+        code: { type: string }

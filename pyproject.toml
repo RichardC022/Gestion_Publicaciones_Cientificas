@@ -1,0 +1,28 @@
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+exclude = ["migrations", ".venv", "venv", "node_modules", "frontend"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "SIM", "RUF"]
+ignore = [
+    # Django ``Meta`` options are class attributes by design; RUF012 is a
+    # false positive for these declarations.
+    "RUF012",
+    # Concatenating Django admin ``fieldsets``/``list_display`` tuples is idiomatic.
+    "RUF005",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests intentionally assert broad failures and use plain assert helpers.
+"**/tests.py" = ["B017", "SIM117"]
+
+[tool.isort]
+profile = "black"
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings.development"
+python_files = ["test_*.py", "*_test.py", "tests.py"]
+testpaths = ["backend/apps", "backend/tests"]
+pythonpath = ["backend"]
+addopts = "--strict-markers -ra"
