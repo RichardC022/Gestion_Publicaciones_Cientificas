@@ -14,12 +14,19 @@ from __future__ import annotations
 
 from django.db import transaction
 from django.shortcuts import get_object_or_404
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from rest_framework.generics import GenericAPIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from apps.audit.filters import apply_filters, audited_filters, validated_filters
+from apps.audit.filters import (
+    AuditFilterSerializer,
+    apply_filters,
+    audited_filters,
+    validated_filters,
+)
 from apps.audit.models import AuditLog
 from apps.audit.serializers import AdminAuditDetailSerializer, AdminAuditSerializer, manuscript_id_of
 from apps.audit.services import AuditService, AuditUnavailable
@@ -27,6 +34,7 @@ from apps.publications.models import Manuscript
 from apps.users.models import Role
 from apps.users.permissions import IsAdmin
 from config.exceptions import DomainError, ErrorCode
+from config.openapi import PAGINATION, error_response
 from config.request_context import audit_request_context
 
 AUDIT_ENTITY = "AUDIT_LOG"
@@ -69,6 +77,22 @@ class AdminAuditBaseView(GenericAPIView):
         }
 
 
+@extend_schema_view(
+    get=extend_schema(
+        tags=["Administración"],
+        operation_id="admin_audit_list",
+        summary="Consultar la auditoría",
+        description=(
+            "Solo el Administrador. Eventos globales, del más reciente al más antiguo. La propia "
+            "consulta queda auditada (`AUDIT_QUERIED`); si no puede registrarse, responde 503."
+        ),
+        parameters=[AuditFilterSerializer, *PAGINATION],
+        responses={
+            200: AdminAuditSerializer(many=True),
+            503: error_response("La auditoría no está disponible (AUDIT_UNAVAILABLE)."),
+        },
+    ),
+)
 class AuditListView(AdminAuditBaseView):
     """``GET /api/v1/admin/audit/``: global, paginated, newest first."""
 
@@ -91,6 +115,19 @@ class AuditListView(AdminAuditBaseView):
         return self.get_paginated_response(data)
 
 
+@extend_schema_view(
+    get=extend_schema(
+        tags=["Administración"],
+        operation_id="admin_audit_retrieve",
+        summary="Ver un evento de auditoría",
+        description="Solo el Administrador. `id` es el identificador público (`event_id`) del evento.",
+        parameters=[OpenApiParameter("id", OpenApiTypes.UUID, OpenApiParameter.PATH)],
+        responses={
+            200: AdminAuditDetailSerializer,
+            503: error_response("La auditoría no está disponible (AUDIT_UNAVAILABLE)."),
+        },
+    ),
+)
 class AuditDetailView(AdminAuditBaseView):
     """``GET /api/v1/admin/audit/{id}/``: one event, by its public ``event_id``."""
 
