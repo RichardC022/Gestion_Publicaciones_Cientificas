@@ -39,6 +39,39 @@ class SessionUserSerializer(serializers.ModelSerializer):
         )
 
 
+class NavigationEntrySerializer(serializers.Serializer):
+    """Módulo de navegación habilitado por un rol activo."""
+
+    role = serializers.ChoiceField(choices=Role.Code.choices, read_only=True)
+    label = serializers.CharField(read_only=True)
+    route = serializers.CharField(read_only=True)
+
+
+class SessionSerializer(serializers.Serializer):
+    """Sesión abierta o renovada: token de acceso, identidad y roles activos."""
+
+    access = serializers.CharField(
+        read_only=True,
+        help_text="Token de acceso (JWT). Se envía como `Authorization: Bearer`.",
+    )
+    user = SessionUserSerializer(read_only=True)
+    roles = serializers.ListField(
+        child=serializers.ChoiceField(choices=Role.Code.choices),
+        read_only=True,
+    )
+
+
+class MeSerializer(serializers.Serializer):
+    """Identidad del usuario autenticado, sus roles activos y su navegación."""
+
+    user = SessionUserSerializer(read_only=True)
+    roles = serializers.ListField(
+        child=serializers.ChoiceField(choices=Role.Code.choices),
+        read_only=True,
+    )
+    navigation = NavigationEntrySerializer(many=True, read_only=True)
+
+
 class DashboardSectionSerializer(serializers.Serializer):
     """One role section of the unified dashboard (plan section 2.2).
 
