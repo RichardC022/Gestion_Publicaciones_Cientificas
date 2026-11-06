@@ -1,0 +1,277 @@
+---
+title: "La API"
+subtitle: "Convenciones, autenticación, contrato de respuesta y catálogo de endpoints"
+---
+
+La API REST es el único punto de entrada al sistema: la SPA de Angular la consume igual que cualquier otro cliente. Está documentada con **OpenAPI 3** y se explora de forma interactiva con **Swagger UI**.
+
+## Referencia interactiva (Swagger UI)
+
+| Dónde | Qué es |
+|---|---|
+| `/api/v1/docs/` | Swagger UI sobre la API en ejecución, con «Try it out». Existe cuando el despliegue define `API_DOCS_ENABLED=1`; apagada responde `404`. |
+| `/api/v1/schema/` | El schema OpenAPI en YAML (`/api/v1/schema.json` en JSON). |
+| [Swagger UI estático](../api/index.html) | Copia de solo lectura, generada al publicar esta documentación. |
+
+::: {.callout-tip}
+## Probar un endpoint protegido
+Ejecute `POST /auth/login/` desde Swagger, copie `data.access` de la respuesta y péguelo en **Authorize**. A partir de ahí «Try it out» envía `Authorization: Bearer <token>`.
+:::
+
+## Convenciones
+
+| Aspecto | Regla |
+|---|---|
+| Prefijo y versión | Todo vive bajo `/api/v1/`. El health también se sirve sin versión en `/api/health/` (lo usan Docker y los scripts de operación). |
+| Recursos | Rutas por recurso en inglés (`/manuscripts/`, `/catalog/`, `/notifications/`). Los módulos por rol llevan prefijo (`/editor/`, `/reviewer/`, `/admin/`). |
+| Métodos | `GET` lee, `POST` crea o ejecuta una acción, `PUT` guarda un borrador, `PATCH` modifica parcialmente. No existe `DELETE` sobre recursos de negocio: el retiro es lógico. |
+| Formato | JSON (`application/json`); las cargas de PDF usan `multipart/form-data` con el archivo en el campo `file`. |
+| Fechas | ISO 8601 en la zona horaria institucional. |
+| Identificadores | UUID para los recursos; el manuscrito además tiene un código de seguimiento (`GPC-2026-000001`). |
+| Idioma | Rutas, campos y códigos en inglés; mensajes al usuario en español. |
+
+## El contrato universal de respuesta
+
+**Toda** respuesta JSON, de éxito o de error, tiene exactamente estas cinco claves:
+
+```json
+{
+  "success": true,
+  "message": "Operación exitosa.",
+  "data": {},
+  "errors": [],
+  "meta": { "request_id": "74acfa5faf2645b58c6ff82a2a5fa5b7" }
+}
+```
+
+| Clave | Contenido |
+|---|---|
+| `success` | `true` en los éxitos, `false` en los errores. |
+| `message` | Texto legible en español. |
+| `data` | La carga del endpoint; `null` en los errores. |
+| `errors` | Lista vacía en los éxitos; en los errores, entradas `{code, message, field, details}`. |
+| `meta` | Siempre trae `request_id` (la misma cadena de la cabecera `X-Request-ID`). |
+
+### Listas paginadas
+
+En una lista, `data` es el arreglo de la página y los contadores van en `meta.pagination`:
+
+```json
+{
+  "success": true,
+  "message": "Operación exitosa.",
+  "data": [{ "code": "GPC-2026-000001", "title": "..." }],
+  "errors": [],
+  "meta": {
+    "request_id": "...",
+    "pagination": { "count": 41, "next": "https://host/api/v1/catalog/?page=2", "previous": null }
+  }
+}
+```
+
+Parámetros: `page` (desde 1; también `last`) y `page_size` (1 a 100, 20 por defecto). Un valor mal formado responde `400`, nunca se ignora en silencio. Algunas listas añaden datos propios en `meta` (por ejemplo `meta.unread_count` en las notificaciones o `meta.diagnosis` en los revisores elegibles).
+
+### Errores
+
+```json
+{
+  "success": false,
+  "message": "La acción no es válida en el estado actual.",
+  "data": null,
+  "errors": [
+    {
+      "code": "STATE_CONFLICT",
+      "message": "La acción no es válida en el estado actual.",
+      "field": null,
+      "details": { "current_status": "DRAFT" }
+    }
+  ],
+  "meta": { "request_id": "..." }
+}
+```
+
+Un error de validación genera **una entrada por campo**, con `field` y el `details` original de ese campo:
+
+```json
+{
+  "success": false,
+  "message": "Los datos enviados no son válidos.",
+  "data": null,
+  "errors": [
+    {
+      "code": "VALIDATION_ERROR",
+      "message": "Este campo es obligatorio.",
+      "field": "title",
+      "details": ["Este campo es obligatorio."]
+    }
+  ],
+  "meta": { "request_id": "..." }
+}
+```
+
+Los errores internos responden un `500` genérico y **nunca** revelan trazas ni detalles; el detalle técnico queda en el log asociado al mismo `request_id`. Una ruta inexistente bajo `/api/` también responde con este sobre (`404`).
+
+#### Catálogo de códigos
+
+| Código | HTTP | Significado |
+|---|---|---|
+| `VALIDATION_ERROR` | 400 | Datos o parámetros inválidos. |
+| `PDF_INVALID` | 400 | El archivo no es un PDF aceptable. |
+| `AUTH_INVALID` | 401 | Sesión ausente, inválida o expirada; también credenciales incorrectas. |
+| `FORBIDDEN` | 403 | El rol o el alcance no permite la acción. |
+| `NOT_FOUND` | 404 | No existe o no es visible para el usuario (indistinguibles a propósito). |
+| `STATE_CONFLICT` | 409 | La acción no es válida en el estado actual. |
+| `VERSION_CONFLICT` | 409 | Cambió el recurso mientras se editaba (bloqueo optimista). |
+| `ASSIGNMENT_CONFLICT` | 409 | Ya hay una asignación activa. |
+| `VERDICT_CONFLICT` | 409 | Ya existe un veredicto para esa versión. |
+| `CORRECTION_NOT_AUTHORIZED` | 409 | Falta la habilitación del Administrador. |
+| `PDF_TOO_LARGE` | 413 | El PDF supera los 50 MB. |
+| `PDF_UNSUPPORTED` | 415 | Tipo de contenido no soportado. |
+| `AUTH_LOCKED`, `RATE_LIMITED` | 429 | Demasiados intentos; respeta `Retry-After`. |
+| `SERVER_ERROR` | 500 | Error interno sin detalles. |
+| `STORAGE_UNAVAILABLE`, `AUDIT_UNAVAILABLE` | 503 | Servicio no disponible; no se completó nada a medias. |
+
+## Autenticación
+
+1. `POST /auth/login/` con `identifier` y `password`. Devuelve `data.access` (token JWT de acceso, 15 minutos), `data.user` y `data.roles`, y deja el token de **renovación** en la cookie `gpc_refresh` (`HttpOnly`, `SameSite=Strict`, `Secure` en producción).
+2. Envíe `Authorization: Bearer <access>` en cada solicitud protegida.
+3. Al caducar el acceso, `POST /auth/refresh/` (sin cuerpo; la cookie es la credencial) rota la cookie y emite un acceso nuevo.
+4. `POST /auth/logout/` revoca la renovación (`204`).
+
+El token **no autoriza por sí solo**: los roles y el estado de la cuenta se releen de la base de datos en cada solicitud. Toda falla de autenticación responde el mismo `AUTH_INVALID`.
+
+```bash
+# Iniciar sesión y guardar la cookie de renovación
+curl -sk -c cookies.txt -H 'Content-Type: application/json' \
+  -d '{"identifier":"mi-usuario","password":"********"}' \
+  https://HOST/api/v1/auth/login/
+
+# Usar el token en una consulta protegida
+curl -sk -H "Authorization: Bearer $ACCESS" https://HOST/api/v1/auth/me/
+
+# Catálogo público: sin credenciales
+curl -sk 'https://HOST/api/v1/catalog/?search=glaciares&page_size=5'
+```
+
+## Cabeceras que importan
+
+| Cabecera | Dónde | Para qué |
+|---|---|---|
+| `X-Request-ID` | Toda respuesta (opcional en la solicitud) | Correlaciona la solicitud con el log y con `meta.request_id`. |
+| `ETag` / `If-Match` | Manuscritos y evaluaciones | **Bloqueo optimista**: lea el `ETag`, envíelo en `If-Match` al modificar; si cambió, `409`. |
+| `Idempotency-Key` | Envío, nueva versión, veredicto y autorización de corrección | Hace seguro reintentar un `POST`: la misma clave repite la respuesta guardada, marcada con `Idempotent-Replayed: true`. |
+| `Retry-After` | Respuestas `429` | Segundos de espera. |
+
+## Descargas de PDF
+
+Los PDF **no** pasan por la aplicación. Django autoriza la solicitud (rol, relación con el manuscrito, estado y versión), audita la descarga y responde con `X-Accel-Redirect`; Nginx entrega el archivo desde una ubicación interna que nunca es accesible directamente. Estas respuestas son binarias (`application/pdf`) y por eso **no** llevan el sobre JSON, salvo cuando fallan.
+
+## Doble ciego en la API
+
+Las respuestas al Revisor se construyen con serializadores de lista blanca: nunca incluyen nombre, correo ni filiación del Autor, ni el nombre del archivo original. El Autor, a su vez, solo recibe los comentarios que el Revisor escribió para él.
+
+## Catálogo de endpoints
+
+Tabla generada del schema OpenAPI (las rutas van bajo `/api/v1`). La fuente de verdad detallada —parámetros, cuerpos y respuestas— es Swagger UI.
+
+#### Sistema
+
+| Método | Ruta | Qué hace | Acceso |
+|---|---|---|---|
+| `GET` | `/` | Descriptor del servicio | Pública |
+| `GET` | `/health/` | Estado del servicio | Pública |
+
+#### Autenticación
+
+| Método | Ruta | Qué hace | Acceso |
+|---|---|---|---|
+| `POST` | `/auth/login/` | Iniciar sesión | Pública |
+| `POST` | `/auth/logout/` | Cerrar sesión | Sesión |
+| `GET` | `/auth/me/` | Usuario autenticado | Sesión |
+| `POST` | `/auth/refresh/` | Renovar la sesión | Pública |
+
+#### Tablero
+
+| Método | Ruta | Qué hace | Acceso |
+|---|---|---|---|
+| `GET` | `/dashboard/` | Tablero unificado | Sesión |
+
+#### Autor
+
+| Método | Ruta | Qué hace | Acceso |
+|---|---|---|---|
+| `GET` | `/manuscripts/` | Listar manuscritos | Sesión |
+| `POST` | `/manuscripts/` | Crear un borrador | Sesión |
+| `GET` | `/manuscripts/{id}/` | Ver un manuscrito | Sesión |
+| `PATCH` | `/manuscripts/{id}/` | Editar los metadatos | Sesión |
+| `POST` | `/manuscripts/{id}/draft-file/` | Adjuntar o reemplazar el PDF del borrador | Sesión |
+| `GET` | `/manuscripts/{id}/history/` | Historial del manuscrito | Sesión |
+| `POST` | `/manuscripts/{id}/submit/` | Enviar el manuscrito | Sesión |
+| `GET` | `/manuscripts/{id}/versions/` | Listar las versiones | Sesión |
+| `POST` | `/manuscripts/{id}/versions/` | Enviar una nueva versión | Sesión |
+| `GET` | `/manuscripts/{id}/versions/{version_id}/file/` | Descargar el PDF original de una versión | Sesión |
+| `POST` | `/manuscripts/{id}/withdraw/` | Retirar el manuscrito | Sesión |
+
+#### Catálogo
+
+| Método | Ruta | Qué hace | Acceso |
+|---|---|---|---|
+| `GET` | `/catalog/` | Buscar artículos publicados | Pública |
+| `GET` | `/catalog/{code}/` | Ver un artículo publicado | Pública |
+| `GET` | `/catalog/{code}/document/` | Descargar el PDF de un artículo publicado | Pública |
+
+#### Editor
+
+| Método | Ruta | Qué hace | Acceso |
+|---|---|---|---|
+| `GET` | `/editor/assignments/expired/` | Asignaciones vencidas | Sesión |
+| `POST` | `/editor/assignments/{id}/revoke/` | Revocar una asignación | Sesión |
+| `GET` | `/editor/incidents/` | Incidentes confidenciales | Sesión |
+| `POST` | `/editor/incidents/{id}/resolve/` | Resolver un incidente | Sesión |
+| `GET` | `/editor/manuscripts/{id}/assignments/` | Historial de asignaciones | Sesión |
+| `POST` | `/editor/manuscripts/{id}/assignments/` | Asignar un revisor | Sesión |
+| `GET` | `/editor/manuscripts/{id}/evaluations/` | Evaluaciones finales de un manuscrito | Sesión |
+| `GET` | `/editor/manuscripts/{id}/verdicts/` | Historial de veredictos | Sesión |
+| `POST` | `/editor/manuscripts/{id}/verdicts/` | Registrar un veredicto | Sesión |
+| `GET` | `/editor/reviewers/` | Revisores elegibles | Sesión |
+| `GET` | `/editor/submissions/` | Bandeja de envíos | Sesión |
+| `GET` | `/editor/submissions/{id}/` | Detalle de un envío | Sesión |
+| `POST` | `/editor/submissions/{id}/start-review/` | Iniciar la revisión | Sesión |
+
+#### Revisor
+
+| Método | Ruta | Qué hace | Acceso |
+|---|---|---|---|
+| `GET` | `/reviewer/assignments/` | Mis asignaciones | Sesión |
+| `GET` | `/reviewer/assignments/{id}/` | Detalle ciego de una asignación | Sesión |
+| `POST` | `/reviewer/assignments/{id}/conflict/` | Declarar un conflicto de interés | Sesión |
+| `GET` | `/reviewer/assignments/{id}/document/` | Descargar el PDF sanitizado | Sesión |
+| `GET` | `/reviewer/assignments/{id}/evaluation/` | Ver mi evaluación (borrador o final) | Sesión |
+| `PUT` | `/reviewer/assignments/{id}/evaluation/` | Guardar el borrador | Sesión |
+| `POST` | `/reviewer/assignments/{id}/evaluation/submit/` | Enviar la evaluación final | Sesión |
+| `POST` | `/reviewer/assignments/{id}/identity-leak/` | Reportar una filtración de identidad | Sesión |
+| `GET` | `/reviewer/evaluations/` | Historial de mis evaluaciones | Sesión |
+| `GET` | `/reviewer/evaluations/{id}/` | Ver una evaluación final | Sesión |
+
+#### Administración
+
+| Método | Ruta | Qué hace | Acceso |
+|---|---|---|---|
+| `GET` | `/admin/audit/` | Consultar la auditoría | Sesión |
+| `GET` | `/admin/audit/{id}/` | Ver un evento de auditoría | Sesión |
+| `POST` | `/admin/verdicts/{id}/authorize-correction/` | Autorizar la corrección de un veredicto | Sesión |
+
+#### Notificaciones
+
+| Método | Ruta | Qué hace | Acceso |
+|---|---|---|---|
+| `GET` | `/notifications/` | Listar mis avisos | Sesión |
+| `POST` | `/notifications/read-all/` | Marcar todos mis avisos como leídos | Sesión |
+| `PATCH` | `/notifications/{id}/read/` | Marcar un aviso como leído | Sesión |
+
+## Para quien consume la API
+
+- Trate `errors[].code` como el identificador estable de un error; `message` es texto para personas y puede cambiar.
+- Decida por `success` y el código HTTP, no por el texto.
+- Reintente solo las operaciones idempotentes (o con `Idempotency-Key`).
+- Guarde el `meta.request_id` cuando reporte una incidencia.

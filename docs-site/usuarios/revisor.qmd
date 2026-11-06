@@ -1,0 +1,88 @@
+---
+title: "Soy Revisor"
+subtitle: "Evaluar un manuscrito a ciegas, dentro del plazo"
+---
+
+Como Revisor usted evalúa los manuscritos que el Editor le asigna. La evaluación es **doble ciego**: usted no sabe quién escribió el manuscrito y el Autor no sabrá quién lo evaluó.
+
+## El recorrido de una asignación
+
+```{mermaid}
+flowchart LR
+    A[Recibe un aviso de asignación] --> B[Mis asignaciones]
+    B --> C[Abre el detalle ciego]
+    C --> D[Descarga el PDF sanitizado]
+    D --> E[Completa el borrador de la evaluación]
+    E --> F{¿Todo en orden?}
+    F -->|Sí| G[Envía la evaluación final]
+    F -->|Conflicto de interés| H[Declara el conflicto]
+    F -->|Sospecha de que se filtró la identidad| I[Reporta la filtración]
+    G --> J[Evaluación inmutable]
+```
+
+## Mis asignaciones y el plazo
+
+En **Mis asignaciones** ve su bandeja con el estado de cada una (activa, completada, revocada o vencida). Cada asignación tiene un plazo de **20 días calendario**, contados desde el instante exacto en que se le asignó.
+
+::: {.callout-warning}
+## Si el plazo vence
+Pasados los 20 días el sistema marca la asignación como **vencida**: **ya no puede guardar el borrador ni enviar la evaluación**, y el Editor decide si la revoca y reasigna. Nada se revoca solo, pero conviene evaluar a tiempo; si necesita más margen, avise al Editor antes de que venza.
+:::
+
+## El detalle ciego
+
+El detalle de una asignación le muestra el título, el resumen, las palabras clave, el área y el número de ronda y de versión. **Nunca** incluye nombre, correo ni filiación del Autor, ni el nombre del archivo original.
+
+## Descargar el PDF
+
+Solo puede descargar el documento mientras la asignación está **activa**. Recibe una **copia sanitizada** con un nombre genérico, sin los metadatos del autor. En cualquier otro estado el sistema responde que ya no es posible descargarlo. Cada descarga queda auditada.
+
+## Completar la evaluación
+
+El formulario es estructurado. Puntúe cada criterio del **1 al 5**:
+
+| Criterio | Qué valora |
+|---|---|
+| Originalidad | Aporte novedoso. |
+| Metodología | Rigor del método. |
+| Claridad | Calidad de la redacción y la estructura. |
+| Relevancia | Importancia para el área. |
+| Ética | Cumplimiento de las normas éticas. |
+
+Luego elija su **recomendación** —*Aceptar*, *Requiere correcciones* o *Rechazar*— y escriba dos tipos de comentarios:
+
+- **Comentarios para el autor:** el Autor los verá junto con el veredicto.
+- **Comentarios confidenciales:** solo los ve el Editor.
+
+### Borrador y envío final
+
+- Puede **guardar un borrador** privado todas las veces que quiera; nadie más lo ve.
+- Cuando esté lista, use **Enviar la evaluación**. Desde ese momento es **final e inmutable**: no puede editarla ni reenviarla.
+- Si otra pestaña guardó antes que usted, el sistema le avisa («los datos cambiaron mientras los editaba») para que no pise un cambio ajeno: recargue y continúe.
+
+## Declarar un conflicto de interés
+
+Si reconoce un conflicto (por ejemplo, conoce al Autor), declárelo. La evaluación se bloquea (ya no puede guardar ni enviar) y el Editor recibe el aviso; la asignación sigue activa hasta que él decida. El motivo es opcional pero útil.
+
+## Reportar una filtración de identidad
+
+Si el contenido del documento delata al Autor, **repórtelo de forma confidencial**. El reporte:
+
+- no modifica su evaluación, el PDF ni el manuscrito;
+- no lo ve el Autor;
+- permite elegir el tipo (*posible fuga de identidad* u *otro*) y describir lo ocurrido.
+
+Solo puede tener un reporte abierto por asignación. El Editor lo resuelve pidiendo una versión anonimizada o reasignando el manuscrito.
+
+## Mi historial
+
+**Ver mi historial** lista sus evaluaciones finales (los borradores nunca aparecen), con la decisión editorial posterior cuando existe. Es de solo lectura y no muestra manuscritos retirados ni que usted haya coescrito.
+
+## Problemas frecuentes
+
+| Situación | Causa probable | Solución |
+|---|---|---|
+| No puedo descargar el PDF | La asignación ya no está activa. | Consulte con el Editor. |
+| No puedo guardar mi evaluación | Declaró un conflicto, la asignación se revocó o venció, o ya envió la evaluación. | Contacte al Editor. |
+| «Los datos cambiaron mientras los editaba» | Se guardó desde otra pestaña. | Recargue y repita. |
+| No veo un manuscrito que esperaba | Solo ve lo asignado a usted y activo. | Pregunte al Editor. |

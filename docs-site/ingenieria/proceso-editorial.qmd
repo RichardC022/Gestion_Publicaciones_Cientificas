@@ -1,0 +1,120 @@
+---
+title: "Proceso editorial"
+subtitle: "Análisis del proceso: participantes, eventos, tareas y flujo de extremo a extremo"
+---
+
+Esta página describe el proceso de negocio que el sistema soporta, de forma independiente de la tecnología. Sirve de base para el modelado formal (BPMN) y para contrastar el código con la especificación (`.spec-kit/specify.md`).
+
+## Análisis textual
+
+El proceso comienza cuando un **Autor** decide someter un manuscrito a la institución y termina cuando el **Editor** emite un veredicto definitivo: el artículo se publica en el catálogo, se rechaza, o regresa al Autor para correcciones y el ciclo se repite. En paralelo, el **Administrador** supervisa la integridad del proceso mediante la auditoría, y el **Público** puede consultar lo que fue aceptado. Una persona puede asumir varios participantes, pero nunca evaluar ni decidir sobre un manuscrito propio.
+
+## Participantes
+
+| Participante | Tipo | Responsabilidad en el proceso |
+|---|---|---|
+| **Autor** | Persona | Registrar, enviar, corregir y retirar manuscritos. |
+| **Editor** | Persona | Coordinar: recibir, asignar, controlar el plazo y decidir. |
+| **Revisor** | Persona | Evaluar a ciegas el manuscrito asignado. |
+| **Administrador** | Persona | Consultar la auditoría y habilitar correcciones de veredicto. |
+| **Público** | Persona | Consultar el catálogo de artículos aceptados. |
+| **Sistema** | Automático | Validar PDF, sellar versiones, auditar, notificar y marcar plazos vencidos. |
+
+## Eventos
+
+| Tipo | Evento | Efecto |
+|---|---|---|
+| Inicio | El Autor decide someter un manuscrito. | Se crea el borrador. |
+| Mensaje | Se recibe un envío. | El Editor lo ve en su bandeja y se le avisa. |
+| Mensaje | Se recibe una asignación. | Se avisa al Revisor. |
+| Mensaje | Se recibe una evaluación final. | Se avisa al Editor. |
+| Mensaje | Se registra un veredicto. | Se avisa al Autor. |
+| Temporizador | Se cumplen 20 días de la asignación. | El sistema marca la asignación como vencida. |
+| Intermedio | Se reporta un conflicto de interés o una filtración de identidad. | El Editor debe resolverlo. |
+| Fin | Aceptado. | Se publica en el catálogo. |
+| Fin | Rechazado. | El manuscrito se archiva. |
+| Fin | Manuscrito retirado. | Sale de los listados; el historial se conserva. |
+
+## Tareas
+
+Las tareas se nombran con el **verbo en infinitivo**, como pide el modelado de procesos.
+
+| Participante | Tarea |
+|---|---|
+| Autor | Registrar manuscrito · Completar metadatos · Adjuntar PDF · Enviar manuscrito · Editar metadatos · Enviar nueva versión · Consultar estado · Retirar manuscrito |
+| Sistema | Validar PDF · Sellar versión · Registrar auditoría · Notificar evento · Marcar asignación vencida |
+| Editor | Revisar envío · Pasar a revisión · Seleccionar revisor · Asignar revisor · Controlar plazo · Revocar asignación · Revisar evaluación · Registrar veredicto · Resolver incidente |
+| Revisor | Consultar asignación · Descargar PDF sanitizado · Completar evaluación · Enviar evaluación · Declarar conflicto de interés · Reportar filtración de identidad |
+| Administrador | Consultar auditoría · Verificar integridad · Autorizar corrección de veredicto |
+| Público | Buscar artículos · Consultar artículo · Descargar PDF |
+
+## Flujo de extremo a extremo
+
+Cada carril es un participante; las decisiones son compuertas exclusivas.
+
+```{mermaid}
+flowchart TB
+    subgraph autor["Autor"]
+        a1(["Decidir someter un manuscrito"]) --> a2["Registrar manuscrito"]
+        a2 --> a3["Adjuntar PDF"]
+        a3 --> a4["Enviar manuscrito"]
+        c1["Editar metadatos"] --> c2["Enviar nueva versión"]
+    end
+
+    subgraph sistema["Sistema"]
+        s1["Validar PDF y sellar versión"]
+        s2["Registrar auditoría y notificar"]
+        s3["Marcar asignación vencida"]
+    end
+
+    subgraph editor["Editor"]
+        e1["Revisar envío"] --> e2["Pasar a revisión"]
+        e2 --> e3["Seleccionar y asignar revisor"]
+        e3 --> e4{"¿Plazo, conflicto<br/>o incidente?"}
+        e4 -->|"Sí"| e5["Revocar asignación"]
+        e5 --> e3
+        e4 -->|"No, llegó la evaluación"| e6["Revisar evaluación"]
+        e6 --> e7["Registrar veredicto"]
+        e7 --> e8{"Decisión"}
+    end
+
+    subgraph revisor["Revisor"]
+        r1["Consultar asignación"] --> r2["Descargar PDF sanitizado"]
+        r2 --> r3["Completar evaluación"]
+        r3 --> r4["Enviar evaluación"]
+    end
+
+    a4 --> s1 --> s2 --> e1
+    e3 --> r1
+    r4 --> e6
+    s3 -.-> e4
+    e8 -->|"Aceptado"| f1(["Publicar en el catálogo"])
+    e8 -->|"Rechazado"| f2(["Archivar"])
+    e8 -->|"Requiere correcciones"| c1
+    c2 --> s1
+```
+
+## Reglas que gobiernan el proceso
+
+| Regla | Efecto en el flujo |
+|---|---|
+| Un solo Revisor activo (RN-04) | La compuerta de asignación exige revocar antes de reasignar. |
+| Plazo de 20 días, sin revocación automática (RN-05) | El temporizador solo marca; la decisión de revocar es del Editor. |
+| Doble ciego bidireccional (RN-06) | El carril del Revisor jamás recibe la identidad del Autor. |
+| Versiones e historial inmutables (RN-10) | Cada ciclo de corrección agrega una versión; no modifica las anteriores. |
+| Acciones críticas auditadas (RN-13) | Si la auditoría falla, la tarea no se completa. |
+| Separación de funciones (RN-17) | Nadie evalúa ni decide sobre un manuscrito propio. |
+| Solo transiciones permitidas (RN-18) | Cualquier otra se bloquea y se registra. |
+
+## Diagrama BPMN 2.0.2
+
+El mismo proceso en notación **BPMN 2.0.2**, con un carril por participante. El plazo de 20 días es un **evento temporizador de frontera** (`P20D`) sobre el subproceso de evaluación: si vence, el Editor revoca la asignación y vuelve a asignar; si el Revisor envía antes, el flujo continúa con la revisión de la evaluación.
+
+```{=html}
+<iframe src="../diagrams/bpmn.html" title="Diagrama BPMN del proceso editorial" loading="lazy"
+        style="width:100%; height:520px; border:1px solid #adb5bd; border-radius:4px;"></iframe>
+```
+
+- Use los botones **+**, **−** y **Ajustar** para acercar el diagrama.
+- [Abrir el visor en pantalla completa](../diagrams/bpmn.html) · [Descargar `proceso-editorial.bpmn`](../diagrams/proceso-editorial.bpmn) (ábralo con cualquier herramienta compatible con BPMN 2.0, como bpmn.io o Camunda Modeler).
+- Las tareas del diagrama coinciden con la tabla de [tareas](#tareas): todas con el verbo en infinitivo.

@@ -1,0 +1,40 @@
+---
+title: "Catálogo público"
+subtitle: "Buscar y leer artículos aceptados, sin iniciar sesión"
+---
+
+El catálogo es **público**: cualquier persona puede buscar y leer los artículos aceptados sin iniciar sesión. Es la página de inicio del sistema.
+
+## Qué se muestra (y qué no)
+
+Se publican **únicamente** los manuscritos en estado *Aceptado* y no retirados. Para cada artículo se muestra:
+
+- código de seguimiento, título, resumen, palabras clave, área e idioma;
+- autores con su filiación (sin datos de contacto);
+- fecha de publicación y número de versión;
+- el PDF para leerlo en línea.
+
+Nunca se expone: evaluaciones, identidad de revisores, historial ni información interna. Si el Autor retira un artículo, desaparece del catálogo.
+
+## Buscar y filtrar
+
+Escriba en el cuadro de búsqueda y pulse **Buscar**. La búsqueda es de texto completo en español y puede combinarse con filtros:
+
+| Filtro | Qué hace |
+|---|---|
+| Texto | Busca en título, resumen y demás campos indexados. |
+| Área | Limita a un área. |
+| Idioma | Código de dos letras (por ejemplo `es`, `en`). |
+| Palabra clave | Artículos con esa palabra clave. |
+| Fechas | Rango de publicación. |
+| Orden | Por fecha, título o código. |
+
+Use **Limpiar** para quitar todos los filtros. Los resultados se paginan (20 por página por defecto).
+
+## La ficha de un artículo
+
+Al abrir un artículo ve su ficha completa y el acceso al PDF. Si un artículo fue retirado, su dirección responde que ya no está disponible.
+
+## Para integraciones
+
+El catálogo también se puede consultar por la API sin credenciales; vea [La API](../ingenieria/api.qmd).

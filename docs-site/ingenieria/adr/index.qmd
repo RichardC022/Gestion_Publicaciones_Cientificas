@@ -1,0 +1,40 @@
+---
+title: "Decisiones de arquitectura (ADR)"
+subtitle: "Por qué el sistema es como es"
+---
+
+Un **ADR** (*Architecture Decision Record*) deja por escrito una decisión importante: el contexto que la motivó, lo que se decidió, las alternativas que se descartaron y las consecuencias que se aceptan. Sirven para que quien llegue después —o quien olvide los detalles— entienda *por qué* algo es así antes de cambiarlo.
+
+## Índice
+
+| ADR | Decisión | Estado |
+|---|---|---|
+| [0001](0001-jwt-con-cookie-de-renovacion.qmd) | JWT de acceso en memoria y renovación en cookie `HttpOnly` | Aceptada |
+| [0002](0002-postgresql-como-unica-base-de-datos.qmd) | PostgreSQL como única base de datos | Aceptada |
+| [0003](0003-doble-ciego-por-diseno.qmd) | El doble ciego se garantiza por diseño, no por filtrado | Aceptada |
+| [0004](0004-versiones-inmutables-con-sello-sha-256.qmd) | Versiones inmutables con sello SHA-256 y PDF en volumen local | Aceptada |
+| [0005](0005-auditoria-encadenada.qmd) | Auditoría encadenada, inmutable y obligatoria | Aceptada |
+| [0006](0006-django-admin-apagado.qmd) | Django Admin apagado en producción | Aceptada |
+| [0007](0007-contrato-json-universal.qmd) | Contrato JSON universal y versionado `/api/v1/` | Aceptada |
+
+## Formato
+
+Cada ADR tiene las mismas secciones:
+
+1. **Estado:** *Propuesta*, *Aceptada*, *Sustituida por ADR-xxxx* o *Descartada*.
+2. **Contexto:** la fuerza o el problema que obliga a decidir.
+3. **Decisión:** lo que se hace, en voz activa.
+4. **Alternativas consideradas:** lo que se evaluó y por qué no se eligió.
+5. **Consecuencias:** lo que mejora y lo que se acepta como costo.
+6. **Referencias:** dónde está implementada y qué la comprueba.
+
+## Cómo añadir uno
+
+1. Copie un ADR existente con el siguiente número (`0008-titulo-corto.qmd`).
+2. Complete las seis secciones; sea breve y concreto.
+3. Añádalo a la tabla de arriba y a la barra lateral en `_quarto.yml`.
+4. Un ADR **no se edita** cuando la decisión cambia: se escribe uno nuevo que lo sustituye y se marca el anterior como *Sustituida por*.
+
+## Origen de las decisiones
+
+Las decisiones de infraestructura Q1–Q5 se resolvieron en `.spec-kit/clarify.md` y se incorporaron a `.spec-kit/plan.md` (Anexo A). Las decisiones de producto D-01…D-06 están en `.spec-kit/specify.md` (sección 1.1). Los ADR recogen las que tienen mayor impacto en el código.

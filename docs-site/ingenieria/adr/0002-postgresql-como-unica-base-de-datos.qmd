@@ -1,0 +1,44 @@
+---
+title: "ADR-0002 · PostgreSQL como única base de datos"
+---
+
+**Estado:** Aceptada · **Fecha:** octubre de 2026
+
+## Contexto
+
+El punto de partida del repositorio usaba MySQL. La constitución del proyecto fija el stack y **prohíbe SQLite, MySQL y MongoDB**. Además, varias garantías del sistema (inmutabilidad de versiones y auditoría, un solo Revisor activo, plazos medidos con el reloj de la base, búsqueda de texto en el catálogo) son más sólidas si las impone la propia base de datos y no solo el código de la aplicación.
+
+## Decisión
+
+Se usa **PostgreSQL 16** como única base de datos, en desarrollo, pruebas y producción. La migración desde MySQL se hizo en la fase 0 del plan.
+
+Se aprovechan sus capacidades:
+
+- **Disparadores** (`BEFORE UPDATE OR DELETE`) que vuelven *append-only* la auditoría, las versiones, los veredictos y el historial de estados, y que prohíben el `DELETE` físico de manuscritos y la reescritura de una evaluación final.
+- **Restricciones** (`CHECK`, únicos parciales) para invariantes como puntuaciones de 1 a 5.
+- **Bloqueo de filas** (`SELECT … FOR UPDATE`) para serializar operaciones concurrentes sobre un manuscrito.
+- **Búsqueda de texto completo** en español para el catálogo.
+- **Roles de base de datos**: un rol administrador que migra y un rol de ejecución, sin superusuario y sin `UPDATE`/`DELETE` sobre la auditoría.
+- **Reloj de la base** (`now()`) como única fuente del vencimiento de plazos.
+
+## Alternativas consideradas
+
+| Alternativa | Por qué no |
+|---|---|
+| MySQL (estado original) | Prohibido por la constitución; sin las mismas garantías de disparadores y búsqueda que necesita el diseño. |
+| SQLite | Prohibido; no soporta la concurrencia ni los roles que se requieren. |
+| MongoDB | Prohibido; el modelo es relacional y exige transacciones multi-tabla. |
+
+## Consecuencias
+
+- ✅ Las invariantes críticas se cumplen aunque falle la aplicación o alguien escriba directamente en la base.
+- ✅ Las pruebas verifican el comportamiento real (disparadores, bloqueos, privilegios).
+- ⚠️ **Todas** las pruebas del backend corren contra PostgreSQL real: son más lentas que con una base en memoria. El CI falla si detecta el motor SQLite.
+- ⚠️ Las migraciones se ejecutan con el rol administrador (`DB_USE_ADMIN=1`), distinto del rol de ejecución.
+
+## Referencias
+
+- Configuración: `backend/config/settings/base.py` (`DATABASES`), `production.py` (`APP_DB_USER`, `DB_USE_ADMIN`).
+- Disparadores: `apps/audit/migrations/0002_append_only_trigger.py`, `apps/publications/migrations/0004_integrity_triggers.py`, `0008_verdict_trigger.py`, `apps/reviews/migrations/0002_evaluation_immutability_trigger.py`.
+- Privilegios: comando `apply_db_privileges`; prueba `tests/audit/test_db_privileges.py`.
+- CI: pasos «Verify PostgreSQL backend is configured» y «Verify the test database engine is PostgreSQL».

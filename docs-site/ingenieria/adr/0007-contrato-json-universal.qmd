@@ -1,0 +1,47 @@
+---
+title: "ADR-0007 · Contrato JSON universal y versionado /api/v1/"
+---
+
+**Estado:** Aceptada · **Fecha:** 5 de noviembre de 2026
+
+## Contexto
+
+La API nació con respuestas distintas según el endpoint: los éxitos devolvían el recurso tal cual (o `{count, next, previous, results}` en las listas) y los errores un sobre propio `{"error": {...}}`. Un cliente tenía que conocer cada forma, no había un lugar uniforme para metadatos (identificador de solicitud, paginación) y la API no tenía versión: cualquier cambio incompatible rompería a todos los consumidores a la vez.
+
+## Decisión
+
+1. **Toda ruta de negocio vive bajo `/api/v1/`.** El health también se sirve sin versión en `/api/health/`, porque lo usan Docker y los scripts de operación, que no deben cambiar cuando la API cambie de versión.
+2. **Toda respuesta JSON** —éxito o error— tiene las cinco claves `success`, `message`, `data`, `errors` y `meta`.
+3. Se aplica **en un solo lugar**: un *renderer* de DRF (`EnvelopeJSONRenderer`) envuelve los éxitos y el manejador de excepciones produce los errores. Las vistas siguen devolviendo su carga de dominio.
+4. `errors` es una lista de entradas `{code, message, field, details}`. Un error de validación genera una entrada por campo y conserva el `details` original para que el cliente reconstruya `{campo: detalle}` sin pérdida.
+5. `meta` siempre lleva `request_id`; en las listas añade `pagination` (`count`, `next`, `previous`) y las vistas pueden sumar datos propios.
+6. Las **descargas de PDF** no se envuelven (son binarias); si fallan, sí devuelven el sobre de error.
+7. Las rutas inexistentes bajo `/api/` y los `500` también responden con el sobre (`handler404`, `handler500`).
+8. El **schema OpenAPI** describe el contrato tal como se emite: un *hook* de postprocesado envuelve cada respuesta documentada.
+9. En el frontend, un **interceptor** desenvuelve los éxitos y `toApiError` lee los errores; el resto de la SPA trabaja con la carga de dominio.
+
+## Alternativas consideradas
+
+| Alternativa | Por qué no |
+|---|---|
+| Mantener el formato de DRF por defecto | Cada endpoint, una forma; sin lugar para `request_id` ni paginación uniforme. |
+| `application/problem+json` (RFC 7807) solo para errores | Resuelve los errores pero no unifica los éxitos ni la paginación. |
+| Envolver a mano en cada vista | Repetición (viola DRY) y es fácil olvidarlo en un endpoint nuevo. |
+| Versionar por cabecera en vez de por ruta | Más difícil de probar, documentar y enrutar en Nginx. |
+
+## Consecuencias
+
+- ✅ Un cliente escribe **un** manejador de respuestas y **uno** de errores.
+- ✅ `request_id` en cada respuesta facilita la correlación con logs y auditoría.
+- ✅ La versión en la ruta permite introducir una `v2` sin romper a los consumidores de `v1`.
+- ✅ El schema OpenAPI y la API no pueden divergir sin que una prueba falle.
+- ⚠️ Fue un cambio **incompatible** que tocó la API, el frontend, los scripts y las pruebas; se hizo en un solo cambio coordinado.
+- ⚠️ Las pruebas de dominio leen la carga ya desenvuelta (`conftest.py`); la forma exacta del sobre se prueba aparte, leyendo `response.content` en bruto (`tests/contract.py`).
+- ⚠️ El sobre añade unos bytes a cada respuesta; es despreciable frente a la ganancia de uniformidad.
+
+## Referencias
+
+- Código: `config/renderers.py`, `config/exceptions.py`, `config/pagination.py`, `config/openapi.py`, `config/urls.py`.
+- Frontend: `core/http/envelope.interceptor.ts`, `core/models/api-envelope.model.ts`, `core/models/api-error.model.ts`.
+- Pruebas: `tests/test_envelope.py`, `tests/test_contract_envelope.py`, `tests/test_pagination.py`, `tests/test_openapi.py`.
+- Documentación: [La API](../api.qmd).

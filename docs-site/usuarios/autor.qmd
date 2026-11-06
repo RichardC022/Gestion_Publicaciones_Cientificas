@@ -1,0 +1,122 @@
+---
+title: "Soy Autor"
+subtitle: "Registrar, enviar, corregir y retirar manuscritos"
+---
+
+Como Autor usted registra manuscritos, adjunta el PDF, los envía a revisión, responde a las correcciones y consulta en qué estado está cada envío. Solo ve **sus propios** manuscritos.
+
+## El camino de un manuscrito
+
+```{mermaid}
+stateDiagram-v2
+    [*] --> Borrador: Nuevo manuscrito
+    Borrador --> Enviado: Enviar (crea la versión 1)
+    Enviado --> EnRevision: El Editor lo pasa a revisión
+    EnRevision --> Aceptado: Veredicto favorable
+    EnRevision --> Rechazado: Veredicto desfavorable
+    EnRevision --> RequiereCorrecciones: El Editor pide ajustes
+    RequiereCorrecciones --> Enviado: Usted envía una nueva versión
+    Aceptado --> [*]
+    Rechazado --> [*]
+```
+
+En **cualquier** estado puede [retirar](#retirar-un-manuscrito) el manuscrito; no es un estado, es una marca.
+
+## 1. Crear un manuscrito (borrador)
+
+En **Mis manuscritos**, elija **Nuevo manuscrito** y complete los datos:
+
+| Dato | Obligatorio para enviar | Notas |
+|---|---|---|
+| Título | Sí | Hasta 300 caracteres. |
+| Resumen | Sí | |
+| Palabras clave | Sí | Lista de términos. |
+| Área | Sí | Es la que usa el Editor para buscar un Revisor experto. |
+| Idioma | Sí | |
+| Autores | Sí | Nombre, correo, filiación y orden. |
+
+Reglas de la lista de autores:
+
+- Debe haber **al menos un autor**.
+- Debe haber **exactamente un autor responsable** (de correspondencia).
+- Ningún correo puede repetirse.
+- **Usted debe figurar** en la lista de autores.
+
+::: {.callout-tip}
+## Guarde cuando quiera
+Un borrador puede estar incompleto; solo el **envío** exige todos los datos. Puede salir y volver más tarde.
+:::
+
+## 2. Adjuntar el PDF
+
+Adjunte el PDF del borrador. El sistema lo **valida por su contenido**, no por la extensión del nombre. Se rechaza un archivo que:
+
+- no sea un PDF válido o esté dañado,
+- tenga contraseña,
+- contenga elementos activos no permitidos, o
+- supere los **50 MB**.
+
+Mientras sea borrador puede reemplazar el PDF las veces que quiera; eso no crea versiones.
+
+## 3. Enviar el manuscrito
+
+Use **Enviar el manuscrito**. El sistema comprueba que los metadatos estén completos y que haya un PDF válido. Si algo falta, le dice exactamente qué campos completar.
+
+Al enviarse correctamente:
+
+- se crea la **versión 1** y la **ronda 0**;
+- los metadatos y el PDF quedan **congelados** tal como los envió;
+- recibe un **código de seguimiento** (por ejemplo `GPC-2026-000001`) y un **sello de integridad** (SHA-256) que permite comprobar que el PDF conservado no se alteró.
+
+::: {.callout-note}
+## ¿Pulsó dos veces o falló la conexión?
+El envío es seguro ante reintentos: repetirlo no crea una segunda versión ni duplica nada.
+:::
+
+## 4. Seguir el estado
+
+En el detalle del manuscrito ve:
+
+- el **estado** actual y qué acción le toca (si alguna);
+- el **contador de rondas de corrección** y el de versiones, por separado;
+- el **historial** cronológico (estados, versiones, rondas), que nunca se edita.
+
+Cuando el Editor emite un veredicto, usted ve la decisión y los **comentarios para el autor** que dejó el Revisor. No ve quién es el Revisor ni sus comentarios confidenciales.
+
+## 5. Responder a una solicitud de correcciones
+
+Si el estado pasa a **Requiere correcciones**:
+
+1. Lea las observaciones del Editor y los comentarios del Revisor.
+2. **Edite los metadatos** si hace falta (solo es posible en *Borrador* y *Requiere correcciones*).
+3. **Envíe una nueva versión** con el PDF corregido.
+
+La nueva versión es la **v2** (luego v3…), queda atada a la ronda vigente y el manuscrito vuelve a **Enviado**. Las versiones anteriores permanecen intactas y consultables.
+
+::: {.callout-important}
+## Qué cuenta como una corrección válida
+Debe cambiar algo: un PDF nuevo, los metadatos, o ambos. Enviar exactamente lo mismo se rechaza. Editar solo los metadatos **no** crea versión; lo que crea una versión es enviar el PDF.
+:::
+
+## Retirar un manuscrito
+
+Puede retirar un manuscrito en cualquier estado. El retiro es **lógico**: sale de sus listados activos y del catálogo público (si estaba aceptado), pero **no se borra nada**; el historial queda conservado.
+
+- Si está **en revisión** o **aceptado**, debe indicar un motivo.
+- Un segundo retiro del mismo manuscrito se rechaza.
+- No hay restauración desde la interfaz.
+
+Para ver los retirados, use el filtro de archivados del listado.
+
+## Consultas y filtros
+
+El listado admite filtrar por estado, área, rango de fechas y texto (código, título o resumen), y ordenar por fecha, título, estado o código. Use **Filtrar** para aplicar y **Limpiar** para empezar de nuevo.
+
+## Problemas frecuentes
+
+| Situación | Causa probable | Solución |
+|---|---|---|
+| No puedo editar los metadatos | Solo se editan en *Borrador* y *Requiere correcciones*. | Espere a una solicitud de correcciones. |
+| El envío dice que faltan campos | Falta algún dato obligatorio o la lista de autores no cumple las reglas. | Complete lo que indica el mensaje. |
+| «El archivo no es un PDF válido» | El archivo está dañado, cifrado o no es PDF. | Genere de nuevo el PDF sin contraseña. |
+| «Los datos cambiaron mientras los editaba» | Otra pestaña guardó antes. | Recargue y repita el cambio. |

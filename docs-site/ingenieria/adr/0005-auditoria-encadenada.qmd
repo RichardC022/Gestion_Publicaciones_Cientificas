@@ -1,0 +1,42 @@
+---
+title: "ADR-0005 · Auditoría encadenada, inmutable y obligatoria"
+---
+
+**Estado:** Aceptada · **Fecha:** octubre de 2026
+
+## Contexto
+
+El Administrador necesita **evidencia verificable** de las acciones críticas (sesiones, envíos, descargas, asignaciones, evaluaciones, veredictos). Un registro que cualquiera pueda editar, o que se pierda cuando la aplicación falla, no sirve como evidencia. Además, la propia auditoría debe estar protegida de las personas que la consultan, incluido el Administrador.
+
+## Decisión
+
+1. **Obligatoria.** Las acciones críticas escriben su evento de auditoría **en la misma transacción** que la acción. Si la auditoría no puede registrarse, la acción **no se completa** (y la API responde `503`).
+2. **Encadenada.** Cada evento guarda la huella SHA-256 del anterior (`previous_hash`) y la suya (`entry_hash`). Alterar o borrar un evento rompe la cadena.
+3. **Inmutable en la base de datos.** Un disparador rechaza `UPDATE` y `DELETE` sobre `audit_audit_log`. Además, el rol con el que corre la aplicación **no tiene** esos permisos (`apply_db_privileges`).
+4. **Mínima.** Solo guarda identificadores y códigos: nunca contraseñas, contenido de manuscritos ni comentarios confidenciales.
+5. **Verificable.** `manage.py verify_integrity` recorre la cadena; corre cada mes por `cron` y puede lanzarse a demanda.
+6. **Consultarla también se audita.** Cada lectura de la lista o del detalle genera su propio evento.
+
+## Alternativas consideradas
+
+| Alternativa | Por qué no |
+|---|---|
+| Registrar en archivos de log | Se pueden editar o rotar; no hay garantía de integridad ni consulta estructurada. |
+| Tabla de auditoría sin protección de base de datos | Un error de código o un acceso directo podrían alterarla sin dejar rastro. |
+| Auditar «cuando se pueda» (sin transacción compartida) | Permitiría acciones críticas sin evidencia. |
+| Cadena de bloques externa | Complejidad y dependencias innecesarias para el piloto (YAGNI); la cadena de huellas ya detecta manipulaciones. |
+
+## Consecuencias
+
+- ✅ Cualquier manipulación posterior es detectable.
+- ✅ Ninguna acción crítica ocurre sin dejar evidencia.
+- ⚠️ Una falla de la auditoría **bloquea** la acción: la disponibilidad de la auditoría es parte de la disponibilidad del sistema. Se acepta a propósito (RN-13).
+- ⚠️ Cada escritura de auditoría toma un *advisory lock* transaccional de PostgreSQL para mantener la cadena en orden; serializa esas escrituras, un costo pequeño a la escala del piloto.
+- ⚠️ El rol de ejecución y el rol que migra son distintos, lo que añade un paso al desplegar.
+
+## Referencias
+
+- Código: `apps/audit/` (`models.py`, `services.py`, `views.py`).
+- Disparador: `apps/audit/migrations/0002_append_only_trigger.py`.
+- Pruebas: `tests/audit/` (`test_chain.py`, `test_db_privileges.py`, `test_verify_integrity_command.py`, `test_auth_flow_chain.py`).
+- Especificación: RN-13 y HU-20/HU-21 en `.spec-kit/specify.md`.
