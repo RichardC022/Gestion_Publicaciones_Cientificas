@@ -1,4 +1,10 @@
-"""Production settings with strict environment validation."""
+"""Ajustes de producción, con validación estricta del entorno.
+
+Si falta una variable obligatoria o conserva el valor de ejemplo (``change-me``), el arranque
+falla con un mensaje claro en lugar de levantar un servicio mal configurado. Además fija las
+protecciones de producción: ``DEBUG`` apagado, Django Admin sin montar, cookies ``Secure`` y
+HSTS de un año.
+"""
 
 from __future__ import annotations
 
@@ -11,7 +17,11 @@ from .base import env_bool, env_list
 
 
 def required_env(name: str) -> str:
-    """Return a required environment variable or fail with a clear message."""
+    """Devuelve una variable de entorno obligatoria o lanza ``ImproperlyConfigured``.
+
+    Falla si la variable no existe, está vacía o conserva el valor de ejemplo ``change-me``
+    de ``.env.example``.
+    """
     value = os.environ.get(name)
     if not value:
         raise ImproperlyConfigured(
