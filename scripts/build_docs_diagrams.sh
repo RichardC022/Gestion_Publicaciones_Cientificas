@@ -13,7 +13,10 @@
 #         structurizr/cli y renderiza a SVG, junto con c4-codigo-envio.puml, en
 #         docs-site/diagrams/out/.
 #
-# Requisitos: bpmn → node y npm. c4 → docker y plantuml (apt-get install plantuml graphviz).
+# Requisitos: bpmn → node y npm. c4 → docker, graphviz y PlantUML. PlantUML se ejecuta como
+# `java -jar` si PLANTUML_JAR apunta a un plantuml.jar (lo que hace el CI, con una versión
+# reciente); si no, se usa el comando `plantuml` del sistema (apt-get install plantuml graphviz),
+# cuya versión en Ubuntu 24.04 es demasiado antigua para el .puml que exporta Structurizr.
 # Lo generado (vendor/ y out/) no se versiona: lo produce el CI en cada publicación.
 
 set -euo pipefail
@@ -25,6 +28,8 @@ BPMN_JS_VERSION="${BPMN_JS_VERSION:-18.31.1}"
 # obsolescencia que termina con éxito sin exportar nada (el build fallaba más tarde con
 # "Structurizr no produjo la vista ..."). 2025.11.09 es la última versión funcional.
 STRUCTURIZR_IMAGE="${STRUCTURIZR_IMAGE:-structurizr/cli:2025.11.09}"
+# Ruta a plantuml.jar. Vacío = usar el comando `plantuml` instalado en el sistema.
+PLANTUML_JAR="${PLANTUML_JAR:-}"
 VIEWS=(c1-contexto c2-contenedores c3-backend)
 
 fail() {
@@ -34,6 +39,16 @@ fail() {
 
 need() {
   command -v "$1" >/dev/null 2>&1 || fail "falta el comando '$1'. $2"
+}
+
+# Ejecuta PlantUML con el .jar indicado (modo headless: no hay pantalla en el CI) o con el
+# comando del sistema.
+plantuml_run() {
+  if [[ -n "$PLANTUML_JAR" ]]; then
+    java -Djava.awt.headless=true -jar "$PLANTUML_JAR" "$@"
+  else
+    plantuml "$@"
+  fi
 }
 
 build_bpmn() {
@@ -61,7 +76,12 @@ build_bpmn() {
 
 build_c4() {
   need docker "Instale Docker (el modelo C4 se exporta con la imagen structurizr/cli)."
-  need plantuml "Instale PlantUML: apt-get install plantuml graphviz."
+  if [[ -n "$PLANTUML_JAR" ]]; then
+    need java "Instale un JRE (PlantUML se ejecuta con PLANTUML_JAR)."
+    [[ -s "$PLANTUML_JAR" ]] || fail "PLANTUML_JAR='${PLANTUML_JAR}' no existe o está vacío."
+  else
+    need plantuml "Instale PlantUML (apt-get install plantuml graphviz) o defina PLANTUML_JAR."
+  fi
 
   local out="$DIAGRAMS/out" src="$DIAGRAMS/out/src"
   rm -rf "$out"
@@ -76,7 +96,7 @@ build_c4() {
   cp "$DIAGRAMS/c4-codigo-envio.puml" "$src/"
 
   echo "→ PlantUML: .puml → SVG"
-  plantuml -tsvg -charset UTF-8 "$src"/*.puml
+  plantuml_run -tsvg -charset UTF-8 "$src"/*.puml
 
   # Structurizr nombra los archivos structurizr-<clave>.puml y, junto a cada uno, una
   # leyenda structurizr-<clave>-key.puml. Se toma el nombre exacto (un patrón con comodines
