@@ -17,11 +17,13 @@ five); the document is never cached, so the audit sees every download.
 from __future__ import annotations
 
 from django.http import HttpResponse
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from rest_framework.generics import GenericAPIView
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from apps.publications.catalog_filters import validated_filters
+from apps.publications.catalog_filters import CatalogFilterSerializer, validated_filters
 from apps.publications.catalog_serializers import PublicCatalogSerializer
 from apps.publications.services.catalog import (
     public_entries,
@@ -31,6 +33,7 @@ from apps.publications.services.catalog import (
 from apps.publications.services.downloads import authorize_public_download, xaccel_response
 from apps.users.permissions import IsPublicCatalog
 from config.exceptions import DomainError, ErrorCode
+from config.openapi import PAGINATION, error_response
 from config.request_context import audit_request_context
 
 CACHE_CONTROL = "public, max-age=60"
@@ -49,6 +52,17 @@ class PublicCatalogBaseView(GenericAPIView):
         return public_entries()
 
 
+@extend_schema_view(
+    get=extend_schema(
+        tags=["Catálogo"],
+        operation_id="catalog_list",
+        summary="Buscar artículos publicados",
+        description="Público, sin sesión. Búsqueda de texto completo y filtros; un filtro mal formado responde 400.",
+        parameters=[CatalogFilterSerializer, *PAGINATION],
+        responses={200: PublicCatalogSerializer(many=True)},
+        auth=[],
+    ),
+)
 class CatalogListView(PublicCatalogBaseView):
     """``GET /api/v1/catalog/``: search and filter the published articles."""
 
@@ -60,6 +74,17 @@ class CatalogListView(PublicCatalogBaseView):
         return response
 
 
+@extend_schema_view(
+    get=extend_schema(
+        tags=["Catálogo"],
+        operation_id="catalog_retrieve",
+        summary="Ver un artículo publicado",
+        description="Público, sin sesión. `code` es el código de seguimiento (por ejemplo `GPC-2026-000001`).",
+        parameters=[OpenApiParameter("code", OpenApiTypes.STR, OpenApiParameter.PATH)],
+        responses={200: PublicCatalogSerializer},
+        auth=[],
+    ),
+)
 class CatalogDetailView(PublicCatalogBaseView):
     """``GET /api/v1/catalog/{code}/``: the public page of one article."""
 
@@ -76,6 +101,20 @@ class CatalogDetailView(PublicCatalogBaseView):
         return entry
 
 
+@extend_schema_view(
+    get=extend_schema(
+        tags=["Catálogo"],
+        operation_id="catalog_document",
+        summary="Descargar el PDF de un artículo publicado",
+        description="Público, sin sesión. Entrega la copia sanitizada del catálogo, en línea.",
+        parameters=[OpenApiParameter("code", OpenApiTypes.STR, OpenApiParameter.PATH)],
+        responses={
+            (200, "application/pdf"): OpenApiTypes.BINARY,
+            410: error_response("El artículo fue retirado y su documento ya no está disponible."),
+        },
+        auth=[],
+    ),
+)
 class CatalogDocumentView(PublicCatalogBaseView):
     """``GET /api/v1/catalog/{code}/document/``: the public PDF through Nginx."""
 
