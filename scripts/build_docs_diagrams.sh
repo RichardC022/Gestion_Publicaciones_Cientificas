@@ -21,7 +21,10 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIAGRAMS="$ROOT/docs-site/diagrams"
 BPMN_JS_VERSION="${BPMN_JS_VERSION:-18.31.1}"
-STRUCTURIZR_IMAGE="${STRUCTURIZR_IMAGE:-structurizr/cli:latest}"
+# Versión fija: desde 2026-03 la etiqueta 'latest' de structurizr/cli es un aviso de
+# obsolescencia que termina con éxito sin exportar nada (el build fallaba más tarde con
+# "Structurizr no produjo la vista ..."). 2025.11.09 es la última versión funcional.
+STRUCTURIZR_IMAGE="${STRUCTURIZR_IMAGE:-structurizr/cli:2025.11.09}"
 VIEWS=(c1-contexto c2-contenedores c3-backend)
 
 fail() {
@@ -75,11 +78,13 @@ build_c4() {
   echo "→ PlantUML: .puml → SVG"
   plantuml -tsvg -charset UTF-8 "$src"/*.puml
 
-  # Structurizr nombra los archivos structurizr-<clave>.puml: se normalizan a <clave>.svg.
+  # Structurizr nombra los archivos structurizr-<clave>.puml y, junto a cada uno, una
+  # leyenda structurizr-<clave>-key.puml. Se toma el nombre exacto (un patrón con comodines
+  # también coincidiría con la leyenda) y se normaliza a <clave>.svg.
   local key found
   for key in "${VIEWS[@]}"; do
-    found="$(find "$src" -maxdepth 1 -name "*${key}*.svg" | head -n 1)"
-    [[ -n "$found" ]] || fail "Structurizr no produjo la vista '${key}'. Revise workspace.dsl."
+    found="$src/structurizr-${key}.svg"
+    [[ -s "$found" ]] || fail "Structurizr no produjo la vista '${key}'. Revise workspace.dsl."
     cp "$found" "$out/${key}.svg"
   done
   cp "$src/c4-codigo-envio.svg" "$out/c4-codigo-envio.svg" \
