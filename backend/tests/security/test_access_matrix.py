@@ -120,6 +120,10 @@ OUTSIDE_THE_MATRIX = {
     "api/v1/auth/refresh/",
     "api/v1/health/",
     "api/v1/",
+    # Documentación de la API (solo existe con API_DOCS_ENABLED): describe, no expone datos.
+    "api/v1/schema/",
+    "api/v1/schema.json",
+    "api/v1/docs/",
     # Alias sin versión del health que usan Docker y los scripts de operación.
     "api/health/",
 }
