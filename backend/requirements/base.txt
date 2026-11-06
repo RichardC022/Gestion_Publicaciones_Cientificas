@@ -1,6 +1,8 @@
 Django==5.2.18
 djangorestframework==3.18.3
 djangorestframework-simplejwt==5.5.1
+drf-spectacular==0.30.0
+drf-spectacular-sidecar==2026.10.1
 gunicorn==26.2.0
 pikepdf==10.17.0
 psycopg[binary]==3.3.6
