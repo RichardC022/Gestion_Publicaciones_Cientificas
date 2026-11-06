@@ -570,6 +570,8 @@ Artefactos disponibles en cada ejecución (14 días): `backend-coverage` (`cover
 
 El pipeline usa PostgreSQL, nunca SQLite, y no consume secretos de producción.
 
+La documentación tiene su propio flujo, `.github/workflows/docs.yml` (§14): construye el portal y, si el repositorio lo habilita, lo publica en GitHub Pages.
+
 Para medir la cobertura en local:
 
 ```bash
@@ -745,3 +747,49 @@ Estrategia de ramas:
 - `dev/<integrante>-setup`: ramas de trabajo por integrante.
 
 Los commits y la documentación operativa están en español. El código fuente y los nombres técnicos están en inglés.
+
+---
+
+## 14. Portal de documentación
+
+La documentación para usuarios e ingenieros vive en `docs-site/` y se construye con [Quarto](https://quarto.org): guía de uso por rol, arquitectura, modelo de dominio, proceso editorial, seguridad, pruebas, despliegue y decisiones de arquitectura (ADR). Incluye la referencia estática de la API (Swagger UI) y los diagramas formales: el proceso en **BPMN 2.0.2** y el modelo **C4** en Structurizr (niveles 1 a 3) y PlantUML (nivel 4).
+
+### Publicación automática en GitHub Pages
+
+El flujo `.github/workflows/docs.yml` tiene dos trabajos:
+
+| Trabajo | Cuándo corre | Qué hace |
+|---|---|---|
+| `build` | En cada *push* y *pull request* que toque `docs-site/`, los scripts de documentación o `backend/` | Exporta el schema OpenAPI (falla ante cualquier advertencia), prepara Swagger UI y los diagramas, renderiza el sitio y comprueba que no haya enlaces rotos. |
+| `deploy` | Solo desde la rama predeterminada (o a mano con **Run workflow**) y solo si existe la variable `DOCS_DEPLOY=true` | Publica el sitio en GitHub Pages. |
+
+Para **activar la publicación en un repositorio** (hágalo en cada uno: el del equipo y el personal):
+
+1. *Settings → Pages → Build and deployment → Source:* **GitHub Actions**.
+2. *Settings → Secrets and variables → Actions → Variables → New repository variable:* `DOCS_DEPLOY` = `true`.
+3. Haga un *push* a la rama predeterminada, o ejecute el flujo a mano desde la pestaña *Actions*.
+
+La dirección queda en `https://<usuario-o-organización>.github.io/<repositorio>/`. Mientras la variable no exista, `build` sigue validando la documentación y `deploy` simplemente no corre.
+
+> **Nota:** publicar desde una rama que no es la predeterminada exige que el entorno `github-pages` la permita (*Settings → Environments → github-pages → Deployment branches*).
+
+### Construir el portal en local
+
+```bash
+# 1. Requisitos: Quarto, Node.js, Docker y PlantUML (apt-get install plantuml graphviz).
+# 2. Generar lo que el CI genera (no se versiona):
+python -m pip install -r backend/requirements/base.txt
+./scripts/build_docs_api.sh                  # openapi.yaml + Swagger UI en docs-site/api/
+./scripts/build_docs_diagrams.sh all         # visor BPMN y diagramas C4 en docs-site/diagrams/
+
+# 3. Comprobar, renderizar y comprobar de nuevo:
+python scripts/check_docs_site.py
+quarto render docs-site
+python scripts/check_docs_site.py --built
+
+# O ver los cambios con recarga automática:
+quarto preview docs-site
+```
+
+`./scripts/build_docs_diagrams.sh bpmn` prepara solo el visor BPMN (no necesita Docker ni PlantUML), suficiente para trabajar en el proceso editorial.
+
