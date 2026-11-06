@@ -30,3 +30,8 @@ load-report*.json
 # Playwright (TSK-91)
 frontend/test-results/
 frontend/playwright-report/
+
+# Documentación (Quarto): salida generada y caché
+docs-site/_site/
+docs-site/.quarto/
+/.quarto/
