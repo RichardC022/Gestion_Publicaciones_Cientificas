@@ -1,7 +1,7 @@
-"""Standard error envelope and DRF exception handling.
+"""Sobre estándar de error y manejo de excepciones de DRF.
 
-Every API error response uses the universal contract shared with the
-successful responses (see ``config.renderers``)::
+Toda respuesta de error de la API usa el mismo contrato universal que las respuestas
+exitosas (ver ``config.renderers``)::
 
     {
         "success": false,
@@ -18,15 +18,13 @@ successful responses (see ``config.renderers``)::
         "meta": {"request_id": "..."}
     }
 
-``ErrorCode`` holds the catalog from the plan (section 2.10) and
-``DomainError`` is the base class for domain errors: raising it with a
-catalog code renders through the envelope and keeps the request id of
-the request that triggered it. ``exception_handler`` is registered in
-``REST_FRAMEWORK["EXCEPTION_HANDLER"]``.
+``ErrorCode`` guarda el catálogo de códigos del plan (sección 2.10) y ``DomainError`` es la
+clase base de los errores de dominio: lanzarla con un código del catálogo la presenta con el
+sobre y conserva el identificador de la solicitud que la provocó. ``exception_handler`` está
+registrado en ``REST_FRAMEWORK["EXCEPTION_HANDLER"]``.
 
-Invalid query parameters (for example malformed filter or pagination
-values) must surface as ``ValidationError`` so the envelope renders them
-with HTTP ``400``.
+Los parámetros de consulta inválidos (por ejemplo, filtros o paginación mal formados) deben
+salir como ``ValidationError`` para que el sobre los presente con HTTP ``400``.
 """
 
 from __future__ import annotations
@@ -44,12 +42,17 @@ from config.middleware import get_request_id, new_request_id
 
 logger = logging.getLogger("config.exceptions")
 
+# Mensajes genéricos en español, para los errores que no traen uno propio.
 _VALIDATION_MESSAGE = "Los datos enviados no son válidos."
 _SERVER_ERROR_MESSAGE = "Error interno del servidor."
 
 
 class ErrorCode:
-    """Error codes of the domain catalog (implementation plan, section 2.10)."""
+    """Códigos de error del catálogo de dominio (plan de implementación, sección 2.10).
+
+    Son el identificador estable que ven los clientes en ``errors[].code``: el texto del
+    mensaje puede cambiar, el código no.
+    """
 
     AUTH_INVALID = "AUTH_INVALID"
     AUTH_LOCKED = "AUTH_LOCKED"
@@ -67,10 +70,12 @@ class ErrorCode:
     AUDIT_UNAVAILABLE = "AUDIT_UNAVAILABLE"
     VALIDATION_ERROR = "VALIDATION_ERROR"
     RATE_LIMITED = "RATE_LIMITED"
-    # Fallback for unclassified errors; it never carries internal details.
+    # Respaldo para errores sin clasificar; nunca lleva detalles internos.
     SERVER_ERROR = "SERVER_ERROR"
 
 
+# Estado HTTP que corresponde a cada código del catálogo. Un código que no esté aquí
+# responde 400 (ver ``DomainError``).
 _STATUS_BY_CODE = {
     ErrorCode.AUTH_INVALID: 401,
     ErrorCode.AUTH_LOCKED: 429,
@@ -93,9 +98,9 @@ _STATUS_BY_CODE = {
 
 
 class DomainError(exceptions.APIException):
-    """Domain error with an explicit envelope code.
+    """Error de dominio con un código explícito del catálogo.
 
-    Example::
+    Ejemplo::
 
         raise DomainError(
             "La acción no es válida en el estado actual.",
@@ -103,8 +108,9 @@ class DomainError(exceptions.APIException):
             details={"status": manuscript.status},
         )
 
-    ``headers`` adds explicit response headers — for example the
-    ``Retry-After`` of a ``429`` lockout (TSK-20).
+    El estado HTTP sale del código (``_STATUS_BY_CODE``) salvo que se pase ``status_code``.
+    ``details`` viaja tal cual en ``errors[].details``. ``headers`` añade cabeceras a la
+    respuesta; por ejemplo, el ``Retry-After`` de un bloqueo ``429``.
     """
 
     status_code = 400
@@ -127,6 +133,8 @@ class DomainError(exceptions.APIException):
         super().__init__(message)
 
 
+# Excepciones de DRF y su equivalente en el catálogo: (tipo, código, mensaje por defecto).
+# Se recorre en orden y gana la primera coincidencia.
 _TYPED_ERRORS: tuple[tuple[type[exceptions.APIException], str, str], ...] = (
     (exceptions.ValidationError, ErrorCode.VALIDATION_ERROR, _VALIDATION_MESSAGE),
     (
@@ -158,7 +166,11 @@ _TYPED_ERRORS: tuple[tuple[type[exceptions.APIException], str, str], ...] = (
 
 
 def _first_message(detail: Any) -> str:
-    """Return the first human-readable string found in a DRF error detail."""
+    """Devuelve el primer texto legible que haya en el detalle de un error de DRF.
+
+    El detalle puede ser un texto, una lista o un diccionario anidado; si no hay ninguno,
+    devuelve una cadena vacía.
+    """
     if isinstance(detail, str):
         return detail
     if isinstance(detail, dict):
@@ -175,14 +187,14 @@ def _first_message(detail: Any) -> str:
 
 
 def _build_errors(code: str, message: str, details: Any) -> list[dict[str, Any]]:
-    """Build the ``errors`` list of the universal contract.
+    """Arma la lista ``errors`` del contrato universal.
 
-    Each entry is ``{"code", "message", "field", "details"}``:
+    Cada entrada es ``{"code", "message", "field", "details"}``:
 
-    * a validation error keyed by field yields one entry per top-level field,
-      with ``details`` holding that field's original (possibly nested) detail,
-      so a client can rebuild ``{field: details}`` without loss;
-    * any other error yields a single entry carrying the original ``details``.
+    * un error de validación por campo genera una entrada por cada campo de primer nivel,
+      con ``details`` igual al detalle original de ese campo (posiblemente anidado), de modo
+      que el cliente pueda reconstruir ``{campo: detalle}`` sin pérdida;
+    * cualquier otro error genera una sola entrada con el ``details`` original.
     """
     if code == ErrorCode.VALIDATION_ERROR and isinstance(details, dict) and details:
         return [
@@ -200,7 +212,10 @@ def _build_errors(code: str, message: str, details: Any) -> list[dict[str, Any]]
 def build_error_envelope(
     code: str, message: str, details: Any, request_id: str | None
 ) -> dict[str, Any]:
-    """Return the universal envelope of an error response."""
+    """Devuelve el sobre universal de una respuesta de error.
+
+    ``success`` es ``False``, ``data`` es ``None`` y ``meta`` lleva el ``request_id``.
+    """
     return {
         "success": False,
         "message": message,
@@ -211,7 +226,7 @@ def build_error_envelope(
 
 
 def _message_or_default(exc: exceptions.APIException, default: str) -> str:
-    """Keep a custom message, or use the Spanish default."""
+    """Conserva el mensaje propio de la excepción o, si es el genérico de DRF, usa el de por defecto en español."""
     detail = getattr(exc, "detail", None)
     default_detail = getattr(type(exc), "default_detail", None)
     if isinstance(detail, str) and detail and detail != default_detail:
@@ -220,7 +235,18 @@ def _message_or_default(exc: exceptions.APIException, default: str) -> str:
 
 
 def _describe(exc: BaseException) -> tuple[str, str, Any]:
-    """Map ``exc`` to the envelope ``(code, message, details)``."""
+    """Traduce una excepción a ``(código, mensaje, detalles)`` del sobre de error.
+
+    El orden de las comprobaciones importa; gana la primera que coincida:
+
+    1. ``DomainError``: usa su código, mensaje y detalles tal cual.
+    2. ``Http404`` y ``PermissionDenied`` de Django.
+    3. ``ValidationError`` de DRF (texto suelto o detalle por campo).
+    4. La tabla ``_TYPED_ERRORS`` de excepciones de DRF.
+    5. Cualquier otra con ``status_code``: 409, 413 y 429 tienen código propio; el resto de
+       los 4xx es ``VALIDATION_ERROR``.
+    6. Todo lo demás es ``SERVER_ERROR``, sin detalles internos.
+    """
     if isinstance(exc, DomainError):
         return exc.error_code, str(exc.detail), exc.error_details
 
@@ -274,11 +300,12 @@ def _describe(exc: BaseException) -> tuple[str, str, Any]:
 
 
 def exception_handler(exc: BaseException, context: dict[str, Any]) -> Any:
-    """Render every API error through the standard envelope.
+    """Presenta todo error de la API con el sobre estándar.
 
-    Unhandled exceptions are logged with the request id for correlation
-    and, outside DEBUG mode, answered with a generic ``500`` envelope
-    that never leaks internal details.
+    Las excepciones no controladas se registran en el log con el identificador de la solicitud
+    (para poder correlacionarlas) y, fuera de ``DEBUG``, se responden con un ``500`` genérico
+    que nunca filtra detalles internos. Con ``DEBUG`` activo se devuelve ``None`` y Django
+    muestra la traza.
     """
     # Importación perezosa: rest_framework.views importa api_settings al
     # inicializarse y esta función se referencia desde REST_FRAMEWORK, así
@@ -292,7 +319,7 @@ def exception_handler(exc: BaseException, context: dict[str, Any]) -> Any:
 
     response = drf_exception_handler(exc, context)
     if response is None:
-        # Unhandled exception. Under DEBUG let Django show the traceback.
+        # Excepción no controlada. Con DEBUG, Django debe mostrar la traza.
         if settings.DEBUG:
             return None
         logger.exception("Error interno no manejado [request_id=%s]", request_id)
@@ -311,6 +338,7 @@ def exception_handler(exc: BaseException, context: dict[str, Any]) -> Any:
 
 
 def _is_api_path(request: Any) -> bool:
+    """Indica si la ruta pertenece a la API (empieza por ``/api/``)."""
     return str(getattr(request, "path", "")).startswith("/api/")
 
 
