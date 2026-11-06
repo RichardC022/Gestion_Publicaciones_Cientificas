@@ -4,7 +4,7 @@ from django.conf import settings
 from django.contrib import admin
 from django.urls import include, path
 
-from config.health import HealthView
+from config.health import UnversionedHealthView
 
 # Respuestas 404 y 500 de la API en JSON con el contrato universal.
 handler404 = "config.exceptions.not_found_handler"
@@ -14,7 +14,7 @@ urlpatterns = [
     path("api/v1/", include("config.api")),
     # Alias sin versión: lo usan el healthcheck de Docker y los scripts de operación,
     # que no deben cambiar cuando la API cambie de versión.
-    path("api/health/", HealthView.as_view(), name="health-unversioned"),
+    path("api/health/", UnversionedHealthView.as_view(), name="health-unversioned"),
 ]
 
 # D-31: el Django Admin solo se monta cuando el entorno lo habilita (desarrollo). En producción
