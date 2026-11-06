@@ -36,7 +36,7 @@ from tests.publications.test_manuscript_api import actor, client_for, error_code
 
 pytestmark = pytest.mark.django_db
 
-BASE = "/api/editor/"
+BASE = "/api/v1/editor/"
 AREA = "Agronomía"
 
 
@@ -221,7 +221,7 @@ class TestDetail:
         assert body["authors"][0]["email"] == manuscript.created_by.email
         version = body["versions"][0]
         assert version["file_url"] == (
-            f"/api/manuscripts/{manuscript.pk}/versions/{version['id']}/file/"
+            f"/api/v1/manuscripts/{manuscript.pk}/versions/{version['id']}/file/"
         )
         assert {entry["type"] for entry in body["history"]} >= {"VERSION_SUBMITTED"}
         assert body["open_assignment"] is None

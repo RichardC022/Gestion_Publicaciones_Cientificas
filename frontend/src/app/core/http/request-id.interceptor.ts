@@ -12,7 +12,7 @@ export const REQUEST_ID_HEADER = 'X-Request-ID';
  *
  * Además es la primera capa de la cadena y garantiza el invariante de
  * rutas: cualquier URL relativa de la API se convierte en absoluta
- * (`api/auth/refresh/` -> `/api/auth/refresh/`) para que el navegador
+ * (`api/auth/refresh/` -> `/api/v1/auth/refresh/`) para que el navegador
  * jamás la resuelva contra la ruta del documento (p. ej. `/catalog` ->
  * `/catalogapi/auth/refresh`).
  *

@@ -1,6 +1,6 @@
 """Unified dashboard composition (plan sections 2.2 and 3.4).
 
-One call to ``GET /api/dashboard/`` returns every section enabled by
+One call to ``GET /api/v1/dashboard/`` returns every section enabled by
 the actor's active roles — the panel never asks to choose a role:
 
 * Sections appear only for active roles: a single-role person never

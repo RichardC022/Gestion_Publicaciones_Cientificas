@@ -27,7 +27,7 @@ describe('ReviewerService', () => {
       providers: [
         provideHttpClient(),
         provideHttpClientTesting(),
-        { provide: API_BASE_URL, useValue: '/api/' },
+        { provide: API_BASE_URL, useValue: '/api/v1/' },
       ],
     });
     service = TestBed.inject(ReviewerService);
@@ -42,7 +42,7 @@ describe('ReviewerService', () => {
       let result: unknown;
       service.listAssignments(2, 20).subscribe((value) => (result = value));
 
-      const request = http.expectOne((r) => r.url === '/api/reviewer/assignments/');
+      const request = http.expectOne((r) => r.url === '/api/v1/reviewer/assignments/');
       expect(request.request.method).toBe('GET');
       expect(request.request.params.get('page')).toBe('2');
       expect(request.request.params.get('page_size')).toBe('20');
@@ -54,7 +54,7 @@ describe('ReviewerService', () => {
     it('en la primera página no envía el parámetro page', () => {
       service.listAssignments().subscribe();
 
-      const request = http.expectOne((r) => r.url === '/api/reviewer/assignments/');
+      const request = http.expectOne((r) => r.url === '/api/v1/reviewer/assignments/');
       expect(request.request.params.has('page')).toBe(false);
       request.flush(buildAssignmentPage([]));
     });
@@ -64,7 +64,7 @@ describe('ReviewerService', () => {
       service.listAssignments().subscribe({ error: (e: ApiError) => (error = e) });
 
       http
-        .expectOne((r) => r.url === '/api/reviewer/assignments/')
+        .expectOne((r) => r.url === '/api/v1/reviewer/assignments/')
         .flush(errorEnvelope('FORBIDDEN', 'Acceso denegado.'), {
           status: 403,
           statusText: 'Forbidden',
@@ -85,7 +85,7 @@ describe('ReviewerService', () => {
         service.getAssignment('a-1').subscribe((value) => (snapshot = value));
 
         http
-          .expectOne('/api/reviewer/assignments/a-1/')
+          .expectOne('/api/v1/reviewer/assignments/a-1/')
           .flush(detail, { headers: { Date: 'Tue, 27 Oct 2026 12:00:30 GMT' } });
 
         expect(snapshot).toEqual({ assignment: detail, serverOffsetMs: 30_000 });
@@ -98,7 +98,7 @@ describe('ReviewerService', () => {
       let offset: number | undefined;
       service.getAssignment('a-1').subscribe((value) => (offset = value.serverOffsetMs));
 
-      http.expectOne('/api/reviewer/assignments/a-1/').flush(buildAssignmentDetail());
+      http.expectOne('/api/v1/reviewer/assignments/a-1/').flush(buildAssignmentDetail());
 
       expect(offset).toBe(0);
     });
@@ -108,7 +108,7 @@ describe('ReviewerService', () => {
       service.getAssignment('ajena').subscribe({ error: (e: ApiError) => (error = e) });
 
       http
-        .expectOne('/api/reviewer/assignments/ajena/')
+        .expectOne('/api/v1/reviewer/assignments/ajena/')
         .flush(errorEnvelope('NOT_FOUND', 'No encontrado.'), {
           status: 404,
           statusText: 'Not Found',
@@ -120,7 +120,7 @@ describe('ReviewerService', () => {
   });
 
   describe('evaluación', () => {
-    const URL = '/api/reviewer/assignments/a-1/evaluation/';
+    const URL = '/api/v1/reviewer/assignments/a-1/evaluation/';
     const draft = {
       originality_score: 4,
       methodology_score: null,
@@ -232,7 +232,7 @@ describe('ReviewerService', () => {
       let snapshot: { evaluation: { conflict_declared: boolean }; etag: string | null } | undefined;
       service.declareConflict('a-1', 'Fui su director.').subscribe((value) => (snapshot = value));
 
-      const request = http.expectOne('/api/reviewer/assignments/a-1/conflict/');
+      const request = http.expectOne('/api/v1/reviewer/assignments/a-1/conflict/');
       expect(request.request.method).toBe('POST');
       expect(request.request.body).toEqual({ reason: 'Fui su director.' });
       request.flush(buildReviewerEvaluation({ id: 'ev-1', conflict_declared: true }), {
@@ -246,7 +246,7 @@ describe('ReviewerService', () => {
     it('sin motivo el cuerpo va vacío', () => {
       service.declareConflict('a-1', null).subscribe();
 
-      const request = http.expectOne('/api/reviewer/assignments/a-1/conflict/');
+      const request = http.expectOne('/api/v1/reviewer/assignments/a-1/conflict/');
       expect(request.request.body).toEqual({});
       request.flush(buildReviewerEvaluation({ conflict_declared: true }));
     });
@@ -264,7 +264,7 @@ describe('ReviewerService', () => {
         .reportIdentityLeak('a-1', 'IDENTITY_LEAK', 'La portada trae un nombre.')
         .subscribe((value) => (result = value));
 
-      const request = http.expectOne('/api/reviewer/assignments/a-1/identity-leak/');
+      const request = http.expectOne('/api/v1/reviewer/assignments/a-1/identity-leak/');
       expect(request.request.method).toBe('POST');
       expect(request.request.body).toEqual({
         report_type: 'IDENTITY_LEAK',
@@ -282,7 +282,7 @@ describe('ReviewerService', () => {
         .subscribe({ error: (e: ApiError) => (error = e) });
 
       http
-        .expectOne('/api/reviewer/assignments/a-1/identity-leak/')
+        .expectOne('/api/v1/reviewer/assignments/a-1/identity-leak/')
         .flush(errorEnvelope('STATE_CONFLICT', 'Ya existe un reporte abierto.'), {
           status: 409,
           statusText: 'Conflict',
@@ -299,7 +299,7 @@ describe('ReviewerService', () => {
       let result: unknown;
       service.listHistory(3, 20).subscribe((value) => (result = value));
 
-      const request = http.expectOne((r) => r.url === '/api/reviewer/evaluations/');
+      const request = http.expectOne((r) => r.url === '/api/v1/reviewer/evaluations/');
       expect(request.request.method).toBe('GET');
       expect(request.request.params.get('page')).toBe('3');
       expect(request.request.params.get('page_size')).toBe('20');
@@ -311,7 +311,7 @@ describe('ReviewerService', () => {
     it('en la primera página no envía page', () => {
       service.listHistory().subscribe();
 
-      const request = http.expectOne((r) => r.url === '/api/reviewer/evaluations/');
+      const request = http.expectOne((r) => r.url === '/api/v1/reviewer/evaluations/');
       expect(request.request.params.has('page')).toBe(false);
       request.flush(buildHistoryPage([]));
     });
@@ -321,7 +321,7 @@ describe('ReviewerService', () => {
       let result: unknown;
       service.getHistoryEntry('ev-1').subscribe((value) => (result = value));
 
-      const request = http.expectOne('/api/reviewer/evaluations/ev-1/');
+      const request = http.expectOne('/api/v1/reviewer/evaluations/ev-1/');
       expect(request.request.method).toBe('GET');
       request.flush(detail);
 
@@ -333,7 +333,7 @@ describe('ReviewerService', () => {
       service.getHistoryEntry('ajena').subscribe({ error: (e: ApiError) => (error = e) });
 
       http
-        .expectOne('/api/reviewer/evaluations/ajena/')
+        .expectOne('/api/v1/reviewer/evaluations/ajena/')
         .flush(errorEnvelope('NOT_FOUND', 'No encontrado.'), {
           status: 404,
           statusText: 'Not Found',
@@ -350,7 +350,7 @@ describe('ReviewerService', () => {
       let blob: Blob | undefined;
       service.downloadDocument('a-1', 'GPC-2026-000001', 1).subscribe((v) => (blob = v.blob));
 
-      const request = http.expectOne('/api/reviewer/assignments/a-1/document/');
+      const request = http.expectOne('/api/v1/reviewer/assignments/a-1/document/');
       expect(request.request.method).toBe('GET');
       expect(request.request.responseType).toBe('blob');
       request.flush(PDF);
@@ -364,7 +364,7 @@ describe('ReviewerService', () => {
         .downloadDocument('a-1', 'GPC-2026-000001', 3)
         .subscribe((value) => (filename = value.filename));
 
-      http.expectOne('/api/reviewer/assignments/a-1/document/').flush(PDF, {
+      http.expectOne('/api/v1/reviewer/assignments/a-1/document/').flush(PDF, {
         headers: { 'Content-Disposition': 'attachment; filename="ana-lopez-articulo.pdf"' },
       });
 
@@ -379,7 +379,7 @@ describe('ReviewerService', () => {
         .subscribe({ error: (e: ApiError) => (error = e) });
 
       http
-        .expectOne('/api/reviewer/assignments/a-1/document/')
+        .expectOne('/api/v1/reviewer/assignments/a-1/document/')
         .flush(new Blob([JSON.stringify(errorEnvelope('STATE_CONFLICT', 'Ya no disponible.'))]), {
           status: 410,
           statusText: 'Gone',

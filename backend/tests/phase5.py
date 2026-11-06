@@ -88,7 +88,7 @@ class Lifecycle:
     def start_review(self):
         response = self.post(
             self.editor,
-            f"/api/editor/submissions/{self.manuscript.pk}/start-review/",
+            f"/api/v1/editor/submissions/{self.manuscript.pk}/start-review/",
             {"reviewer_id": str(self.reviewer.pk)},
         )
         assert response.status_code == 200, response.content
@@ -98,7 +98,7 @@ class Lifecycle:
         return self.assignment
 
     def evaluate(self):
-        base = f"/api/reviewer/assignments/{self.assignment.pk}/evaluation/"
+        base = f"/api/v1/reviewer/assignments/{self.assignment.pk}/evaluation/"
         client = client_for(self.reviewer)
         saved = client.put(base, EVALUATION, format="json", HTTP_IF_MATCH='"0"')
         assert saved.status_code == 200, saved.content
@@ -110,7 +110,7 @@ class Lifecycle:
         self.manuscript.refresh_from_db()
         return self.post(
             self.editor,
-            f"/api/editor/manuscripts/{self.manuscript.pk}/verdicts/",
+            f"/api/v1/editor/manuscripts/{self.manuscript.pk}/verdicts/",
             body,
             HTTP_IDEMPOTENCY_KEY=key,
             HTTP_IF_MATCH=f'"{self.manuscript.lock_version}"',
@@ -128,14 +128,14 @@ class Lifecycle:
     def withdraw(self, user=None):
         return self.post(
             user or self.author,
-            f"/api/manuscripts/{self.manuscript.pk}/withdraw/",
+            f"/api/v1/manuscripts/{self.manuscript.pk}/withdraw/",
             {"reason": "Retiro por decisión de los autores."},
         )
 
     def authorize_correction(self, verdict_id, key="autoriza-1"):
         return self.post(
             self.admin,
-            f"/api/admin/verdicts/{verdict_id}/authorize-correction/",
+            f"/api/v1/admin/verdicts/{verdict_id}/authorize-correction/",
             {"reason": "El veredicto se registró sobre la evaluación equivocada."},
             HTTP_IDEMPOTENCY_KEY=key,
         )

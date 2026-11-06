@@ -29,10 +29,10 @@ from apps.users.services.auth import GENERIC_AUTH_MESSAGE
 
 pytestmark = pytest.mark.django_db
 
-LOGIN_URL = "/api/auth/login/"
-REFRESH_URL = "/api/auth/refresh/"
-LOGOUT_URL = "/api/auth/logout/"
-ME_URL = "/api/auth/me/"
+LOGIN_URL = "/api/v1/auth/login/"
+REFRESH_URL = "/api/v1/auth/refresh/"
+LOGOUT_URL = "/api/v1/auth/logout/"
+ME_URL = "/api/v1/auth/me/"
 PASSWORD = "institucional-123"
 COOKIE = settings.REFRESH_COOKIE_NAME
 

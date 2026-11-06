@@ -125,7 +125,7 @@ export class AuthService {
       );
   }
 
-  /** Relee identidad, roles activos y navegación (`GET /api/auth/me/`). */
+  /** Relee identidad, roles activos y navegación (`GET /api/v1/auth/me/`). */
   me(): Observable<MeResponse> {
     return this.http.get<MeResponse>(`${this.baseUrl}auth/me/`).pipe(
       map((response) => {

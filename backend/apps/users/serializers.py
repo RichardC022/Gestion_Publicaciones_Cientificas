@@ -8,7 +8,7 @@ from apps.users.models import Role, User
 
 
 class LoginSerializer(serializers.Serializer):
-    """Credentials for ``POST /api/auth/login/``."""
+    """Credentials for ``POST /api/v1/auth/login/``."""
 
     identifier = serializers.CharField(
         max_length=254,
@@ -53,7 +53,7 @@ class DashboardSectionSerializer(serializers.Serializer):
 
 
 class DashboardSerializer(serializers.Serializer):
-    """Single response of ``GET /api/dashboard/`` (plan section 2.2).
+    """Single response of ``GET /api/v1/dashboard/`` (plan section 2.2).
 
     ``sections`` only contains the sections of the active roles; a
     person without roles receives it explicitly empty. The panel never

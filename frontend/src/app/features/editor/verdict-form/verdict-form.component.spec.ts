@@ -45,8 +45,8 @@ class HostComponent {
   staleCount = 0;
 }
 
-const EVALUATIONS = '/api/editor/manuscripts/s-1/evaluations/';
-const VERDICTS = '/api/editor/manuscripts/s-1/verdicts/';
+const EVALUATIONS = '/api/v1/editor/manuscripts/s-1/evaluations/';
+const VERDICTS = '/api/v1/editor/manuscripts/s-1/verdicts/';
 const page = <T>(results: T[]) => ({ count: results.length, next: null, previous: null, results });
 
 describe('VerdictFormComponent', () => {
@@ -71,7 +71,7 @@ describe('VerdictFormComponent', () => {
       providers: [
         provideHttpClient(),
         provideHttpClientTesting(),
-        { provide: API_BASE_URL, useValue: '/api/' },
+        { provide: API_BASE_URL, useValue: '/api/v1/' },
       ],
     });
     http = TestBed.inject(HttpTestingController);

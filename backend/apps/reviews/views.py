@@ -109,7 +109,7 @@ class EditorBaseView(GenericAPIView):
 
 
 class SubmissionListView(EditorBaseView):
-    """``GET /api/editor/submissions/``: the inbox of ``SUBMITTED`` manuscripts."""
+    """``GET /api/v1/editor/submissions/``: the inbox of ``SUBMITTED`` manuscripts."""
 
     def get(self, request: Request) -> Response:
         latest_submission = (
@@ -128,7 +128,7 @@ class SubmissionListView(EditorBaseView):
 
 
 class SubmissionDetailView(EditorBaseView):
-    """``GET /api/editor/submissions/{id}/``: metadata, authors, PDFs and history."""
+    """``GET /api/v1/editor/submissions/{id}/``: metadata, authors, PDFs and history."""
 
     def get(self, request: Request, pk) -> Response:
         manuscript = self.get_manuscript(pk)
@@ -139,7 +139,7 @@ class SubmissionDetailView(EditorBaseView):
 
 
 class StartReviewView(EditorBaseView):
-    """``POST /api/editor/submissions/{id}/start-review/``.
+    """``POST /api/v1/editor/submissions/{id}/start-review/``.
 
     ``SUBMITTED`` becomes ``UNDER_REVIEW``; with ``reviewer_id`` the
     reviewer is assigned in the same transaction.
@@ -169,7 +169,7 @@ class StartReviewView(EditorBaseView):
 
 
 class EligibleReviewersView(EditorBaseView):
-    """``GET /api/editor/reviewers/``: available reviewers free of conflicts.
+    """``GET /api/v1/editor/reviewers/``: available reviewers free of conflicts.
 
     When no reviewer is eligible the answer adds ``diagnosis``: how many
     reviewer accounts exist and how many each rule excludes, so the empty
@@ -194,7 +194,7 @@ class EligibleReviewersView(EditorBaseView):
 
 
 class ManuscriptAssignmentsView(EditorBaseView):
-    """``/api/editor/manuscripts/{id}/assignments/``: history and new assignment."""
+    """``/api/v1/editor/manuscripts/{id}/assignments/``: history and new assignment."""
 
     def get(self, request: Request, pk) -> Response:
         manuscript = self.get_manuscript(pk)
@@ -221,7 +221,7 @@ class ManuscriptAssignmentsView(EditorBaseView):
 
 
 class AssignmentRevokeView(EditorBaseView):
-    """``POST /api/editor/assignments/{id}/revoke/``."""
+    """``POST /api/v1/editor/assignments/{id}/revoke/``."""
 
     def post(self, request: Request, pk) -> Response:
         assignment = get_object_or_404(self.scoped_assignments(), pk=pk)
@@ -245,7 +245,7 @@ class AssignmentRevokeView(EditorBaseView):
 
 
 class ExpiredAssignmentsView(EditorBaseView):
-    """``GET /api/editor/assignments/expired/``: overdue assignments awaiting a decision.
+    """``GET /api/v1/editor/assignments/expired/``: overdue assignments awaiting a decision.
 
     ``EXPIRED`` ones, plus ``ACTIVE`` ones already past ``due_at`` that the
     scheduled task has not marked yet: the cut is always the database clock.
@@ -300,7 +300,7 @@ def render_verdict(result: VerdictResult) -> tuple[int, dict]:
 
 
 class ManuscriptVerdictsView(EditorBaseView):
-    """``/api/editor/manuscripts/{id}/verdicts/``: the verdict history and a new verdict.
+    """``/api/v1/editor/manuscripts/{id}/verdicts/``: the verdict history and a new verdict.
 
     There is no ``PUT``, ``PATCH`` or ``DELETE``: a registered verdict is
     never edited (``405``). ``POST`` needs ``Idempotency-Key`` and
@@ -362,7 +362,7 @@ class ManuscriptVerdictsView(EditorBaseView):
 
 
 class ManuscriptEvaluationsView(EditorBaseView):
-    """``GET /api/editor/manuscripts/{id}/evaluations/``: the final evaluations.
+    """``GET /api/v1/editor/manuscripts/{id}/evaluations/``: the final evaluations.
 
     Complete, with the reviewer's identity and the confidential comments:
     the only place that exposes them, and only to the editor. Drafts are
@@ -381,7 +381,7 @@ class ManuscriptEvaluationsView(EditorBaseView):
 
 
 class IncidentListView(EditorBaseView):
-    """``GET /api/editor/incidents/``: the confidential reports, open ones first.
+    """``GET /api/v1/editor/incidents/``: the confidential reports, open ones first.
 
     ``?status=OPEN|RESOLVED`` narrows the list. Reports over a manuscript
     the editor registered or co-authored are left out.
@@ -404,7 +404,7 @@ class IncidentListView(EditorBaseView):
 
 
 class IncidentResolveView(EditorBaseView):
-    """``POST /api/editor/incidents/{id}/resolve/``: resolve once (``409`` the second time)."""
+    """``POST /api/v1/editor/incidents/{id}/resolve/``: resolve once (``409`` the second time)."""
 
     def post(self, request: Request, pk) -> Response:
         get_object_or_404(self.scoped_incidents(), pk=pk)
@@ -438,7 +438,7 @@ class ReviewerBaseView(GenericAPIView):
 
 
 class ReviewerAssignmentListView(ReviewerBaseView):
-    """``GET /api/reviewer/assignments/``: the reviewer's own inbox."""
+    """``GET /api/v1/reviewer/assignments/``: the reviewer's own inbox."""
 
     def get(self, request: Request) -> Response:
         page = self.paginate_queryset(self.scoped_assignments())
@@ -446,7 +446,7 @@ class ReviewerAssignmentListView(ReviewerBaseView):
 
 
 class ReviewerAssignmentDetailView(ReviewerBaseView):
-    """``GET /api/reviewer/assignments/{id}/``: blind detail of an ``ACTIVE`` or ``COMPLETED`` one."""
+    """``GET /api/v1/reviewer/assignments/{id}/``: blind detail of an ``ACTIVE`` or ``COMPLETED`` one."""
 
     def get(self, request: Request, pk) -> Response:
         assignment = self.get_assignment(pk)
@@ -457,7 +457,7 @@ class ReviewerAssignmentDetailView(ReviewerBaseView):
 
 
 class ReviewerAssignmentDocumentView(ReviewerBaseView):
-    """``GET /api/reviewer/assignments/{id}/document/``: the sanitized PDF.
+    """``GET /api/v1/reviewer/assignments/{id}/document/``: the sanitized PDF.
 
     Only an ``ACTIVE`` assignment downloads; any other status of the
     reviewer's own assignment answers ``410``. The internal path always
@@ -498,7 +498,7 @@ def evaluation_response(evaluation: Evaluation) -> Response:
 
 
 class ReviewerEvaluationView(ReviewerBaseView):
-    """``GET``/``PUT /api/reviewer/assignments/{id}/evaluation/``: the private draft or the final.
+    """``GET``/``PUT /api/v1/reviewer/assignments/{id}/evaluation/``: the private draft or the final.
 
     ``GET`` answers an empty draft before the first save. ``PUT`` needs
     ``If-Match`` with the ``ETag`` read (``"0"`` for the empty draft) and
@@ -534,7 +534,7 @@ class ReviewerEvaluationView(ReviewerBaseView):
 
 
 class ReviewerEvaluationSubmitView(ReviewerBaseView):
-    """``POST /api/reviewer/assignments/{id}/evaluation/submit/``: the immutable final."""
+    """``POST /api/v1/reviewer/assignments/{id}/evaluation/submit/``: the immutable final."""
 
     permission_classes = [IsAuthenticated, IsReviewer]
 
@@ -550,7 +550,7 @@ class ReviewerEvaluationSubmitView(ReviewerBaseView):
 
 
 class ReviewerConflictView(ReviewerBaseView):
-    """``POST /api/reviewer/assignments/{id}/conflict/``: declare a conflict of interest.
+    """``POST /api/v1/reviewer/assignments/{id}/conflict/``: declare a conflict of interest.
 
     Blocks the evaluation (no more saves or submission) and tells the
     editor; the assignment stays ``ACTIVE`` until the editor decides.
@@ -600,7 +600,7 @@ class ReviewerHistoryBaseView(GenericAPIView):
 
 
 class ReviewerEvaluationListView(ReviewerHistoryBaseView):
-    """``GET /api/reviewer/evaluations/``: history of the reviewer's final evaluations."""
+    """``GET /api/v1/reviewer/evaluations/``: history of the reviewer's final evaluations."""
 
     def get(self, request: Request) -> Response:
         page = self.paginate_queryset(self.scoped_evaluations())
@@ -610,7 +610,7 @@ class ReviewerEvaluationListView(ReviewerHistoryBaseView):
 
 
 class ReviewerEvaluationDetailView(ReviewerHistoryBaseView):
-    """``GET /api/reviewer/evaluations/{id}/``: one final evaluation, read-only."""
+    """``GET /api/v1/reviewer/evaluations/{id}/``: one final evaluation, read-only."""
 
     def get(self, request: Request, pk) -> Response:
         evaluation = get_object_or_404(self.scoped_evaluations(), pk=pk)
@@ -618,7 +618,7 @@ class ReviewerEvaluationDetailView(ReviewerHistoryBaseView):
 
 
 class ReviewerIdentityLeakView(ReviewerBaseView):
-    """``POST /api/reviewer/assignments/{id}/identity-leak/``: a confidential report.
+    """``POST /api/v1/reviewer/assignments/{id}/identity-leak/``: a confidential report.
 
     Private: it changes neither the evaluation, the PDF nor the manuscript,
     and the author never learns it exists. Only the owner of an ``ACTIVE``

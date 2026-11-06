@@ -163,7 +163,7 @@ test.describe('Flujos 2 a 8 — del envío al retiro', () => {
     await page.getByRole('link', { name: title }).click();
 
     await expect(page).toHaveURL(new RegExp(`/catalog/${code}$`));
-    const pdf = page.waitForResponse((r) => r.url().includes(`/api/catalog/${code}/document/`));
+    const pdf = page.waitForResponse((r) => r.url().includes(`/api/v1/catalog/${code}/document/`));
     await page.getByRole('button', { name: 'Ver el documento (PDF)' }).click();
     const response = await pdf;
     expect(response.status()).toBe(200);

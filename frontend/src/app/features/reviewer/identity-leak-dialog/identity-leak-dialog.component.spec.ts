@@ -7,7 +7,7 @@ import { IncidentReceipt } from '../../../core/models/reviewer.model';
 import { errorEnvelope } from '../../author/testing/manuscript.fixtures';
 import { IdentityLeakDialogComponent } from './identity-leak-dialog.component';
 
-const LEAK = '/api/reviewer/assignments/a-1/identity-leak/';
+const LEAK = '/api/v1/reviewer/assignments/a-1/identity-leak/';
 const RECEIPT: IncidentReceipt = {
   id: 'i-1',
   assignment: 'a-1',
@@ -41,7 +41,7 @@ describe('IdentityLeakDialogComponent', () => {
       providers: [
         provideHttpClient(),
         provideHttpClientTesting(),
-        { provide: API_BASE_URL, useValue: '/api/' },
+        { provide: API_BASE_URL, useValue: '/api/v1/' },
       ],
     });
     http = TestBed.inject(HttpTestingController);

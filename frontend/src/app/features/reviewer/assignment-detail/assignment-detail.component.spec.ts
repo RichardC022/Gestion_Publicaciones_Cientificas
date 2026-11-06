@@ -15,8 +15,8 @@ import { errorEnvelope } from '../../author/testing/manuscript.fixtures';
 import { buildAssignmentDetail } from '../testing/reviewer.fixtures';
 import { AssignmentDetailComponent } from './assignment-detail.component';
 
-const DETAIL = '/api/reviewer/assignments/a-1/';
-const DOCUMENT = '/api/reviewer/assignments/a-1/document/';
+const DETAIL = '/api/v1/reviewer/assignments/a-1/';
+const DOCUMENT = '/api/v1/reviewer/assignments/a-1/document/';
 const PAGE_URL = '/app/reviewer/assignments/a-1';
 const NOW = new Date('2026-10-27T12:00:00Z');
 
@@ -32,7 +32,7 @@ describe('AssignmentDetailComponent', () => {
         ]),
         provideHttpClient(),
         provideHttpClientTesting(),
-        { provide: API_BASE_URL, useValue: '/api/' },
+        { provide: API_BASE_URL, useValue: '/api/v1/' },
       ],
     });
     http = TestBed.inject(HttpTestingController);
@@ -344,7 +344,7 @@ describe('AssignmentDetailComponent', () => {
         .find((b) => text(b) === 'Enviar reporte confidencial')!
         .click();
       await settle();
-      http.expectOne('/api/reviewer/assignments/a-1/identity-leak/').flush(
+      http.expectOne('/api/v1/reviewer/assignments/a-1/identity-leak/').flush(
         {
           id: 'i-1',
           assignment: 'a-1',
@@ -376,7 +376,7 @@ describe('AssignmentDetailComponent', () => {
         .click();
       await settle();
       http
-        .expectOne('/api/reviewer/assignments/a-1/identity-leak/')
+        .expectOne('/api/v1/reviewer/assignments/a-1/identity-leak/')
         .error(new ProgressEvent('error'));
       await settle();
 

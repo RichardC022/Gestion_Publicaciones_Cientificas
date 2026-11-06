@@ -1,7 +1,21 @@
-import { APIRequestContext, expect, request } from '@playwright/test';
+import { APIRequestContext, APIResponse, expect, request } from '@playwright/test';
 
 import { ACCOUNTS, AREA, PASSWORD, Who } from './env';
 import { makePdf } from './pdf';
+
+/**
+ * Carga de dominio de una respuesta exitosa de la API. Con el contrato universal
+ * `{ success, message, data, errors, meta }` devuelve `data`, o la página
+ * `{ count, next, previous, results }` si `meta.pagination` está presente.
+ */
+export async function payload(res: APIResponse): Promise<any> {
+  const body = await res.json();
+  if (body?.success !== true || !('data' in body)) {
+    return body;
+  }
+  const { pagination, request_id: _requestId, ...extras } = body.meta ?? {};
+  return pagination ? { ...pagination, results: body.data, ...extras } : body.data;
+}
 
 /**
  * Cliente de la API para PREPARAR el escenario de un flujo (llegar al punto en que
@@ -17,19 +31,19 @@ export class Api {
   static async login(who: Who): Promise<Api> {
     const ctx = await request.newContext({ ignoreHTTPSErrors: true });
     const base = process.env['E2E_BASE_URL'] ?? 'https://localhost:20443';
-    const res = await ctx.post(`${base}/api/auth/login/`, {
+    const res = await ctx.post(`${base}/api/v1/auth/login/`, {
       data: { identifier: ACCOUNTS[who].id, password: PASSWORD },
     });
     expect(res.status(), `login de ${who}`).toBe(200);
-    const body = await res.json();
-    const me = await ctx.get(`${base}/api/auth/me/`, {
+    const body = await payload(res);
+    const me = await ctx.get(`${base}/api/v1/auth/me/`, {
       headers: { Authorization: `Bearer ${body.access}` },
     });
-    return new Api(ctx, body.access, (await me.json()).user.id);
+    return new Api(ctx, body.access, (await payload(me)).user.id);
   }
 
   private url(path: string): string {
-    return `${process.env['E2E_BASE_URL'] ?? 'https://localhost:20443'}/api/${path}`;
+    return `${process.env['E2E_BASE_URL'] ?? 'https://localhost:20443'}/api/v1/${path}`;
   }
 
   private headers(extra: Record<string, string> = {}): Record<string, string> {
@@ -70,7 +84,7 @@ const key = (): string => `e2e-${Date.now().toString(36)}-${Math.random().toStri
 
 /** Un manuscrito del Autor, enviado (v1, ronda 0): borrador + PDF + envío. */
 export async function submitManuscript(author: Api, title: string): Promise<Scenario> {
-  const me = (await (await author.get('auth/me/')).json()).user;
+  const me = (await payload(await author.get('auth/me/'))).user;
   const created = await author.post('manuscripts/', {
     title,
     abstract: 'Resumen del estudio de campo sobre cultivos de altura.',
@@ -87,7 +101,7 @@ export async function submitManuscript(author: Api, title: string): Promise<Scen
     ],
   });
   expect(created.status(), await created.text()).toBe(201);
-  const manuscript = await created.json();
+  const manuscript = await payload(created);
   const uploaded = await author.upload(
     `manuscripts/${manuscript.id}/draft-file/`,
     'articulo.pdf',
@@ -100,7 +114,7 @@ export async function submitManuscript(author: Api, title: string): Promise<Scen
     { 'Idempotency-Key': key() },
   );
   expect(sent.status(), await sent.text()).toBe(201);
-  const detail = await (await author.get(`manuscripts/${manuscript.id}/`)).json();
+  const detail = await payload(await author.get(`manuscripts/${manuscript.id}/`));
   return { id: manuscript.id, code: detail.code, title };
 }
 
@@ -125,7 +139,7 @@ export const EVALUATION = {
 
 /** El Revisor guarda y envía su evaluación final. */
 export async function evaluate(reviewer: Api, manuscriptId: string, overrides = {}) {
-  const list = await (await reviewer.get('reviewer/assignments/')).json();
+  const list = await payload(await reviewer.get('reviewer/assignments/'));
   const row = list.results.find(
     (r: { manuscript_id?: string; manuscript_code: string; id: string }) =>
       r.manuscript_id ? r.manuscript_id === manuscriptId : true,
@@ -145,5 +159,5 @@ export async function judge(editor: Api, manuscriptId: string, body: Record<stri
     'If-Match': detail.headers()['etag'] ?? '',
   });
   expect(res.status(), await res.text()).toBe(201);
-  return res.json();
+  return payload(res);
 }

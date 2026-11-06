@@ -47,7 +47,7 @@ from tests.publications.test_submission import (  # noqa: F401
 
 pytestmark = pytest.mark.django_db
 
-BASE = "/api/reviewer/assignments/"
+BASE = "/api/v1/reviewer/assignments/"
 AUTHOR_NAME = "Ana Lopez"
 V1_PDF = factory.pdf_with_identity()
 

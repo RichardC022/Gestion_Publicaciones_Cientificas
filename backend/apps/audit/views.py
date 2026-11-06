@@ -1,6 +1,6 @@
 """Administrator audit endpoints (plan section 2.7, TSK-73).
 
-``GET /api/admin/audit/`` and ``GET /api/admin/audit/{id}/`` need the
+``GET /api/v1/admin/audit/`` and ``GET /api/v1/admin/audit/{id}/`` need the
 active ``ADMIN`` role (``403`` otherwise). Reading the audit trail is
 itself audited, inside the same transaction as the read: if the query
 event cannot be written the answer is ``503`` and nothing is returned
@@ -70,7 +70,7 @@ class AdminAuditBaseView(GenericAPIView):
 
 
 class AuditListView(AdminAuditBaseView):
-    """``GET /api/admin/audit/``: global, paginated, newest first."""
+    """``GET /api/v1/admin/audit/``: global, paginated, newest first."""
 
     def get(self, request: Request) -> Response:
         params = validated_filters(request.query_params)
@@ -92,7 +92,7 @@ class AuditListView(AdminAuditBaseView):
 
 
 class AuditDetailView(AdminAuditBaseView):
-    """``GET /api/admin/audit/{id}/``: one event, by its public ``event_id``."""
+    """``GET /api/v1/admin/audit/{id}/``: one event, by its public ``event_id``."""
 
     def get(self, request: Request, pk) -> Response:
         entry = get_object_or_404(AuditLog, event_id=pk)

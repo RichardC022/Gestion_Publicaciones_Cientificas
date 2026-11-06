@@ -75,7 +75,7 @@ def judge(editor, manuscript, decision, **texts):
 
 
 def detail(owner, manuscript):
-    return client_for(owner).get(f"/api/manuscripts/{manuscript.pk}/")
+    return client_for(owner).get(f"/api/v1/manuscripts/{manuscript.pk}/")
 
 
 class TestBeforeTheVerdict:
@@ -154,7 +154,7 @@ class TestAfterTheVerdict:
 
         for response in (
             detail(owner, manuscript),
-            client_for(owner).get("/api/manuscripts/"),
+            client_for(owner).get("/api/v1/manuscripts/"),
         ):
             text = response.content.decode()
             assert response.status_code == 200
@@ -202,7 +202,7 @@ class TestAfterTheVerdict:
             is_active=False, withdrawn_at=timezone.now()
         )
 
-        response = client_for(owner).get(f"/api/manuscripts/{manuscript.pk}/")
+        response = client_for(owner).get(f"/api/v1/manuscripts/{manuscript.pk}/")
 
         assert response.status_code == 200
         assert response.json()["feedback"]["decision"] == "ACCEPTED"
@@ -232,7 +232,7 @@ class TestWhoCanRead:
         client = client_for(owner)
 
         with django_assert_max_num_queries(14):
-            response = client.get("/api/manuscripts/")
+            response = client.get("/api/v1/manuscripts/")
 
         rows = response.json()["results"]
         assert len(rows) == 5

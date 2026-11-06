@@ -41,8 +41,8 @@ from apps.users.permissions import (
 
 pytestmark = pytest.mark.django_db
 
-LOGIN_URL = "/api/auth/login/"
-ME_URL = "/api/auth/me/"
+LOGIN_URL = "/api/v1/auth/login/"
+ME_URL = "/api/v1/auth/me/"
 PASSWORD = "institucional-123"
 FACTORY = APIRequestFactory()
 
@@ -166,13 +166,13 @@ class TestModulePermissions:
         response = call(module_view(IsAuthenticated, IsEditor), user=author)
 
         assert response.status_code == 403
-        assert response.data["error"]["code"] == "FORBIDDEN"
+        assert response.data["errors"][0]["code"] == "FORBIDDEN"
 
     def test_anonymous_sessionless_request_answers_401(self) -> None:
         response = call(module_view(IsAuthenticated, IsEditor))
 
         assert response.status_code == 401
-        assert response.data["error"]["code"] == "AUTH_INVALID"
+        assert response.data["errors"][0]["code"] == "AUTH_INVALID"
 
     def test_multirrole_user_passes_each_module_gate(self) -> None:
         user = assign_roles(make_user(), "AUTHOR", "EDITOR", "ADMIN")
@@ -215,7 +215,7 @@ class TestRevokedRoleBlocksTheNextAction:
             headers={"HTTP_AUTHORIZATION": f"Bearer {access}"},
         )
         assert response.status_code == 403
-        assert response.data["error"]["code"] == "FORBIDDEN"
+        assert response.data["errors"][0]["code"] == "FORBIDDEN"
 
         # El token en sí sigue vigente: la identidad responde 200 y ya
         # no lista el rol retirado.
@@ -239,7 +239,7 @@ class TestForeignObjectsAnswer404:
 
         foreign = call(probe(StubManuscript(other.id)), user=owner)
         assert foreign.status_code == 404
-        assert foreign.data["error"]["code"] == "NOT_FOUND"
+        assert foreign.data["errors"][0]["code"] == "NOT_FOUND"
 
     def test_owner_check_walks_related_objects(self) -> None:
         owner = assign_roles(make_user(), "AUTHOR")
@@ -362,4 +362,4 @@ class TestPublicCatalog:
         force_authenticate(request, user=reader)
         denied = WriteProbe.as_view()(request)
         assert denied.status_code == 403
-        assert denied.data["error"]["code"] == "FORBIDDEN"
+        assert denied.data["errors"][0]["code"] == "FORBIDDEN"

@@ -24,7 +24,7 @@ export const INBOX_STATE_LABELS: Readonly<Record<InboxState, string>> = {
 /** Estado almacenado de la asignación. */
 export type AssignmentStatus = 'ACTIVE' | 'COMPLETED' | 'REVOKED' | 'EXPIRED';
 
-/** Fila de la bandeja (`GET /api/reviewer/assignments/`). */
+/** Fila de la bandeja (`GET /api/v1/reviewer/assignments/`). */
 export interface ReviewerAssignmentRow {
   id: string;
   manuscript_code: string;
@@ -62,7 +62,7 @@ export interface ReviewerVersion {
   submitted_at: string;
 }
 
-/** Detalle anonimizado (`GET /api/reviewer/assignments/{id}/`). */
+/** Detalle anonimizado (`GET /api/v1/reviewer/assignments/{id}/`). */
 export interface ReviewerAssignmentDetail extends ReviewerAssignmentRow {
   manuscript: ReviewerManuscript;
   version: ReviewerVersion;
@@ -213,7 +213,7 @@ export interface EditorialResult {
   decided_at: string;
 }
 
-/** Fila del historial propio (`GET /api/reviewer/evaluations/`): solo evaluaciones enviadas. */
+/** Fila del historial propio (`GET /api/v1/reviewer/evaluations/`): solo evaluaciones enviadas. */
 export interface ReviewerHistoryRow {
   id: string;
   assignment: string;
@@ -230,7 +230,7 @@ export interface ReviewerHistoryRow {
 
 /**
  * Evaluación enviada, completa y de solo lectura
- * (`GET /api/reviewer/evaluations/{id}/`). No declara los comentarios
+ * (`GET /api/v1/reviewer/evaluations/{id}/`). No declara los comentarios
  * confidenciales: el backend no los devuelve en ninguna lectura del historial.
  */
 export interface ReviewerHistoryDetail extends ReviewerHistoryRow {

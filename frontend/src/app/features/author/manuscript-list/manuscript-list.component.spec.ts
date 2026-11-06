@@ -32,7 +32,7 @@ describe('ManuscriptListComponent', () => {
         ]),
         provideHttpClient(),
         provideHttpClientTesting(),
-        { provide: API_BASE_URL, useValue: '/api/' },
+        { provide: API_BASE_URL, useValue: '/api/v1/' },
       ],
     });
     http = TestBed.inject(HttpTestingController);
@@ -41,7 +41,7 @@ describe('ManuscriptListComponent', () => {
 
   afterEach(() => http.verify());
 
-  const listRequest = (): TestRequest => http.expectOne((r) => r.url === '/api/manuscripts/');
+  const listRequest = (): TestRequest => http.expectOne((r) => r.url === '/api/v1/manuscripts/');
 
   const open = async (url = '/app/author/manuscripts') => {
     const harness = await RouterTestingHarness.create();

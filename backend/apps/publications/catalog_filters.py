@@ -17,7 +17,7 @@ ORDERING_CHOICES = tuple(ORDERING_FIELDS) + tuple(f"-{field}" for field in ORDER
 
 
 class CatalogFilterSerializer(serializers.Serializer):
-    """Validated filter parameters of ``GET /api/catalog/``."""
+    """Validated filter parameters of ``GET /api/v1/catalog/``."""
 
     search = serializers.CharField(max_length=200, required=False, allow_blank=True)
     area = serializers.CharField(max_length=120, required=False)

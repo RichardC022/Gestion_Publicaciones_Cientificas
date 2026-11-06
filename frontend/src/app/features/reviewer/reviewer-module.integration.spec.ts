@@ -81,7 +81,7 @@ describe('Módulo Revisor: integración con las rutas reales', () => {
         NOTIFICATION_SERVICE_STUB,
         provideHttpClient(),
         provideHttpClientTesting(),
-        { provide: API_BASE_URL, useValue: '/api/' },
+        { provide: API_BASE_URL, useValue: '/api/v1/' },
       ],
     });
     http = TestBed.inject(HttpTestingController);
@@ -96,10 +96,10 @@ describe('Módulo Revisor: integración con las rutas reales', () => {
 
   const signIn = (...roles: Role[]) => store.setSession({ user: USER, roles, access: 'token' });
 
-  const inbox = () => http.expectOne((r) => r.url === '/api/reviewer/assignments/');
-  const detail = () => http.expectOne('/api/reviewer/assignments/a-1/');
-  const evaluation = () => http.expectOne('/api/reviewer/assignments/a-1/evaluation/');
-  const history = () => http.expectOne((r) => r.url === '/api/reviewer/evaluations/');
+  const inbox = () => http.expectOne((r) => r.url === '/api/v1/reviewer/assignments/');
+  const detail = () => http.expectOne('/api/v1/reviewer/assignments/a-1/');
+  const evaluation = () => http.expectOne('/api/v1/reviewer/assignments/a-1/evaluation/');
+  const history = () => http.expectOne((r) => r.url === '/api/v1/reviewer/evaluations/');
 
   const open = async (url: string) => {
     const harness = await RouterTestingHarness.create();

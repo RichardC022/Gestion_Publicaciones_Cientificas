@@ -16,6 +16,7 @@ import { publicOnlyGuard } from './public-only.guard';
 import { rolesGuard } from './roles.guard';
 import { unsavedChangesGuard } from './unsaved-changes.guard';
 import { routes } from '../../app.routes';
+import { errorEnvelope } from '../testing/api-envelope.fixtures';
 
 const USER: SessionUser = {
   id: 'uuid-1',
@@ -29,14 +30,7 @@ const USER: SessionUser = {
 
 const SESSION = { user: USER, roles: ['AUTHOR'] as Role[], access: 'access-1' };
 
-const ENVELOPE_401 = {
-  error: {
-    code: 'AUTH_INVALID',
-    message: 'Credenciales institucionales inválidas.',
-    details: {},
-    request_id: 'rid-1',
-  },
-};
+const ENVELOPE_401 = errorEnvelope('AUTH_INVALID', 'Credenciales institucionales inválidas.');
 
 const stateWithUrl = (url: string) => ({ url }) as unknown as RouterStateSnapshot;
 
@@ -50,7 +44,7 @@ describe('authGuard', () => {
         provideRouter(routes),
         provideHttpClient(),
         provideHttpClientTesting(),
-        { provide: API_BASE_URL, useValue: '/api/' },
+        { provide: API_BASE_URL, useValue: '/api/v1/' },
       ],
     });
   });
@@ -71,7 +65,7 @@ describe('authGuard', () => {
     const promise = firstValueFrom(guardResult as never);
 
     const httpMock = TestBed.inject(HttpTestingController);
-    httpMock.expectOne('/api/auth/refresh/').flush({
+    httpMock.expectOne('/api/v1/auth/refresh/').flush({
       access: 'access-nuevo',
       user: USER,
       roles: ['AUTHOR'],
@@ -89,7 +83,7 @@ describe('authGuard', () => {
 
     const httpMock = TestBed.inject(HttpTestingController);
     httpMock
-      .expectOne('/api/auth/refresh/')
+      .expectOne('/api/v1/auth/refresh/')
       .flush(ENVELOPE_401, { status: 401, statusText: 'Unauthorized' });
 
     const result = await promise;
@@ -206,7 +200,7 @@ describe('rutas internas con guards (integración)', () => {
         provideRouter(routes),
         provideHttpClient(),
         provideHttpClientTesting(),
-        { provide: API_BASE_URL, useValue: '/api/' },
+        { provide: API_BASE_URL, useValue: '/api/v1/' },
       ],
     });
   });
@@ -250,7 +244,7 @@ describe('rutas internas con guards (integración)', () => {
     // antes de que el guard dispare el refresh.
     await new Promise((resolve) => setTimeout(resolve, 0));
     httpMock
-      .expectOne('/api/auth/refresh/')
+      .expectOne('/api/v1/auth/refresh/')
       .flush(ENVELOPE_401, { status: 401, statusText: 'Unauthorized' });
     await navigation;
 

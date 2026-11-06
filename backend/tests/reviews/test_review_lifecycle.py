@@ -39,7 +39,7 @@ from tests.reviews.test_editor_api import make_assignment
 
 pytestmark = pytest.mark.django_db
 
-EDITOR_API = "/api/editor/"
+EDITOR_API = "/api/v1/editor/"
 AREA = "Agronomía"
 
 

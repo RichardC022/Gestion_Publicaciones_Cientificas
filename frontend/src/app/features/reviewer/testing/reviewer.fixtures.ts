@@ -52,7 +52,7 @@ export function buildAssignmentDetail(
       current_version: 1,
     },
     version: { version_number: 1, round_number: 0, submitted_at: '2026-10-20T15:30:00Z' },
-    document_url: '/api/reviewer/assignments/a-1/document/',
+    document_url: '/api/v1/reviewer/assignments/a-1/document/',
     ...overrides,
   };
 }

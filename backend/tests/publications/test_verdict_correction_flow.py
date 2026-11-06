@@ -93,7 +93,7 @@ def enable(admin, verdict, commits=None) -> VerdictCorrection:
 def post_verdict(user, manuscript, body, *, key="correccion-1", if_match=None):
     manuscript.refresh_from_db()
     return client_for(user).post(
-        f"/api/editor/manuscripts/{manuscript.pk}/verdicts/",
+        f"/api/v1/editor/manuscripts/{manuscript.pk}/verdicts/",
         body,
         format="json",
         HTTP_IDEMPOTENCY_KEY=key,
@@ -165,7 +165,7 @@ class TestConsumption:
         assert authorization.consumed_by_verdict_id == new.pk
         entry = CatalogEntry.objects.get(manuscript=manuscript, is_active=True)
         assert catalog_path(entry.public_file_path).is_file()
-        assert APIClient().get(f"/api/catalog/{manuscript.code}/").status_code == 200
+        assert APIClient().get(f"/api/v1/catalog/{manuscript.code}/").status_code == 200
 
     def test_both_decisions_stay_in_the_history(self, editor, admin, commits) -> None:
         original = start(editor, "REJECTED", commits)
@@ -173,7 +173,7 @@ class TestConsumption:
         with commits(execute=True):
             post_verdict(editor, original.manuscript, {"decision": "ACCEPTED"})
 
-        listed = client_for(editor).get(f"/api/editor/manuscripts/{original.manuscript_id}/verdicts/").json()
+        listed = client_for(editor).get(f"/api/v1/editor/manuscripts/{original.manuscript_id}/verdicts/").json()
 
         assert [row["decision"] for row in listed["results"]] == ["REJECTED", "ACCEPTED"]
         event = StatusEvent.objects.filter(manuscript=original.manuscript).latest("id")
@@ -216,9 +216,9 @@ class TestConsumption:
         assert entry.is_active is False and entry.unpublished_at is not None
         assert not copy.exists()
         client = APIClient()
-        assert client.get(f"/api/catalog/{manuscript.code}/").status_code == 404
+        assert client.get(f"/api/v1/catalog/{manuscript.code}/").status_code == 404
         # Ya no es un artículo aceptado: para el público no existe (el 410 es para los dados de baja).
-        assert client.get(f"/api/catalog/{manuscript.code}/document/").status_code == 404
+        assert client.get(f"/api/v1/catalog/{manuscript.code}/document/").status_code == 404
 
     def test_accepted_becomes_requires_corrections_and_opens_a_round(self, editor, admin, commits) -> None:
         original = start(editor, "ACCEPTED", commits)
@@ -303,7 +303,7 @@ class TestConsumption:
         entries = CatalogEntry.objects.filter(manuscript=manuscript)
         assert entries.count() == 2 and entries.filter(is_active=True).count() == 1
         assert catalog_path(entries.get(is_active=True).public_file_path).is_file()
-        assert APIClient().get(f"/api/catalog/{manuscript.code}/").status_code == 200
+        assert APIClient().get(f"/api/v1/catalog/{manuscript.code}/").status_code == 200
 
     def test_a_leftover_public_file_does_not_block_a_new_acceptance(self, editor, admin, commits) -> None:
         original = start(editor, "ACCEPTED", commits)
@@ -496,7 +496,7 @@ class TestEditorSeesTheAuthorization:
     def test_submission_detail_shows_the_active_authorization(self, editor, admin, commits) -> None:
         original = start(editor, "REJECTED", commits)
         client = client_for(editor)
-        url = f"/api/editor/submissions/{original.manuscript_id}/"
+        url = f"/api/v1/editor/submissions/{original.manuscript_id}/"
         assert client.get(url).json()["correction_authorization"] is None
 
         authorization = enable(admin, original)
@@ -521,7 +521,7 @@ class TestSimultaneous:
             return api_task(
                 user,
                 lambda client: client.post(
-                    f"/api/editor/manuscripts/{manuscript.pk}/verdicts/",
+                    f"/api/v1/editor/manuscripts/{manuscript.pk}/verdicts/",
                     {"decision": "ACCEPTED"}, format="json",
                     HTTP_IDEMPOTENCY_KEY=key, HTTP_IF_MATCH='"1"',
                 ),

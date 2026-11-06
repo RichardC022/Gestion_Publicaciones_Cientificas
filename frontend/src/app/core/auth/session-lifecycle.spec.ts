@@ -18,6 +18,7 @@ import { ApiError } from '../models/api-error.model';
 import { Role } from '../models/role.model';
 import { MeResponse, SessionUser } from '../models/session-user.model';
 import { DashboardResponse } from '../models/dashboard.model';
+import { errorEnvelope } from '../testing/api-envelope.fixtures';
 
 /**
  * Suite de aceptación consolidada de la Fase 1 (TSK-28): recorre las
@@ -54,9 +55,7 @@ const ME: MeResponse = {
   navigation: [],
 };
 
-const envelope = (code: string, message: string) => ({
-  error: { code, message, details: {}, request_id: 'rid-1' },
-});
+const envelope = (code: string, message: string) => errorEnvelope(code, message, {}, 'rid-1');
 
 const dashboardOf = (
   roles: Role[],
@@ -85,7 +84,7 @@ describe('Ciclo de vida de la sesión (TSK-28)', () => {
           provideRouter(routes),
           provideHttpClient(),
           provideHttpClientTesting(),
-          { provide: API_BASE_URL, useValue: '/api/' },
+          { provide: API_BASE_URL, useValue: '/api/v1/' },
         ],
       });
       httpMock = TestBed.inject(HttpTestingController);
@@ -102,7 +101,7 @@ describe('Ciclo de vida de la sesión (TSK-28)', () => {
       // 1. Login: la sesión vive solo en la memoria del store.
       let loggedIn = false;
       service.login('INST-0001', 'institucional-123').subscribe({ complete: () => (loggedIn = true) });
-      httpMock.expectOne('/api/auth/login/').flush(LOGIN_SESSION);
+      httpMock.expectOne('/api/v1/auth/login/').flush(LOGIN_SESSION);
       expect(loggedIn).toBe(true);
       expect(store.accessToken()).toBe('access-1');
       storageIsClean();
@@ -110,14 +109,14 @@ describe('Ciclo de vida de la sesión (TSK-28)', () => {
       // 2. Refresh: token nuevo en memoria, nada persistido.
       let refreshed = '';
       service.refreshOnce().subscribe((token) => (refreshed = token));
-      httpMock.expectOne('/api/auth/refresh/').flush(ROTATED_SESSION);
+      httpMock.expectOne('/api/v1/auth/refresh/').flush(ROTATED_SESSION);
       expect(refreshed).toBe('access-2');
       storageIsClean();
 
       // 3. /me: roles releídos; sigue sin persistir nada.
       let me: MeResponse | undefined;
       service.me().subscribe((response) => (me = response));
-      httpMock.expectOne('/api/auth/me/').flush(ME);
+      httpMock.expectOne('/api/v1/auth/me/').flush(ME);
       expect(me?.roles).toEqual(['REVIEWER']);
       expect(store.roles()).toEqual(['REVIEWER']);
       storageIsClean();
@@ -125,7 +124,7 @@ describe('Ciclo de vida de la sesión (TSK-28)', () => {
       // 4. Logout: sesión limpia por completo.
       let loggedOut = false;
       service.logout().subscribe({ complete: () => (loggedOut = true) });
-      httpMock.expectOne('/api/auth/logout/').flush(null, { status: 204, statusText: 'No Content' });
+      httpMock.expectOne('/api/v1/auth/logout/').flush(null, { status: 204, statusText: 'No Content' });
       expect(loggedOut).toBe(true);
       expect(store.isAuthenticated()).toBe(false);
       storageIsClean();
@@ -146,7 +145,7 @@ describe('Ciclo de vida de la sesión (TSK-28)', () => {
             withInterceptors([requestIdInterceptor, authInterceptor, errorInterceptor]),
           ),
           provideHttpClientTesting(),
-          { provide: API_BASE_URL, useValue: '/api/' },
+          { provide: API_BASE_URL, useValue: '/api/v1/' },
         ],
       });
       httpMock = TestBed.inject(HttpTestingController);
@@ -161,15 +160,15 @@ describe('Ciclo de vida de la sesión (TSK-28)', () => {
       expect(router.url).toBe('/app/author/manuscripts');
 
       const failures: ApiError[] = [];
-      client.get('/api/manuscripts/a/').subscribe({ error: (e) => failures.push(e) });
-      client.get('/api/manuscripts/b/').subscribe({ error: (e) => failures.push(e) });
+      client.get('/api/v1/manuscripts/a/').subscribe({ error: (e) => failures.push(e) });
+      client.get('/api/v1/manuscripts/b/').subscribe({ error: (e) => failures.push(e) });
 
       // Ambas peticiones caducan a la vez.
       httpMock
-        .expectOne('/api/manuscripts/a/')
+        .expectOne('/api/v1/manuscripts/a/')
         .flush(envelope('AUTH_INVALID', 'Credenciales inválidas.'), { status: 401, statusText: 'Unauthorized' });
       httpMock
-        .expectOne('/api/manuscripts/b/')
+        .expectOne('/api/v1/manuscripts/b/')
         .flush(envelope('AUTH_INVALID', 'Credenciales inválidas.'), { status: 401, statusText: 'Unauthorized' });
 
       // La ola comparte un ÚNICO refresh, que también falla.
@@ -177,7 +176,7 @@ describe('Ciclo de vida de la sesión (TSK-28)', () => {
         router.events.pipe(filter((event): event is NavigationEnd => event instanceof NavigationEnd)),
       );
       httpMock
-        .expectOne('/api/auth/refresh/')
+        .expectOne('/api/v1/auth/refresh/')
         .flush(envelope('AUTH_INVALID', 'Credenciales inválidas.'), { status: 401, statusText: 'Unauthorized' });
       await navigationDone;
 
@@ -199,7 +198,7 @@ describe('Ciclo de vida de la sesión (TSK-28)', () => {
           provideRouter(routes),
           provideHttpClient(),
           provideHttpClientTesting(),
-          { provide: API_BASE_URL, useValue: '/api/' },
+          { provide: API_BASE_URL, useValue: '/api/v1/' },
         ],
       });
       httpMock = TestBed.inject(HttpTestingController);
@@ -211,7 +210,7 @@ describe('Ciclo de vida de la sesión (TSK-28)', () => {
 
       let fixture = TestBed.createComponent(UnifiedDashboardComponent);
       await fixture.whenStable();
-      httpMock.expectOne('/api/dashboard/').flush(
+      httpMock.expectOne('/api/v1/dashboard/').flush(
         dashboardOf(['AUTHOR', 'REVIEWER'], {
           author: ok({ manuscripts: 3 }),
           reviewer: ok({ pending: 1 }),
@@ -228,7 +227,7 @@ describe('Ciclo de vida de la sesión (TSK-28)', () => {
 
       fixture = TestBed.createComponent(UnifiedDashboardComponent);
       await fixture.whenStable();
-      httpMock.expectOne('/api/dashboard/').flush(
+      httpMock.expectOne('/api/v1/dashboard/').flush(
         dashboardOf(['REVIEWER'], { reviewer: ok({ pending: 1 }) }),
       );
       await fixture.whenStable();

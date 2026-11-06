@@ -32,7 +32,7 @@ from tests.reviews.test_editor_api import AREA, make_assignment, make_reviewer, 
 
 pytestmark = pytest.mark.django_db
 
-BASE = "/api/editor/"
+BASE = "/api/v1/editor/"
 
 
 @pytest.fixture(autouse=True)
@@ -268,7 +268,7 @@ class TestWithdrawalRevokesTheAssignment:
     def withdraw(self, user, manuscript, callbacks, reason="El autor retira el trabajo."):
         with callbacks(execute=True):
             return client_for(user).post(
-                f"/api/manuscripts/{manuscript.pk}/withdraw/", {"reason": reason}, format="json"
+                f"/api/v1/manuscripts/{manuscript.pk}/withdraw/", {"reason": reason}, format="json"
             )
 
     def test_the_active_assignment_is_revoked_by_the_system(

@@ -23,11 +23,12 @@ import {
   buildEventPage,
 } from '../testing/audit.fixtures';
 import { AuditLogListComponent, PAGE_SIZE } from './audit-log-list.component';
+import { errorEnvelope } from '../../../core/testing/api-envelope.fixtures';
 
 @Component({ template: '' })
 class BlankComponent {}
 
-const LIST = '/api/admin/audit/';
+const LIST = '/api/v1/admin/audit/';
 
 describe('AuditLogListComponent', () => {
   let http: HttpTestingController;
@@ -42,7 +43,7 @@ describe('AuditLogListComponent', () => {
         ]),
         provideHttpClient(withInterceptors([authInterceptor, errorInterceptor])),
         provideHttpClientTesting(),
-        { provide: API_BASE_URL, useValue: '/api/' },
+        { provide: API_BASE_URL, useValue: '/api/v1/' },
       ],
     });
     http = TestBed.inject(HttpTestingController);
@@ -244,7 +245,7 @@ describe('AuditLogListComponent', () => {
       const { element, settle } = await open();
 
       listRequest().flush(
-        { error: { code: 'FORBIDDEN', message: 'No autorizado.' } },
+        errorEnvelope('FORBIDDEN', 'No autorizado.'),
         { status: 403, statusText: 'Forbidden' },
       );
       await settle();
@@ -268,7 +269,7 @@ describe('AuditLogListComponent', () => {
     it('un 503 (auditoría no disponible) permite reintentar', async () => {
       const { element, settle } = await open();
       listRequest().flush(
-        { error: { code: 'AUDIT_UNAVAILABLE', message: 'No disponible.' } },
+        errorEnvelope('AUDIT_UNAVAILABLE', 'No disponible.'),
         { status: 503, statusText: 'Service Unavailable' },
       );
       await settle();

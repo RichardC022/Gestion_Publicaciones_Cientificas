@@ -1,6 +1,6 @@
 """Normal verdict flow: decision, state change and publication (TSK-51).
 
-``register_verdict`` is ``POST /api/editor/manuscripts/{id}/verdicts/``
+``register_verdict`` is ``POST /api/v1/editor/manuscripts/{id}/verdicts/``
 without the HTTP layer. In ONE transaction, under the manuscript lock,
 it checks the preconditions, appends the :class:`Verdict`, moves the
 manuscript to its new state and, by decision:

@@ -30,7 +30,7 @@ from apps.users.services.auth import (
 
 pytestmark = pytest.mark.django_db
 
-LOGIN_URL = "/api/auth/login/"
+LOGIN_URL = "/api/v1/auth/login/"
 CORRECT_PASSWORD = "institucional-123"
 WRONG_PASSWORD = "secreto-equivocado-XYZ"
 

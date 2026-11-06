@@ -1,22 +1,16 @@
 import { HttpErrorResponse } from '@angular/common/http';
 
+import { errorEnvelope, validationEnvelope } from '../testing/api-envelope.fixtures';
 import { ApiError, isApiError, toApiError } from './api-error.model';
 
-const ENVELOPE_401 = {
-  error: {
-    code: 'AUTH_INVALID',
-    message: 'Credenciales institucionales inválidas.',
-    details: {},
-    request_id: 'rid-1',
-  },
-};
+const ENVELOPE_401 = errorEnvelope('AUTH_INVALID', 'Credenciales institucionales inválidas.');
 
 describe('toApiError', () => {
   it('un 401 del backend conserva el mensaje genérico del envelope', () => {
     const error = new HttpErrorResponse({
       status: 401,
       statusText: 'Unauthorized',
-      url: '/api/auth/login/',
+      url: '/api/v1/auth/login/',
       error: ENVELOPE_401,
     });
 
@@ -64,5 +58,28 @@ describe('toApiError', () => {
 
     expect(apiError.status).toBe(0);
     expect(apiError.userMessage).toContain('No fue posible conectar');
+  });
+});
+
+describe('toApiError con errores de validación por campo', () => {
+  it('reconstruye details como { campo: detalle } desde errors', () => {
+    const error = new HttpErrorResponse({
+      status: 400,
+      statusText: 'Bad Request',
+      url: '/api/v1/manuscripts/',
+      error: validationEnvelope({
+        title: ['Este campo es obligatorio.'],
+        authors: [{ name: ['Requerido.'] }],
+      }),
+    });
+
+    const apiError = toApiError(error);
+
+    expect(apiError.code).toBe('VALIDATION_ERROR');
+    expect(apiError.details).toEqual({
+      title: ['Este campo es obligatorio.'],
+      authors: [{ name: ['Requerido.'] }],
+    });
+    expect(apiError.requestId).toBe('rid-1');
   });
 });

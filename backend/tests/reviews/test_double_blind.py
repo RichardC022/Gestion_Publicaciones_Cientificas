@@ -56,8 +56,8 @@ from tests.reviews.test_editor_api import make_reviewer
 
 pytestmark = pytest.mark.django_db
 
-REVIEWER_BASE = "/api/reviewer/"
-EDITOR_BASE = "/api/editor/"
+REVIEWER_BASE = "/api/v1/reviewer/"
+EDITOR_BASE = "/api/v1/editor/"
 
 OWNER_NAME = ("Beatriz", "Autorreservada")
 COAUTHOR_NAME = "Carlos Coautor Reservado"
@@ -292,7 +292,7 @@ def cycle(media_root, submit, django_capture_on_commit_callbacks) -> Cycle:
             manuscript_url(manuscript),
             f"{manuscript_url(manuscript)}history/",
             f"{manuscript_url(manuscript)}versions/",
-            "/api/manuscripts/",
+            "/api/v1/manuscripts/",
         ):
             response = author_client.get(url)
             assert response.status_code == 200, url

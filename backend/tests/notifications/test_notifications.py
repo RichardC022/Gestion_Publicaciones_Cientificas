@@ -409,7 +409,7 @@ class TestNoCrossIdentityLeak:
         announce(assignment_created, assignment_id=assignment.pk, manuscript_id=assignment.manuscript_id,
                  reviewer_id=reviewer.pk, assigned_by_id=editor.pk)
 
-        response = client_for(reviewer).get("/api/notifications/")
+        response = client_for(reviewer).get("/api/v1/notifications/")
 
         assert response.status_code == 200
         for secret in AUTHOR_SECRETS:
@@ -442,11 +442,11 @@ class TestPanelIndependentOfMail:
             call_command("send_pending_notifications")
 
         assert [n.status for n in mails(reviewer)] == ["FAILED"]
-        assert client_for(reviewer).get("/api/notifications/").json()["count"] == 1
+        assert client_for(reviewer).get("/api/v1/notifications/").json()["count"] == 1
 
 
 class TestApi:
-    URL = "/api/notifications/"
+    URL = "/api/v1/notifications/"
 
     def make(self, user, key="k1", read=False, **overrides):
         return Notification.objects.create(
@@ -550,12 +550,12 @@ class TestEndToEnd:
 
         (notice,) = panel(author, event_type="VERDICT_REGISTERED")
         assert "Justificación interna" not in text_of([notice])
-        assert client_for(author).get("/api/notifications/").json()["unread_count"] == 1
+        assert client_for(author).get("/api/v1/notifications/").json()["unread_count"] == 1
 
     def test_withdrawing_notifies_the_reviewer_and_the_editor(self, assignment, author, reviewer, editor, django_capture_on_commit_callbacks) -> None:
         with django_capture_on_commit_callbacks(execute=True):
             response = client_for(author).post(
-                f"/api/manuscripts/{assignment.manuscript_id}/withdraw/",
+                f"/api/v1/manuscripts/{assignment.manuscript_id}/withdraw/",
                 {"reason": "Retiro por decisión de los autores."},
                 format="json",
             )

@@ -9,7 +9,7 @@ import { DashboardResponse } from '../models/dashboard.model';
 /**
  * Panel unificado en una sola respuesta (plan secciones 2.2 y 3.4).
  *
- * Una única llamada a `GET /api/dashboard/` devuelve todas las
+ * Una única llamada a `GET /api/v1/dashboard/` devuelve todas las
  * secciones habilitadas por los roles activos; el panel nunca exige
  * elegir rol y ninguna vista vuelve a pedir el panel por sección.
  */

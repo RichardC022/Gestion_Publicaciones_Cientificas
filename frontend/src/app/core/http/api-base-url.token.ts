@@ -5,7 +5,7 @@ import { InjectionToken } from '@angular/core';
  *
  * El valor proviene de los archivos de entorno (`src/environments/`) y
  * se registra en `app.config.ts`; los componentes y servicios nunca
- * codifican la URL. Debe terminar en `/` (por ejemplo `/api/`) para que
+ * codifican la URL. Debe terminar en `/` (por ejemplo `/api/v1/`) para que
  * los servicios concatenen rutas relativas.
  */
 export const API_BASE_URL = new InjectionToken<string>('API_BASE_URL');

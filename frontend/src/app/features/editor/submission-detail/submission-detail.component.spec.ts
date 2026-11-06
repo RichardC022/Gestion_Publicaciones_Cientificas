@@ -18,7 +18,7 @@ import {
 } from '../testing/editor.fixtures';
 import { SubmissionDetailComponent } from './submission-detail.component';
 
-const DETAIL_URL = '/api/editor/submissions/s-1/';
+const DETAIL_URL = '/api/v1/editor/submissions/s-1/';
 
 const emptyPage = <T>(results: T[] = []) => ({ count: results.length, next: null, previous: null, results });
 
@@ -50,7 +50,7 @@ describe('SubmissionDetailComponent', () => {
         ]),
         provideHttpClient(),
         provideHttpClientTesting(),
-        { provide: API_BASE_URL, useValue: '/api/' },
+        { provide: API_BASE_URL, useValue: '/api/v1/' },
       ],
     });
     http = TestBed.inject(HttpTestingController);
@@ -61,10 +61,10 @@ describe('SubmissionDetailComponent', () => {
   /** Responde las peticiones de evaluaciones y veredictos que haya pendientes. */
   const answerVerdictData = () => {
     http
-      .match((r) => r.url === '/api/editor/manuscripts/s-1/evaluations/')
+      .match((r) => r.url === '/api/v1/editor/manuscripts/s-1/evaluations/')
       .forEach((r) => r.flush(emptyPage(verdictData.evaluations)));
     http
-      .match((r) => r.method === 'GET' && r.url === '/api/editor/manuscripts/s-1/verdicts/')
+      .match((r) => r.method === 'GET' && r.url === '/api/v1/editor/manuscripts/s-1/verdicts/')
       .forEach((r) => r.flush(emptyPage(verdictData.verdicts)));
   };
 
@@ -148,7 +148,7 @@ describe('SubmissionDetailComponent', () => {
       expect(versions).toContain('Vigente');
       const html = element.innerHTML;
       expect(html).not.toContain('file_url');
-      expect(html).not.toContain('/api/manuscripts/s-1/versions');
+      expect(html).not.toContain('/api/v1/manuscripts/s-1/versions');
       expect(html).not.toContain('/private/');
     });
 
@@ -221,7 +221,7 @@ describe('SubmissionDetailComponent', () => {
   });
 
   describe('paso a revisión', () => {
-    const START_URL = '/api/editor/submissions/s-1/start-review/';
+    const START_URL = '/api/v1/editor/submissions/s-1/start-review/';
 
     it('solo se ofrece a un envío enviado y activo', async () => {
       const { element } = await open();
@@ -327,8 +327,8 @@ describe('SubmissionDetailComponent', () => {
   });
 
   describe('Revisor', () => {
-    const REVIEWERS = '/api/editor/reviewers/';
-    const ASSIGN_URL = '/api/editor/manuscripts/s-1/assignments/';
+    const REVIEWERS = '/api/v1/editor/reviewers/';
+    const ASSIGN_URL = '/api/v1/editor/manuscripts/s-1/assignments/';
     const underReview = (overrides: Partial<SubmissionDetail> = {}) =>
       open({ status: 'UNDER_REVIEW', ...overrides });
 
@@ -497,7 +497,7 @@ describe('SubmissionDetailComponent', () => {
     });
 
     describe('revocar', () => {
-      const REVOKE_URL = '/api/editor/assignments/a-1/revoke/';
+      const REVOKE_URL = '/api/v1/editor/assignments/a-1/revoke/';
 
       it('pide causa y motivo, revoca y refleja el estado', async () => {
         const { element, settle } = await underReview({ open_assignment: buildAssignment() });
@@ -565,7 +565,7 @@ describe('SubmissionDetailComponent', () => {
   });
 
   describe('veredicto', () => {
-    const VERDICT_URL = '/api/editor/manuscripts/s-1/verdicts/';
+    const VERDICT_URL = '/api/v1/editor/manuscripts/s-1/verdicts/';
     const verdictSection = (element: HTMLElement) => element.querySelector('app-verdict-form');
 
     it('no aparece mientras el envío solo está enviado', async () => {
@@ -805,7 +805,7 @@ describe('SubmissionDetailComponent', () => {
 
       button(element, 'Descargar PDF')!.click();
       await settle();
-      const request = http.expectOne('/api/manuscripts/s-1/versions/v-1/file/');
+      const request = http.expectOne('/api/v1/manuscripts/s-1/versions/v-1/file/');
       expect(request.request.responseType).toBe('blob');
       request.flush(new Blob(['%PDF-1.7'], { type: 'application/pdf' }), {
         headers: { 'Content-Disposition': 'attachment; filename="GPC-2026-000001-v1.pdf"' },
@@ -821,7 +821,7 @@ describe('SubmissionDetailComponent', () => {
       button(element, 'Descargar PDF')!.click();
       await settle();
       http
-        .expectOne('/api/manuscripts/s-1/versions/v-1/file/')
+        .expectOne('/api/v1/manuscripts/s-1/versions/v-1/file/')
         .flush(new Blob([JSON.stringify(errorEnvelope('AUDIT_UNAVAILABLE', 'Auditoría no disponible.'))]), {
           status: 503,
           statusText: 'Service Unavailable',

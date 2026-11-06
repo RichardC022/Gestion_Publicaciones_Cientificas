@@ -269,7 +269,7 @@ Inspecciona los logs del backend:
 docker compose logs backend
 ```
 
-El endpoint de salud responde en `https://<host>/api/health/` (`{"status":"ok"}`); `docker compose ps` debe mostrar `backend` como `healthy`. La verificación completa del despliegue (restauración, puertos, TLS y cabeceras) es `./scripts/verify_pilot.sh` (sección 10.5).
+El endpoint de salud responde en `https://<host>/api/health/` (también en `/api/v1/health/`; responde con el contrato universal, `{"success":true,…,"data":{"status":"ok"},…}`); `docker compose ps` debe mostrar `backend` como `healthy`. La verificación completa del despliegue (restauración, puertos, TLS y cabeceras) es `./scripts/verify_pilot.sh` (sección 10.5).
 
 ---
 
@@ -351,7 +351,7 @@ docker compose exec backend python manage.py collectstatic --noinput
 
 ### 5.6 Django Admin (deshabilitado en producción)
 
-En producción **no hay Django Admin**: `/admin/` (y sus estáticos) responde `404`, tanto en Nginx como en Django, y ninguna variable de entorno lo enciende (D-31). Las cuentas se crean con `manage.py create_user` (§3.8) y el flujo funcional se expone por `/api/` y se consume desde Angular. Solo el entorno de desarrollo local (`config.settings.development`) lo monta, para inspeccionar datos con `createsuperuser`; ahí se apaga con `ADMIN_ENABLED=0`.
+En producción **no hay Django Admin**: `/admin/` (y sus estáticos) responde `404`, tanto en Nginx como en Django, y ninguna variable de entorno lo enciende (D-31). Las cuentas se crean con `manage.py create_user` (§3.8) y el flujo funcional se expone por `/api/v1/` y se consume desde Angular. Solo el entorno de desarrollo local (`config.settings.development`) lo monta, para inspeccionar datos con `createsuperuser`; ahí se apaga con `ADMIN_ENABLED=0`.
 
 ---
 

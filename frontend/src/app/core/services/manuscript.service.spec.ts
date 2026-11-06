@@ -38,7 +38,7 @@ describe('ManuscriptService', () => {
       providers: [
         provideHttpClient(),
         provideHttpClientTesting(),
-        { provide: API_BASE_URL, useValue: '/api/' },
+        { provide: API_BASE_URL, useValue: '/api/v1/' },
       ],
     });
     service = TestBed.inject(ManuscriptService);
@@ -48,11 +48,11 @@ describe('ManuscriptService', () => {
   afterEach(() => http.verify());
 
   describe('list', () => {
-    it('consulta /api/manuscripts/ sin parámetros vacíos', () => {
+    it('consulta /api/v1/manuscripts/ sin parámetros vacíos', () => {
       let result: unknown;
       service.list({}).subscribe((page) => (result = page));
 
-      const request = http.expectOne('/api/manuscripts/');
+      const request = http.expectOne('/api/v1/manuscripts/');
       expect(request.request.method).toBe('GET');
       expect(request.request.params.keys()).toEqual([]);
       request.flush(buildPage([buildManuscript()]));
@@ -72,7 +72,7 @@ describe('ManuscriptService', () => {
         })
         .subscribe();
 
-      const request = http.expectOne((r) => r.url === '/api/manuscripts/');
+      const request = http.expectOne((r) => r.url === '/api/v1/manuscripts/');
       expect(request.request.params.get('status')).toBe('DRAFT');
       expect(request.request.params.get('date_from')).toBe('2026-10-01');
       expect(request.request.params.has('date_to')).toBe(false);
@@ -85,7 +85,7 @@ describe('ManuscriptService', () => {
     it('no envía archived cuando es falso', () => {
       service.list({ archived: false }).subscribe();
 
-      const request = http.expectOne((r) => r.url === '/api/manuscripts/');
+      const request = http.expectOne((r) => r.url === '/api/v1/manuscripts/');
       expect(request.request.params.has('archived')).toBe(false);
       request.flush(buildPage([]));
     });
@@ -96,7 +96,7 @@ describe('ManuscriptService', () => {
       let snapshot: { manuscript: { id: string }; etag: string | null } | undefined;
       service.get('m-1').subscribe((value) => (snapshot = value));
 
-      const request = http.expectOne('/api/manuscripts/m-1/');
+      const request = http.expectOne('/api/v1/manuscripts/m-1/');
       expect(request.request.method).toBe('GET');
       request.flush(buildManuscript(), { headers: { ETag: '"3"' } });
 
@@ -108,7 +108,7 @@ describe('ManuscriptService', () => {
       let etag: string | null | undefined;
       service.get('m-1').subscribe((value) => (etag = value.etag));
 
-      http.expectOne('/api/manuscripts/m-1/').flush(buildManuscript());
+      http.expectOne('/api/v1/manuscripts/m-1/').flush(buildManuscript());
 
       expect(etag).toBeNull();
     });
@@ -119,7 +119,7 @@ describe('ManuscriptService', () => {
       let snapshot: { etag: string | null } | undefined;
       service.create(PAYLOAD).subscribe((value) => (snapshot = value));
 
-      const request = http.expectOne('/api/manuscripts/');
+      const request = http.expectOne('/api/v1/manuscripts/');
       expect(request.request.method).toBe('POST');
       expect(request.request.body).toEqual(PAYLOAD);
       request.flush(buildManuscript({ id: 'nuevo' }), {
@@ -136,7 +136,7 @@ describe('ManuscriptService', () => {
     it('edita por PATCH reenviando el ETag en If-Match', () => {
       service.update('m-1', PAYLOAD, '"2"').subscribe();
 
-      const request = http.expectOne('/api/manuscripts/m-1/');
+      const request = http.expectOne('/api/v1/manuscripts/m-1/');
       expect(request.request.method).toBe('PATCH');
       expect(request.request.headers.get('If-Match')).toBe('"2"');
       expect(request.request.body).toEqual(PAYLOAD);
@@ -150,7 +150,7 @@ describe('ManuscriptService', () => {
       service.get('ajeno').subscribe({ error: (e: ApiError) => (error = e) });
 
       http
-        .expectOne('/api/manuscripts/ajeno/')
+        .expectOne('/api/v1/manuscripts/ajeno/')
         .flush(errorEnvelope('NOT_FOUND', 'No encontrado.'), {
           status: 404,
           statusText: 'Not Found',
@@ -165,7 +165,7 @@ describe('ManuscriptService', () => {
       let error: ApiError | undefined;
       service.create(PAYLOAD).subscribe({ error: (e: ApiError) => (error = e) });
 
-      http.expectOne('/api/manuscripts/').flush(
+      http.expectOne('/api/v1/manuscripts/').flush(
         errorEnvelope('VALIDATION_ERROR', 'Los datos enviados no son válidos.', {
           authors: ['Debe indicar exactamente un autor responsable.'],
         }),
@@ -182,7 +182,7 @@ describe('ManuscriptService', () => {
       service.update('m-1', PAYLOAD, '"0"').subscribe({ error: (e: ApiError) => (error = e) });
 
       http
-        .expectOne('/api/manuscripts/m-1/')
+        .expectOne('/api/v1/manuscripts/m-1/')
         .flush(errorEnvelope('VERSION_CONFLICT', 'El manuscrito cambió.', { lock_version: 1 }), {
           status: 409,
           statusText: 'Conflict',
@@ -203,7 +203,7 @@ describe('ManuscriptService', () => {
     it('envía el archivo en el campo «file» de un multipart sin fijar Content-Type', () => {
       service.uploadDraft('m-1', FILE).subscribe();
 
-      const request = http.expectOne('/api/manuscripts/m-1/draft-file/');
+      const request = http.expectOne('/api/v1/manuscripts/m-1/draft-file/');
       expect(request.request.method).toBe('POST');
       expect(request.request.reportProgress).toBe(true);
       const body = request.request.body as FormData;
@@ -218,7 +218,7 @@ describe('ManuscriptService', () => {
       const events: DraftUploadEvent[] = [];
       service.uploadDraft('m-1', FILE).subscribe((event) => events.push(event));
 
-      const request = http.expectOne('/api/manuscripts/m-1/draft-file/');
+      const request = http.expectOne('/api/v1/manuscripts/m-1/draft-file/');
       request.event({ type: HttpEventType.Sent });
       request.event({ type: HttpEventType.UploadProgress, loaded: 50, total: 200 });
       request.event({ type: HttpEventType.UploadProgress, loaded: 200, total: 200 });
@@ -235,7 +235,7 @@ describe('ManuscriptService', () => {
       const events: DraftUploadEvent[] = [];
       service.uploadDraft('m-1', FILE).subscribe((event) => events.push(event));
 
-      const request = http.expectOne('/api/manuscripts/m-1/draft-file/');
+      const request = http.expectOne('/api/v1/manuscripts/m-1/draft-file/');
       request.event({ type: HttpEventType.UploadProgress, loaded: 50 });
       request.flush(SUMMARY, { status: 201, statusText: 'Created' });
 
@@ -246,7 +246,7 @@ describe('ManuscriptService', () => {
       const events: DraftUploadEvent[] = [];
       service.uploadDraft('m-1', FILE).subscribe((event) => events.push(event));
 
-      const request = http.expectOne('/api/manuscripts/m-1/draft-file/');
+      const request = http.expectOne('/api/v1/manuscripts/m-1/draft-file/');
       request.event({ type: HttpEventType.UploadProgress, loaded: 300, total: 200 });
       request.flush(SUMMARY, { status: 201, statusText: 'Created' });
 
@@ -258,7 +258,7 @@ describe('ManuscriptService', () => {
       service.uploadDraft('m-1', FILE).subscribe((event) => (done = event));
 
       http
-        .expectOne('/api/manuscripts/m-1/draft-file/')
+        .expectOne('/api/v1/manuscripts/m-1/draft-file/')
         .flush(SUMMARY, { status: 200, statusText: 'OK' });
 
       expect(done).toEqual({ kind: 'done', draft: SUMMARY, replaced: true });
@@ -266,7 +266,7 @@ describe('ManuscriptService', () => {
 
     it('cancelar la suscripción aborta la solicitud', () => {
       const subscription = service.uploadDraft('m-1', FILE).subscribe();
-      const request = http.expectOne('/api/manuscripts/m-1/draft-file/');
+      const request = http.expectOne('/api/v1/manuscripts/m-1/draft-file/');
 
       subscription.unsubscribe();
 
@@ -283,7 +283,7 @@ describe('ManuscriptService', () => {
       service.uploadDraft('m-1', FILE).subscribe({ error: (e: ApiError) => (error = e) });
 
       http
-        .expectOne('/api/manuscripts/m-1/draft-file/')
+        .expectOne('/api/v1/manuscripts/m-1/draft-file/')
         .flush(errorEnvelope(code, 'Mensaje del servidor.'), { status, statusText: 'Error' });
 
       expect(error?.status).toBe(status);
@@ -295,7 +295,7 @@ describe('ManuscriptService', () => {
     it('pide la primera página con 100 eventos y sin parámetro page', () => {
       service.getHistory('m-1').subscribe();
 
-      const request = http.expectOne((r) => r.url === '/api/manuscripts/m-1/history/');
+      const request = http.expectOne((r) => r.url === '/api/v1/manuscripts/m-1/history/');
       expect(request.request.method).toBe('GET');
       expect(request.request.params.get('page_size')).toBe('100');
       expect(request.request.params.has('page')).toBe(false);
@@ -305,7 +305,7 @@ describe('ManuscriptService', () => {
     it('pide páginas posteriores con page', () => {
       service.getHistory('m-1', 3, 50).subscribe();
 
-      const request = http.expectOne((r) => r.url === '/api/manuscripts/m-1/history/');
+      const request = http.expectOne((r) => r.url === '/api/v1/manuscripts/m-1/history/');
       expect(request.request.params.get('page')).toBe('3');
       expect(request.request.params.get('page_size')).toBe('50');
       request.flush({ count: 0, next: null, previous: null, results: [] });
@@ -316,7 +316,7 @@ describe('ManuscriptService', () => {
       service.getHistory('ajeno').subscribe({ error: (e: ApiError) => (error = e) });
 
       http
-        .expectOne((r) => r.url === '/api/manuscripts/ajeno/history/')
+        .expectOne((r) => r.url === '/api/v1/manuscripts/ajeno/history/')
         .flush(errorEnvelope('NOT_FOUND', 'No encontrado.'), {
           status: 404,
           statusText: 'Not Found',
@@ -333,7 +333,7 @@ describe('ManuscriptService', () => {
       let result: { blob: Blob; filename: string } | undefined;
       service.downloadVersion('m-1', 'v-9', 'respaldo.pdf').subscribe((value) => (result = value));
 
-      const request = http.expectOne('/api/manuscripts/m-1/versions/v-9/file/');
+      const request = http.expectOne('/api/v1/manuscripts/m-1/versions/v-9/file/');
       expect(request.request.method).toBe('GET');
       expect(request.request.responseType).toBe('blob');
       request.flush(PDF, {
@@ -350,7 +350,7 @@ describe('ManuscriptService', () => {
         .downloadVersion('m-1', 'v-9', 'respaldo.pdf')
         .subscribe((value) => (filename = value.filename));
 
-      http.expectOne('/api/manuscripts/m-1/versions/v-9/file/').flush(PDF);
+      http.expectOne('/api/v1/manuscripts/m-1/versions/v-9/file/').flush(PDF);
 
       expect(filename).toBe('respaldo.pdf');
     });
@@ -368,7 +368,7 @@ describe('ManuscriptService', () => {
         },
       );
       http
-        .expectOne('/api/manuscripts/m-1/versions/v-9/file/')
+        .expectOne('/api/v1/manuscripts/m-1/versions/v-9/file/')
         .flush(body, { status: 503, statusText: 'Service Unavailable' });
       await vi.waitFor(() => expect(error).toBeDefined());
 
@@ -384,7 +384,7 @@ describe('ManuscriptService', () => {
         .subscribe({ error: (e: ApiError) => (error = e) });
 
       http
-        .expectOne('/api/manuscripts/m-1/versions/v-9/file/')
+        .expectOne('/api/v1/manuscripts/m-1/versions/v-9/file/')
         .flush(new Blob([JSON.stringify(errorEnvelope('NOT_FOUND', 'No encontrado.'))]), {
           status: 404,
           statusText: 'Not Found',
@@ -402,7 +402,7 @@ describe('ManuscriptService', () => {
         .subscribe({ error: (e: ApiError) => (error = e) });
 
       http
-        .expectOne('/api/manuscripts/m-1/versions/v-9/file/')
+        .expectOne('/api/v1/manuscripts/m-1/versions/v-9/file/')
         .flush(new Blob(['<html>Bad Gateway</html>']), { status: 502, statusText: 'Bad Gateway' });
       await vi.waitFor(() => expect(error).toBeDefined());
 
@@ -416,7 +416,7 @@ describe('ManuscriptService', () => {
       let snapshot: { manuscript: { is_active: boolean }; etag: string | null } | undefined;
       service.withdraw('m-1', 'Ya no deseo continuar.').subscribe((value) => (snapshot = value));
 
-      const request = http.expectOne('/api/manuscripts/m-1/withdraw/');
+      const request = http.expectOne('/api/v1/manuscripts/m-1/withdraw/');
       expect(request.request.method).toBe('POST');
       expect(request.request.body).toEqual({ reason: 'Ya no deseo continuar.' });
       request.flush(buildManuscript({ is_active: false }), { headers: { ETag: '"5"' } });
@@ -428,7 +428,7 @@ describe('ManuscriptService', () => {
     it('sin motivo envía un cuerpo vacío', () => {
       service.withdraw('m-1', null).subscribe();
 
-      const request = http.expectOne('/api/manuscripts/m-1/withdraw/');
+      const request = http.expectOne('/api/v1/manuscripts/m-1/withdraw/');
       expect(request.request.body).toEqual({});
       request.flush(buildManuscript({ is_active: false }));
     });
@@ -437,7 +437,7 @@ describe('ManuscriptService', () => {
       let error: ApiError | undefined;
       service.withdraw('m-1', null).subscribe({ error: (e: ApiError) => (error = e) });
 
-      http.expectOne('/api/manuscripts/m-1/withdraw/').flush(
+      http.expectOne('/api/v1/manuscripts/m-1/withdraw/').flush(
         errorEnvelope('VALIDATION_ERROR', 'Indique el motivo.', {
           reason: ['Indique el motivo de la baja.'],
         }),
@@ -452,7 +452,7 @@ describe('ManuscriptService', () => {
       service.withdraw('m-1', null).subscribe({ error: (e: ApiError) => (error = e) });
 
       http
-        .expectOne('/api/manuscripts/m-1/withdraw/')
+        .expectOne('/api/v1/manuscripts/m-1/withdraw/')
         .flush(errorEnvelope('STATE_CONFLICT', 'Ya dado de baja.'), {
           status: 409,
           statusText: 'Conflict',
@@ -476,7 +476,7 @@ describe('ManuscriptService', () => {
       let result: SubmissionResult | undefined;
       service.submit('m-1', 'clave-unica-1').subscribe((value) => (result = value));
 
-      const request = http.expectOne('/api/manuscripts/m-1/submit/');
+      const request = http.expectOne('/api/v1/manuscripts/m-1/submit/');
       expect(request.request.method).toBe('POST');
       expect(request.request.body).toBeNull();
       expect(request.request.headers.get('Idempotency-Key')).toBe('clave-unica-1');
@@ -489,7 +489,7 @@ describe('ManuscriptService', () => {
       service.submit('m-1', 'misma-clave').subscribe();
       service.submit('m-1', 'misma-clave').subscribe();
 
-      const requests = http.match('/api/manuscripts/m-1/submit/');
+      const requests = http.match('/api/v1/manuscripts/m-1/submit/');
       expect(requests.map((r) => r.request.headers.get('Idempotency-Key'))).toEqual([
         'misma-clave',
         'misma-clave',
@@ -501,7 +501,7 @@ describe('ManuscriptService', () => {
       let error: ApiError | undefined;
       service.submit('m-1', 'k').subscribe({ error: (e: ApiError) => (error = e) });
 
-      http.expectOne('/api/manuscripts/m-1/submit/').flush(
+      http.expectOne('/api/v1/manuscripts/m-1/submit/').flush(
         errorEnvelope('VALIDATION_ERROR', 'Complete los campos obligatorios.', {
           title: ['Este campo es obligatorio.'],
         }),
@@ -516,7 +516,7 @@ describe('ManuscriptService', () => {
       service.submit('m-1', 'otra').subscribe({ error: (e: ApiError) => (error = e) });
 
       http
-        .expectOne('/api/manuscripts/m-1/submit/')
+        .expectOne('/api/v1/manuscripts/m-1/submit/')
         .flush(errorEnvelope('STATE_CONFLICT', 'Ya enviado.'), {
           status: 409,
           statusText: 'Conflict',
@@ -530,7 +530,7 @@ describe('ManuscriptService', () => {
     it('pide las versiones con 100 por página y sin parámetro page', () => {
       service.listVersions('m-1').subscribe();
 
-      const request = http.expectOne((r) => r.url === '/api/manuscripts/m-1/versions/');
+      const request = http.expectOne((r) => r.url === '/api/v1/manuscripts/m-1/versions/');
       expect(request.request.method).toBe('GET');
       expect(request.request.params.get('page_size')).toBe('100');
       expect(request.request.params.has('page')).toBe(false);
@@ -540,7 +540,7 @@ describe('ManuscriptService', () => {
     it('pide una página posterior con page', () => {
       service.listVersions('m-1', 2, 20).subscribe();
 
-      const request = http.expectOne((r) => r.url === '/api/manuscripts/m-1/versions/');
+      const request = http.expectOne((r) => r.url === '/api/v1/manuscripts/m-1/versions/');
       expect(request.request.params.get('page')).toBe('2');
       expect(request.request.params.get('page_size')).toBe('20');
       request.flush({ count: 0, next: null, previous: null, results: [] });
@@ -551,7 +551,7 @@ describe('ManuscriptService', () => {
       service.listVersions('ajeno').subscribe({ error: (e: ApiError) => (error = e) });
 
       http
-        .expectOne((r) => r.url === '/api/manuscripts/ajeno/versions/')
+        .expectOne((r) => r.url === '/api/v1/manuscripts/ajeno/versions/')
         .flush(errorEnvelope('NOT_FOUND', 'No encontrado.'), {
           status: 404,
           statusText: 'Not Found',
@@ -575,7 +575,7 @@ describe('ManuscriptService', () => {
     it('envía el archivo en «file» con la Idempotency-Key y sin fijar Content-Type', () => {
       service.uploadVersion('m-1', FILE, 'clave-version-1').subscribe();
 
-      const request = http.expectOne('/api/manuscripts/m-1/versions/');
+      const request = http.expectOne('/api/v1/manuscripts/m-1/versions/');
       expect(request.request.method).toBe('POST');
       expect(request.request.reportProgress).toBe(true);
       expect(((request.request.body as FormData).get('file') as File).name).toBe('corregido.pdf');
@@ -588,7 +588,7 @@ describe('ManuscriptService', () => {
       const events: VersionUploadEvent[] = [];
       service.uploadVersion('m-1', FILE, 'k').subscribe((event) => events.push(event));
 
-      const request = http.expectOne('/api/manuscripts/m-1/versions/');
+      const request = http.expectOne('/api/v1/manuscripts/m-1/versions/');
       request.event({ type: HttpEventType.Sent });
       request.event({ type: HttpEventType.UploadProgress, loaded: 25, total: 100 });
       request.event({ type: HttpEventType.UploadProgress, loaded: 40 });
@@ -603,7 +603,7 @@ describe('ManuscriptService', () => {
 
     it('cancelar la suscripción aborta la solicitud', () => {
       const subscription = service.uploadVersion('m-1', FILE, 'k').subscribe();
-      const request = http.expectOne('/api/manuscripts/m-1/versions/');
+      const request = http.expectOne('/api/v1/manuscripts/m-1/versions/');
 
       subscription.unsubscribe();
 
@@ -621,7 +621,7 @@ describe('ManuscriptService', () => {
       service.uploadVersion('m-1', FILE, 'k').subscribe({ error: (e: ApiError) => (error = e) });
 
       http
-        .expectOne('/api/manuscripts/m-1/versions/')
+        .expectOne('/api/v1/manuscripts/m-1/versions/')
         .flush(errorEnvelope(code, 'Mensaje.'), { status, statusText: 'Error' });
 
       expect(error?.status).toBe(status);

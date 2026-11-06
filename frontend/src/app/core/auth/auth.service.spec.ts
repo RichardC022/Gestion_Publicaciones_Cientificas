@@ -12,6 +12,7 @@ import { ApiError } from '../models/api-error.model';
 import { LoginResponse } from '../models/session-user.model';
 import { AuthService } from './auth.service';
 import { AuthStore } from './auth.store';
+import { errorEnvelope } from '../testing/api-envelope.fixtures';
 
 @Component({ template: '' })
 class DummyComponent {}
@@ -30,14 +31,7 @@ const SESSION: LoginResponse = {
   roles: ['AUTHOR'],
 };
 
-const ENVELOPE_401 = {
-  error: {
-    code: 'AUTH_INVALID',
-    message: 'Credenciales institucionales inválidas.',
-    details: {},
-    request_id: 'rid-1',
-  },
-};
+const ENVELOPE_401 = errorEnvelope('AUTH_INVALID', 'Credenciales institucionales inválidas.');
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -56,7 +50,7 @@ describe('AuthService', () => {
           { path: 'login', component: DummyComponent },
           { path: 'panel', component: DummyComponent },
         ]),
-        { provide: API_BASE_URL, useValue: '/api/' },
+        { provide: API_BASE_URL, useValue: '/api/v1/' },
       ],
     });
     service = TestBed.inject(AuthService);
@@ -72,7 +66,7 @@ describe('AuthService', () => {
   it('login abre la sesión con withCredentials y sin tocar localStorage', () => {
     service.login('INST-0001', 'secreto-123').subscribe();
 
-    const request = httpMock.expectOne('/api/auth/login/');
+    const request = httpMock.expectOne('/api/v1/auth/login/');
     expect(request.request.method).toBe('POST');
     expect(request.request.withCredentials).toBe(true);
     expect(request.request.body).toEqual({ identifier: 'INST-0001', password: 'secreto-123' });
@@ -88,7 +82,7 @@ describe('AuthService', () => {
     let failure: ApiError | undefined;
     service.login('INST-0001', 'mala').subscribe({ error: (error) => (failure = error) });
 
-    httpMock.expectOne('/api/auth/login/').flush(ENVELOPE_401, { status: 401, statusText: 'Unauthorized' });
+    httpMock.expectOne('/api/v1/auth/login/').flush(ENVELOPE_401, { status: 401, statusText: 'Unauthorized' });
 
     expect(failure?.status).toBe(401);
     expect(failure?.code).toBe('AUTH_INVALID');
@@ -103,7 +97,7 @@ describe('AuthService', () => {
     service.refreshOnce().subscribe((token) => (first = token));
     service.refreshOnce().subscribe((token) => (second = token));
 
-    const refresh = httpMock.expectOne('/api/auth/refresh/');
+    const refresh = httpMock.expectOne('/api/v1/auth/refresh/');
     expect(refresh.request.withCredentials).toBe(true);
     refresh.flush(SESSION);
 
@@ -117,13 +111,13 @@ describe('AuthService', () => {
   it('refreshOnce fallido propaga el error y la próxima ola reintenta', () => {
     let failure: unknown;
     service.refreshOnce().subscribe({ error: (error) => (failure = error) });
-    httpMock.expectOne('/api/auth/refresh/').flush(ENVELOPE_401, { status: 401, statusText: 'Unauthorized' });
+    httpMock.expectOne('/api/v1/auth/refresh/').flush(ENVELOPE_401, { status: 401, statusText: 'Unauthorized' });
     expect(failure).toBeDefined();
 
     // La ola siguiente arranca de cero: hay una nueva petición.
     let secondFailure: unknown;
     service.refreshOnce().subscribe({ error: (error) => (secondFailure = error) });
-    httpMock.expectOne('/api/auth/refresh/').flush(ENVELOPE_401, { status: 401, statusText: 'Unauthorized' });
+    httpMock.expectOne('/api/v1/auth/refresh/').flush(ENVELOPE_401, { status: 401, statusText: 'Unauthorized' });
     expect(secondFailure).toBeDefined();
   });
 
@@ -131,7 +125,7 @@ describe('AuthService', () => {
     let restored = false;
     service.restoreSession().subscribe((result) => (restored = result));
 
-    httpMock.expectOne('/api/auth/refresh/').flush(SESSION);
+    httpMock.expectOne('/api/v1/auth/refresh/').flush(SESSION);
     expect(restored).toBe(true);
     expect(store.isAuthenticated()).toBe(true);
   });
@@ -140,7 +134,7 @@ describe('AuthService', () => {
     let restored = true;
     service.restoreSession().subscribe((result) => (restored = result));
 
-    httpMock.expectOne('/api/auth/refresh/').flush(ENVELOPE_401, { status: 401, statusText: 'Unauthorized' });
+    httpMock.expectOne('/api/v1/auth/refresh/').flush(ENVELOPE_401, { status: 401, statusText: 'Unauthorized' });
 
     expect(restored).toBe(false);
     expect(store.status()).toBe('anonymous');
@@ -149,11 +143,11 @@ describe('AuthService', () => {
 
   it('logout limpia la sesión local', () => {
     service.login('INST-0001', 'secreto-123').subscribe();
-    httpMock.expectOne('/api/auth/login/').flush(SESSION);
+    httpMock.expectOne('/api/v1/auth/login/').flush(SESSION);
     expect(store.isAuthenticated()).toBe(true);
 
     service.logout().subscribe();
-    const request = httpMock.expectOne('/api/auth/logout/');
+    const request = httpMock.expectOne('/api/v1/auth/logout/');
     expect(request.request.withCredentials).toBe(true);
     request.flush(null, { status: 204, statusText: 'No Content' });
 

@@ -711,7 +711,7 @@ class IdempotencyKey(models.Model):
         on_delete=models.PROTECT,
         related_name="idempotency_keys",
     )
-    # Método y ruta de la solicitud: "POST /api/manuscripts/<uuid>/submit/".
+    # Método y ruta de la solicitud: "POST /api/v1/manuscripts/<uuid>/submit/".
     endpoint = models.CharField(max_length=120)
     key = models.CharField(max_length=100)
     request_hash = models.CharField(max_length=SHA256_HEX_LENGTH)

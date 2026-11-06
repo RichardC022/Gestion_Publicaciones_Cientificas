@@ -199,7 +199,7 @@ class EligibleReviewerSerializer(serializers.ModelSerializer):
 
 
 class ReviewerFilterSerializer(serializers.Serializer):
-    """Query string of ``GET /api/editor/reviewers/``."""
+    """Query string of ``GET /api/v1/editor/reviewers/``."""
 
     manuscript_id = serializers.UUIDField(required=False)
     area = serializers.CharField(max_length=120, required=False)
@@ -280,7 +280,7 @@ class VerdictSerializer(serializers.ModelSerializer):
 
 
 class RegisterVerdictSerializer(serializers.Serializer):
-    """Body of ``POST /api/editor/manuscripts/{id}/verdicts/``.
+    """Body of ``POST /api/v1/editor/manuscripts/{id}/verdicts/``.
 
     Only the decision and its texts: the evaluated version, the evaluation
     and the editor come from the manuscript and the session. Whether a

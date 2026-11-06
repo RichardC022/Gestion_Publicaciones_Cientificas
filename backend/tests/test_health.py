@@ -1,11 +1,12 @@
 """Tests for the public health endpoint (TSK-12)."""
 
-import json
 import logging
 import os
 
 import pytest
 from django.test import override_settings
+
+from tests.contract import error_of, success_of
 
 UNAVAILABLE_MESSAGE = "El servicio no está disponible temporalmente."
 
@@ -17,7 +18,7 @@ def test_health_returns_200_with_minimal_payload(client, tmp_path):
         response = client.get("/api/health/", secure=True)
 
     assert response.status_code == 200
-    assert json.loads(response.content) == {"status": "ok"}
+    assert success_of(response)["data"] == {"status": "ok"}
     assert response["X-Request-ID"]
 
 
@@ -34,9 +35,7 @@ def test_health_returns_503_when_database_fails(client, tmp_path, monkeypatch):
         response = client.get("/api/health/", secure=True)
 
     assert response.status_code == 503
-    payload = json.loads(response.content)
-    assert set(payload.keys()) == {"error"}
-    error = payload["error"]
+    error = error_of(response)
     assert error["code"] == "SERVER_ERROR"
     assert error["message"] == UNAVAILABLE_MESSAGE
     assert error["details"] == {}
@@ -55,7 +54,7 @@ def test_health_returns_503_when_volume_is_missing(client, tmp_path, caplog):
             )
 
     assert response.status_code == 503
-    error = json.loads(response.content)["error"]
+    error = error_of(response)
     assert error["code"] == "SERVER_ERROR"
     assert error["message"] == UNAVAILABLE_MESSAGE
     assert error["request_id"] == "rid-health-missing"
@@ -76,5 +75,5 @@ def test_health_returns_503_when_volume_is_read_only(client, tmp_path):
         response = client.get("/api/health/", secure=True)
 
     assert response.status_code == 503
-    error = json.loads(response.content)["error"]
+    error = error_of(response)
     assert error["message"] == UNAVAILABLE_MESSAGE

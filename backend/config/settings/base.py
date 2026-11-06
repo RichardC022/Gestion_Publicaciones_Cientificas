@@ -137,7 +137,7 @@ REFRESH_COOKIE_SAMESITE = "Strict"
 # endpoints de autenticación para que el navegador nunca la envíe al resto
 # de la API.
 REFRESH_COOKIE_NAME = "gpc_refresh"
-REFRESH_COOKIE_PATH = "/api/auth/"
+REFRESH_COOKIE_PATH = "/api/v1/auth/"
 
 # Política de firma de los JWT emitidos con SimpleJWT (plan §6.1). El access
 # token vive solo en memoria del cliente; el refresh token es de uso único:
@@ -187,6 +187,10 @@ REST_FRAMEWORK = {
         "apps.users.authentication.InstitutionalJWTAuthentication",
     ],
     "DEFAULT_PERMISSION_CLASSES": [],
+    # Contrato JSON universal: {success, message, data, errors, meta}.
+    "DEFAULT_RENDERER_CLASSES": [
+        "config.renderers.EnvelopeJSONRenderer",
+    ],
     "DEFAULT_PAGINATION_CLASS": "config.pagination.StandardPagination",
     "EXCEPTION_HANDLER": "config.exceptions.exception_handler",
 }

@@ -26,7 +26,7 @@ describe('Catálogo público (rutas reales)', () => {
         provideRouter(routes),
         provideHttpClient(withInterceptors([authInterceptor, errorInterceptor])),
         provideHttpClientTesting(),
-        { provide: API_BASE_URL, useValue: '/api/' },
+        { provide: API_BASE_URL, useValue: '/api/v1/' },
       ],
     });
     http = TestBed.inject(HttpTestingController);
@@ -49,7 +49,7 @@ describe('Catálogo público (rutas reales)', () => {
     await harness.navigateByUrl('/');
 
     expect(TestBed.inject(Router).url).toBe('/catalog');
-    http.expectOne((r) => r.url === '/api/catalog/').flush(buildArticlePage([]));
+    http.expectOne((r) => r.url === '/api/v1/catalog/').flush(buildArticlePage([]));
   });
 
   it('un visitante anónimo ve el listado y abre la ficha sin ir a /login', async () => {
@@ -57,7 +57,7 @@ describe('Catálogo público (rutas reales)', () => {
     const harness = await RouterTestingHarness.create();
     await harness.navigateByUrl('/catalog');
 
-    const listing = http.expectOne((r) => r.url === '/api/catalog/');
+    const listing = http.expectOne((r) => r.url === '/api/v1/catalog/');
     expect(listing.request.headers.has('Authorization')).toBe(false);
     listing.flush(buildArticlePage([buildArticle()]));
     await harness.fixture.whenStable();
@@ -66,7 +66,7 @@ describe('Catálogo público (rutas reales)', () => {
     await harness.fixture.whenStable();
 
     expect(router.url).toBe('/catalog/GPC-2026-000001');
-    http.expectOne('/api/catalog/GPC-2026-000001/').flush(buildArticle());
+    http.expectOne('/api/v1/catalog/GPC-2026-000001/').flush(buildArticle());
     await harness.fixture.whenStable();
     harness.detectChanges();
     expect(
@@ -91,7 +91,7 @@ describe('Catálogo público (rutas reales)', () => {
     const harness = await RouterTestingHarness.create();
     await harness.navigateByUrl('/catalog');
 
-    const listing = http.expectOne((r) => r.url === '/api/catalog/');
+    const listing = http.expectOne((r) => r.url === '/api/v1/catalog/');
     expect(listing.request.headers.has('Authorization')).toBe(false);
     listing.flush(buildArticlePage([]));
   });

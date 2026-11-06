@@ -49,8 +49,8 @@ from tests.reviews.test_editor_api import make_assignment, make_reviewer, submit
 pytestmark = pytest.mark.django_db
 
 DESCRIPTION = "El PDF menciona la afiliación del grupo de investigación en la página 3."
-REVIEWER_BASE = "/api/reviewer/assignments/"
-EDITOR_BASE = "/api/editor/incidents/"
+REVIEWER_BASE = "/api/v1/reviewer/assignments/"
+EDITOR_BASE = "/api/v1/editor/incidents/"
 
 
 @pytest.fixture
@@ -515,7 +515,7 @@ class TestReassign:
         replacement = make_reviewer()
 
         response = client_for(editor).post(
-            f"/api/editor/manuscripts/{assignment.manuscript_id}/assignments/",
+            f"/api/v1/editor/manuscripts/{assignment.manuscript_id}/assignments/",
             {"reviewer_id": str(replacement.pk)},
             format="json",
         )
@@ -786,7 +786,7 @@ class TestAuthorNeverLearns:
             client.get(manuscript_url(manuscript)),
             client.get(f"{manuscript_url(manuscript)}history/"),
             client.get(f"{manuscript_url(manuscript)}versions/"),
-            client.get("/api/manuscripts/"),
+            client.get("/api/v1/manuscripts/"),
         ]
         assert all(r.status_code == 200 for r in responses)
         return "".join(r.content.decode() + str(r.headers) for r in responses)

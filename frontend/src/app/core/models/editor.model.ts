@@ -8,7 +8,7 @@
 import { HistoryEntry, ManuscriptAuthor, ManuscriptStatus, VersionSummary } from './manuscript.model';
 import { Paginated } from './paginated.model';
 
-/** Fila de la bandeja de nuevos envíos (`GET /api/editor/submissions/`). */
+/** Fila de la bandeja de nuevos envíos (`GET /api/v1/editor/submissions/`). */
 export interface SubmissionRow {
   id: string;
   code: string;
@@ -165,7 +165,7 @@ export const REVOCATION_CAUSES: readonly {
   },
 ];
 
-/** Detalle editorial de un envío (`GET /api/editor/submissions/{id}/`). */
+/** Detalle editorial de un envío (`GET /api/v1/editor/submissions/{id}/`). */
 export interface SubmissionDetail {
   id: string;
   code: string;

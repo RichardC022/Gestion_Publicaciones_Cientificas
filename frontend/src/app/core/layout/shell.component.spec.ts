@@ -12,6 +12,7 @@ import { API_BASE_URL } from '../http/api-base-url.token';
 import { ApiFeedbackStore } from '../http/api-feedback.store';
 import { NotificationService } from '../services/notification.service';
 import { ShellComponent } from './shell.component';
+import { errorEnvelope } from '../testing/api-envelope.fixtures';
 
 describe('ShellComponent', () => {
   let store: AuthStore;
@@ -27,7 +28,7 @@ describe('ShellComponent', () => {
         ]),
         provideHttpClient(),
         provideHttpClientTesting(),
-        { provide: API_BASE_URL, useValue: '/api/' },
+        { provide: API_BASE_URL, useValue: '/api/v1/' },
       ],
     });
     store = TestBed.inject(AuthStore);
@@ -141,7 +142,7 @@ describe('ShellComponent', () => {
     const buttons = Array.from(element.querySelectorAll<HTMLButtonElement>('button'));
     buttons.find((button) => button.textContent?.includes('Cerrar sesión'))?.click();
 
-    httpMock.expectOne('/api/auth/logout/').flush(null, {
+    httpMock.expectOne('/api/v1/auth/logout/').flush(null, {
       status: 204,
       statusText: 'No Content',
     });
@@ -186,7 +187,7 @@ describe('ShellComponent', () => {
       setSession();
       const fixture = await render();
 
-      const request = httpMock.expectOne((r) => r.url === '/api/notifications/');
+      const request = httpMock.expectOne((r) => r.url === '/api/v1/notifications/');
       expect(request.request.params.get('read')).toBe('false');
       expect(request.request.params.get('page_size')).toBe('1');
       request.flush({ count: 3, next: null, previous: null, results: [], unread_count: 3 });
@@ -201,11 +202,11 @@ describe('ShellComponent', () => {
       setSession();
       const fixture = await render();
       httpMock
-        .expectOne((r) => r.url === '/api/notifications/')
+        .expectOne((r) => r.url === '/api/v1/notifications/')
         .flush({ count: 3, next: null, previous: null, results: [], unread_count: 3 });
 
       TestBed.inject(NotificationService).markAllRead().subscribe();
-      httpMock.expectOne('/api/notifications/read-all/').flush(null, { status: 204, statusText: 'No Content' });
+      httpMock.expectOne('/api/v1/notifications/read-all/').flush(null, { status: 204, statusText: 'No Content' });
       await fixture.whenStable();
       fixture.detectChanges();
 
@@ -217,8 +218,8 @@ describe('ShellComponent', () => {
       const fixture = await render();
 
       httpMock
-        .expectOne((r) => r.url === '/api/notifications/')
-        .flush({ error: { code: 'SERVER_ERROR', message: 'Error.' } }, { status: 500, statusText: 'Error' });
+        .expectOne((r) => r.url === '/api/v1/notifications/')
+        .flush(errorEnvelope('SERVER_ERROR', 'Error.'), { status: 500, statusText: 'Error' });
       await fixture.whenStable();
       fixture.detectChanges();
 

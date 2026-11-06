@@ -40,7 +40,7 @@ describe('ReviewerPickerComponent', () => {
       providers: [
         provideHttpClient(),
         provideHttpClientTesting(),
-        { provide: API_BASE_URL, useValue: '/api/' },
+        { provide: API_BASE_URL, useValue: '/api/v1/' },
       ],
     });
     http = TestBed.inject(HttpTestingController);
@@ -48,7 +48,7 @@ describe('ReviewerPickerComponent', () => {
 
   afterEach(() => http.verify());
 
-  const request = () => http.expectOne((r) => r.url === '/api/editor/reviewers/');
+  const request = () => http.expectOne((r) => r.url === '/api/v1/editor/reviewers/');
   const text = (node: Element | null) => (node?.textContent ?? '').replace(/\s+/g, ' ').trim();
 
   const open = async () => {

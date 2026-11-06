@@ -18,7 +18,7 @@ import { IncidentListComponent, PAGE_SIZE, toFilter } from './incident-list.comp
 @Component({ template: '' })
 class BlankComponent {}
 
-const LIST = '/api/editor/incidents/';
+const LIST = '/api/v1/editor/incidents/';
 const PAGE_URL = '/app/editor/incidents';
 
 describe('IncidentListComponent', () => {
@@ -48,7 +48,7 @@ describe('IncidentListComponent', () => {
         ]),
         provideHttpClient(),
         provideHttpClientTesting(),
-        { provide: API_BASE_URL, useValue: '/api/' },
+        { provide: API_BASE_URL, useValue: '/api/v1/' },
       ],
     });
     http = TestBed.inject(HttpTestingController);
@@ -90,7 +90,7 @@ describe('IncidentListComponent', () => {
     Array.from(dialog(element).querySelectorAll<HTMLButtonElement>('button')).find(
       (b) => text(b) === label,
     )!;
-  const resolveRequest = (id = 'i-1') => http.expectOne(`/api/editor/incidents/${id}/resolve/`);
+  const resolveRequest = (id = 'i-1') => http.expectOne(`/api/v1/editor/incidents/${id}/resolve/`);
 
   it('muestra un estado de carga mientras espera la lista', async () => {
     const { element } = await open();

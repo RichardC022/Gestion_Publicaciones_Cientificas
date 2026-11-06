@@ -41,7 +41,7 @@ def verdict_task(user, manuscript, body, *, key, if_match='"0"'):
     return api_task(
         user,
         lambda client: client.post(
-            f"/api/editor/manuscripts/{manuscript.pk}/verdicts/",
+            f"/api/v1/editor/manuscripts/{manuscript.pk}/verdicts/",
             body,
             format="json",
             HTTP_IDEMPOTENCY_KEY=key,
@@ -131,7 +131,7 @@ class TestWithdrawalRacingAVerdict:
         withdraw = api_task(
             owner,
             lambda client: client.post(
-                f"/api/manuscripts/{manuscript.pk}/withdraw/",
+                f"/api/v1/manuscripts/{manuscript.pk}/withdraw/",
                 {"reason": "El autor retira el trabajo."},
                 format="json",
             ),
@@ -159,7 +159,7 @@ class TestWithdrawalRacingAVerdict:
         assert verdict_task(editor, manuscript, {"decision": "ACCEPTED"}, key="acepta")().status_code == 201
 
         response = client_for(owner).post(
-            f"/api/manuscripts/{manuscript.pk}/withdraw/",
+            f"/api/v1/manuscripts/{manuscript.pk}/withdraw/",
             {"reason": "Retiro tras la aceptación."},
             format="json",
         )

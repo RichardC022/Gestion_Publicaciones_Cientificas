@@ -22,7 +22,7 @@ import {
 @Component({ template: '' })
 class BlankComponent {}
 
-const EXPIRED = '/api/editor/assignments/expired/';
+const EXPIRED = '/api/v1/editor/assignments/expired/';
 const PAGE_URL = '/app/editor/assignments/expired';
 const page = (results: Assignment[], count = results.length) => ({
   count,
@@ -58,7 +58,7 @@ describe('ExpiredAssignmentsComponent', () => {
         ]),
         provideHttpClient(),
         provideHttpClientTesting(),
-        { provide: API_BASE_URL, useValue: '/api/' },
+        { provide: API_BASE_URL, useValue: '/api/v1/' },
       ],
     });
     http = TestBed.inject(HttpTestingController);
@@ -242,7 +242,7 @@ describe('ExpiredAssignmentsComponent', () => {
   });
 
   describe('revocar', () => {
-    const REVOKE = '/api/editor/assignments/a-1/revoke/';
+    const REVOKE = '/api/v1/editor/assignments/a-1/revoke/';
 
     const openRevoke = async (overrides: Partial<Assignment> = {}) => {
       const view = await open();

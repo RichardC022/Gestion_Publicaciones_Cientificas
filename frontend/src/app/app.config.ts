@@ -8,6 +8,7 @@ import { routes } from './app.routes';
 import { authInterceptor } from './core/auth/auth.interceptor';
 import { AuthService } from './core/auth/auth.service';
 import { API_BASE_URL } from './core/http/api-base-url.token';
+import { envelopeInterceptor } from './core/http/envelope.interceptor';
 import { errorInterceptor } from './core/http/error.interceptor';
 import { requestIdInterceptor } from './core/http/request-id.interceptor';
 
@@ -17,7 +18,7 @@ import { requestIdInterceptor } from './core/http/request-id.interceptor';
  * por entorno (TSK-24).
  *
  * Orden de interceptores: el `X-Request-ID` se añade primero y el
- * interceptor de errores (el más interno) reintenta con el token
+ * interceptor de errores reintenta con el token
  * renovado conservando las cabeceras ya aplicadas.
  */
 export const appConfig: ApplicationConfig = {
@@ -25,7 +26,12 @@ export const appConfig: ApplicationConfig = {
     provideBrowserGlobalErrorListeners(),
     provideRouter(routes),
     provideHttpClient(
-      withInterceptors([requestIdInterceptor, authInterceptor, errorInterceptor]),
+      withInterceptors([
+        requestIdInterceptor,
+        authInterceptor,
+        errorInterceptor,
+        envelopeInterceptor,
+      ]),
     ),
     /**
      * Reconstruye la sesión desde la cookie `HttpOnly` antes de la

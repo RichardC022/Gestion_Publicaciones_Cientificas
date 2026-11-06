@@ -38,7 +38,7 @@ describe('Módulo Administrador: integración con las rutas reales', () => {
         NOTIFICATION_SERVICE_STUB,
         provideHttpClient(),
         provideHttpClientTesting(),
-        { provide: API_BASE_URL, useValue: '/api/' },
+        { provide: API_BASE_URL, useValue: '/api/v1/' },
       ],
     });
     http = TestBed.inject(HttpTestingController);
@@ -49,7 +49,7 @@ describe('Módulo Administrador: integración con las rutas reales', () => {
   afterEach(() => http.verify());
 
   const signIn = (...roles: Role[]) => store.setSession({ user: USER, roles, access: 'token' });
-  const listRequest = () => http.expectOne((r) => r.url === '/api/admin/audit/');
+  const listRequest = () => http.expectOne((r) => r.url === '/api/v1/admin/audit/');
 
   it('un Administrador abre la auditoría y llega al detalle de un evento', async () => {
     signIn('ADMIN');
@@ -67,7 +67,7 @@ describe('Módulo Administrador: integración con las rutas reales', () => {
     await harness.fixture.whenStable();
 
     expect(router.url).toBe(`/app/admin/audit/${EVENT_ID}`);
-    http.expectOne(`/api/admin/audit/${EVENT_ID}/`).flush(buildEventDetail());
+    http.expectOne(`/api/v1/admin/audit/${EVENT_ID}/`).flush(buildEventDetail());
     await harness.fixture.whenStable();
     harness.detectChanges();
     expect(element.querySelector('app-audit-log-detail')).not.toBeNull();
@@ -78,7 +78,7 @@ describe('Módulo Administrador: integración con las rutas reales', () => {
     const harness = await RouterTestingHarness.create();
     await harness.navigateByUrl(`/app/admin/audit/${EVENT_ID}`);
 
-    http.expectOne(`/api/admin/audit/${EVENT_ID}/`).flush(buildEventDetail());
+    http.expectOne(`/api/v1/admin/audit/${EVENT_ID}/`).flush(buildEventDetail());
     await harness.fixture.whenStable();
     harness.detectChanges();
 

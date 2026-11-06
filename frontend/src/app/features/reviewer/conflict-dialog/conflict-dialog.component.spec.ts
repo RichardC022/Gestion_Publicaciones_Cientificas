@@ -8,7 +8,7 @@ import { errorEnvelope } from '../../author/testing/manuscript.fixtures';
 import { buildReviewerEvaluation } from '../testing/reviewer.fixtures';
 import { ConflictDialogComponent } from './conflict-dialog.component';
 
-const CONFLICT = '/api/reviewer/assignments/a-1/conflict/';
+const CONFLICT = '/api/v1/reviewer/assignments/a-1/conflict/';
 
 describe('ConflictDialogComponent', () => {
   let http: HttpTestingController;
@@ -35,7 +35,7 @@ describe('ConflictDialogComponent', () => {
       providers: [
         provideHttpClient(),
         provideHttpClientTesting(),
-        { provide: API_BASE_URL, useValue: '/api/' },
+        { provide: API_BASE_URL, useValue: '/api/v1/' },
       ],
     });
     http = TestBed.inject(HttpTestingController);

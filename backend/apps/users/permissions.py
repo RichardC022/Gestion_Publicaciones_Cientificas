@@ -41,7 +41,7 @@ def request_active_roles(request) -> list[str]:
     """Active role codes of the actor, read from PostgreSQL once per request.
 
     Single source of role truth for the permission layer, shared with
-    ``GET /api/auth/me/``. The result is memoized for the lifetime of the
+    ``GET /api/v1/auth/me/``. The result is memoized for the lifetime of the
     request only: the next request reads the database again, so a role
     granted or revoked between requests applies immediately.
     """

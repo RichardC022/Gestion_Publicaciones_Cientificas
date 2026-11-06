@@ -41,7 +41,7 @@ from tests.publications.test_models import make_manuscript
 
 pytestmark = pytest.mark.django_db
 
-URL = "/api/manuscripts/"
+URL = "/api/v1/manuscripts/"
 
 
 def detail_url(manuscript) -> str:

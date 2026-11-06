@@ -373,7 +373,7 @@ class TestAccess:
 
     def test_unknown_manuscript_answers_404(self, owner) -> None:
         response = client_for(owner).post(
-            "/api/manuscripts/00000000-0000-0000-0000-000000000000/withdraw/", {}, format="json"
+            "/api/v1/manuscripts/00000000-0000-0000-0000-000000000000/withdraw/", {}, format="json"
         )
 
         assert response.status_code == 404

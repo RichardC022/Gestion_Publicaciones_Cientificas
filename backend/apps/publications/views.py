@@ -1,11 +1,11 @@
 """Manuscript endpoints of the author and editor modules (plan section 2.3).
 
-* ``GET /api/manuscripts/`` — the author's own manuscripts and, for an
+* ``GET /api/v1/manuscripts/`` — the author's own manuscripts and, for an
   editor, the editor scope. Roles are additive: a person with both roles
   gets the union.
-* ``POST /api/manuscripts/`` — author only; creates a ``DRAFT``.
-* ``GET /api/manuscripts/{id}/`` — the author's own or the editor's.
-* ``PATCH /api/manuscripts/{id}/`` — the owner, while ``DRAFT`` or
+* ``POST /api/v1/manuscripts/`` — author only; creates a ``DRAFT``.
+* ``GET /api/v1/manuscripts/{id}/`` — the author's own or the editor's.
+* ``PATCH /api/v1/manuscripts/{id}/`` — the owner, while ``DRAFT`` or
   ``REQUIRES_CORRECTIONS``; requires ``If-Match`` with the ``ETag``.
 
 A manuscript outside the actor's scope answers ``404``, never ``403``.
@@ -229,7 +229,7 @@ class ManuscriptDetailView(ManuscriptBaseView):
 
 
 class ManuscriptDraftFileView(ManuscriptBaseView):
-    """``POST /api/manuscripts/{id}/draft-file/``: attach or replace the draft PDF.
+    """``POST /api/v1/manuscripts/{id}/draft-file/``: attach or replace the draft PDF.
 
     Only the owner, only while the manuscript is a ``DRAFT``. It creates
     no version, round or snapshot. Anything but ``multipart/form-data``
@@ -261,7 +261,7 @@ class ManuscriptDraftFileView(ManuscriptBaseView):
 
 
 class ManuscriptSubmitView(ManuscriptBaseView):
-    """``POST /api/manuscripts/{id}/submit/``: the formal submission.
+    """``POST /api/v1/manuscripts/{id}/submit/``: the formal submission.
 
     Only the owner, only from ``DRAFT``. It creates exactly ``v1`` and
     round 0, freezes the metadata and answers ``201`` with the tracking
@@ -300,7 +300,7 @@ class ManuscriptSubmitView(ManuscriptBaseView):
 
 
 class ManuscriptVersionsView(ManuscriptBaseView):
-    """``/api/manuscripts/{id}/versions/``: list the iterations or answer a correction request.
+    """``/api/v1/manuscripts/{id}/versions/``: list the iterations or answer a correction request.
 
     ``GET`` lists the versions for the author (own) and the editor
     (scope). ``POST`` is the answer to a correction request:
@@ -365,7 +365,7 @@ class ManuscriptVersionsView(ManuscriptBaseView):
 
 
 class ManuscriptWithdrawView(ManuscriptBaseView):
-    """``POST /api/manuscripts/{id}/withdraw/``: logical withdrawal.
+    """``POST /api/v1/manuscripts/{id}/withdraw/``: logical withdrawal.
 
     Only the owner, from any state. The manuscript is marked as
     withdrawn (``is_active=false``) and nothing is deleted. The reason is
@@ -393,7 +393,7 @@ class ManuscriptWithdrawView(ManuscriptBaseView):
 
 
 class ManuscriptVersionFileView(ManuscriptBaseView):
-    """``GET /api/manuscripts/{id}/versions/{version_id}/file/``: the exact original PDF.
+    """``GET /api/v1/manuscripts/{id}/versions/{version_id}/file/``: the exact original PDF.
 
     For the owning author and the editor in scope. A manuscript or
     version outside the scope answers ``404``. The download is audited
@@ -419,7 +419,7 @@ class ManuscriptVersionFileView(ManuscriptBaseView):
 
 
 class ManuscriptHistoryView(ManuscriptBaseView):
-    """``GET /api/manuscripts/{id}/history/``: the immutable chronological history.
+    """``GET /api/v1/manuscripts/{id}/history/``: the immutable chronological history.
 
     Available to the owning author and the editor in scope, also after a
     logical withdrawal (HU-23). It carries no actor, path or file hash

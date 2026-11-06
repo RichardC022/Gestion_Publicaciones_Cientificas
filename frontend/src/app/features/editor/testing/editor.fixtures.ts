@@ -76,7 +76,7 @@ export function buildSubmissionDetail(overrides: Partial<SubmissionDetail> = {})
         original_size_bytes: 2048,
         original_sha256: 'a'.repeat(64),
         submitted_at: '2026-10-21T15:30:00Z',
-        file_url: '/api/manuscripts/s-1/versions/v-1/file/',
+        file_url: '/api/v1/manuscripts/s-1/versions/v-1/file/',
       },
     ],
     history: [

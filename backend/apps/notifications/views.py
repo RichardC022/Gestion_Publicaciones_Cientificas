@@ -31,7 +31,7 @@ class NotificationBaseView(GenericAPIView):
 
 
 class NotificationListView(NotificationBaseView):
-    """``GET /api/notifications/``: own notices, newest first, with ``unread_count``."""
+    """``GET /api/v1/notifications/``: own notices, newest first, with ``unread_count``."""
 
     def get(self, request: Request) -> Response:
         queryset = self.get_queryset()
@@ -52,7 +52,7 @@ class NotificationListView(NotificationBaseView):
 
 
 class NotificationReadView(NotificationBaseView):
-    """``PATCH /api/notifications/{id}/read/``: mark one notice read (idempotent)."""
+    """``PATCH /api/v1/notifications/{id}/read/``: mark one notice read (idempotent)."""
 
     def patch(self, request: Request, pk) -> Response:
         notice = get_object_or_404(self.get_queryset(), pk=pk)
@@ -60,7 +60,7 @@ class NotificationReadView(NotificationBaseView):
 
 
 class NotificationReadAllView(NotificationBaseView):
-    """``POST /api/notifications/read-all/``: mark every own notice read."""
+    """``POST /api/v1/notifications/read-all/``: mark every own notice read."""
 
     def post(self, request: Request) -> Response:
         mark_all_read(request.user)

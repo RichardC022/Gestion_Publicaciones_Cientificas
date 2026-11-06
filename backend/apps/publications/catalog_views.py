@@ -50,7 +50,7 @@ class PublicCatalogBaseView(GenericAPIView):
 
 
 class CatalogListView(PublicCatalogBaseView):
-    """``GET /api/catalog/``: search and filter the published articles."""
+    """``GET /api/v1/catalog/``: search and filter the published articles."""
 
     def get(self, request: Request) -> Response:
         params = validated_filters(request.query_params)
@@ -61,7 +61,7 @@ class CatalogListView(PublicCatalogBaseView):
 
 
 class CatalogDetailView(PublicCatalogBaseView):
-    """``GET /api/catalog/{code}/``: the public page of one article."""
+    """``GET /api/v1/catalog/{code}/``: the public page of one article."""
 
     def get(self, request: Request, code: str) -> Response:
         entry = self.get_object_by_code(code)
@@ -77,7 +77,7 @@ class CatalogDetailView(PublicCatalogBaseView):
 
 
 class CatalogDocumentView(PublicCatalogBaseView):
-    """``GET /api/catalog/{code}/document/``: the public PDF through Nginx."""
+    """``GET /api/v1/catalog/{code}/document/``: the public PDF through Nginx."""
 
     def get(self, request: Request, code: str) -> HttpResponse:
         entry = self.get_queryset().filter(manuscript__code=code).first()

@@ -29,7 +29,7 @@ from tests.reviews.test_editor_api import make_assignment, submitted
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
-BASE = "/api/editor/"
+BASE = "/api/v1/editor/"
 
 
 @pytest.fixture(autouse=True)
@@ -162,7 +162,7 @@ class TestWithdrawalRacingAnAssignment:
         withdraw = api_task(
             owner,
             lambda client: client.post(
-                f"/api/manuscripts/{manuscript.pk}/withdraw/",
+                f"/api/v1/manuscripts/{manuscript.pk}/withdraw/",
                 {"reason": "El autor retira el trabajo."},
                 format="json",
             ),

@@ -2,7 +2,7 @@
 
 Cookie contract (plan sections 2.2 and 6.1): the refresh token only
 travels in the ``gpc_refresh`` cookie — ``HttpOnly``, ``SameSite=Strict``
-and ``Secure`` in production — scoped to ``/api/auth/``. The access token
+and ``Secure`` in production — scoped to ``/api/v1/auth/``. The access token
 is returned in the JSON body and lives in client memory only.
 """
 
@@ -61,7 +61,7 @@ def _clear_refresh_cookie(response: Response) -> None:
 
 
 class LoginView(APIView):
-    """``POST /api/auth/login/``: validate credentials, open the session.
+    """``POST /api/v1/auth/login/``: validate credentials, open the session.
 
     The full flow lives in the service (TSK-20): rate limit of five
     failures per identifier in fifteen minutes, generic answer for every
@@ -97,7 +97,7 @@ class LoginView(APIView):
 
 
 class RefreshView(APIView):
-    """``POST /api/auth/refresh/``: rotate the cookie, issue a new access."""
+    """``POST /api/v1/auth/refresh/``: rotate the cookie, issue a new access."""
 
     authentication_classes = []
     permission_classes = [AllowAny]
@@ -121,7 +121,7 @@ class RefreshView(APIView):
 
 
 class LogoutView(APIView):
-    """``POST /api/auth/logout/``: revoke the current refresh token (204).
+    """``POST /api/v1/auth/logout/``: revoke the current refresh token (204).
 
     The logout is a critical event of the audit trail (plan section 6.5):
     the revocation and the audit row share one transaction, so if the
@@ -157,7 +157,7 @@ class LogoutView(APIView):
 
 
 class MeView(APIView):
-    """``GET /api/auth/me/``: identity, active roles and navigation.
+    """``GET /api/v1/auth/me/``: identity, active roles and navigation.
 
     Roles are always re-read from PostgreSQL; the ``roles`` claim of the
     access token is only a hint and never authorizes by itself.
@@ -177,7 +177,7 @@ class MeView(APIView):
 
 
 class DashboardView(APIView):
-    """``GET /api/dashboard/``: every enabled section in one response.
+    """``GET /api/v1/dashboard/``: every enabled section in one response.
 
     Roles are re-read from PostgreSQL; sections appear only for the
     active ones and each one resolves independently (plan sections 2.2

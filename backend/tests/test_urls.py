@@ -1,17 +1,32 @@
 """Tests for the project URL configuration."""
 
-import json
-
 from django.test import Client
 
+from tests.contract import success_of
 
-def test_api_root_is_mounted_under_api(client: Client) -> None:
-    """The API root is served under the /api/ prefix."""
-    response = client.get("/api/", secure=True)
+
+def test_api_root_is_mounted_under_api_v1(client: Client) -> None:
+    """The API root is served under the versioned /api/v1/ prefix."""
+    response = client.get("/api/v1/", secure=True)
 
     assert response.status_code == 200
-    payload = json.loads(response.content)
+    payload = success_of(response)["data"]
     assert payload["service"] == "gestion-publicaciones-cientificas"
+    assert payload["api"] == "v1"
+
+
+def test_unversioned_api_prefix_no_longer_serves_resources(client: Client) -> None:
+    """Only ``/api/v1/`` carries the API; ``/api/`` alone is not a resource tree."""
+    assert client.get("/api/", secure=True).status_code == 404
+    assert client.get("/api/auth/me/", secure=True).status_code == 404  # sin versión: no existe
+
+
+def test_health_is_served_versioned_and_unversioned(client: Client) -> None:
+    """Docker and the operation scripts keep ``/api/health/``; v1 exposes it too."""
+    from django.urls import resolve
+
+    assert resolve("/api/health/").url_name == "health-unversioned"
+    assert resolve("/api/v1/health/").url_name == "health"
 
 
 def test_django_admin_is_separate_from_api() -> None:
@@ -22,7 +37,7 @@ def test_django_admin_is_separate_from_api() -> None:
         pattern
         for pattern in project_urls.urlpatterns
         if getattr(pattern, "pattern", None) is not None
-        and str(pattern.pattern) == "api/"
+        and str(pattern.pattern) == "api/v1/"
     ]
 
     assert len(api_patterns) == 1
