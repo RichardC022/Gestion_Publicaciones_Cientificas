@@ -223,7 +223,7 @@ def _wrap_success(schema: dict[str, Any], components: dict[str, Any]) -> dict[st
 
 
 def wrap_in_envelope(result: dict[str, Any], generator: Any, request: Any, public: bool) -> dict:
-    """Postprocessing hook: aplica el contrato universal al schema generado."""
+    """Hook de postprocesado de drf-spectacular: aplica el contrato universal al schema generado."""
     components = result.setdefault("components", {}).setdefault("schemas", {})
     components.update(_components())
 
