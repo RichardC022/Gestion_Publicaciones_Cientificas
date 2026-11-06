@@ -1,0 +1,100 @@
+---
+title: "Soy Editor"
+subtitle: "Coordinar el proceso: recibir, asignar, controlar el plazo y decidir"
+---
+
+Como Editor usted conduce el proceso editorial: recibe los envíos, los pasa a revisión, asigna **un único Revisor**, vigila el plazo y registra el veredicto. Es el único rol que conoce a la vez la identidad del Autor y la del Revisor.
+
+## Su flujo de trabajo
+
+```{mermaid}
+flowchart TD
+    A[Bandeja de envíos] --> B[Abre el detalle del envío]
+    B --> C[Pasar a revisión]
+    C --> D[Elige un Revisor elegible]
+    D --> E[Asignación activa, 20 días]
+    E --> F{¿Qué ocurre?}
+    F -->|El Revisor envía su evaluación| G[Revisa la evaluación final]
+    F -->|Vence el plazo| H[Plazos vencidos: revocar y reasignar]
+    F -->|Conflicto o incidente| I[Incidentes confidenciales]
+    H --> D
+    I --> D
+    G --> J[Registra el veredicto]
+    J --> K{Decisión}
+    K -->|Aceptado| L[Se publica en el catálogo]
+    K -->|Requiere correcciones| M[El Autor responde con una versión nueva]
+    K -->|Rechazado| N[Queda archivado]
+    M --> A
+```
+
+## Bandeja de envíos
+
+**Bandeja de envíos** lista los manuscritos en estado **Enviado** que están en su alcance. Puede filtrar por área, fechas y texto, y ordenar el listado (**Filtrar** / **Limpiar**).
+
+::: {.callout-note}
+## Lo que no ve
+Los borradores no aparecen, y tampoco los manuscritos que usted mismo registró o coescribió: por separación de funciones, usted no puede asignarlos ni decidir sobre ellos. Si intenta abrir uno por la dirección, el sistema responde como si no existiera.
+:::
+
+## Pasar a revisión y asignar un Revisor
+
+En el detalle del envío, use **Pasar a revisión**. El manuscrito pasa a **En revisión** y puede, en la misma acción, asignar al Revisor o dejarlo pendiente de asignación.
+
+Para elegir al Revisor, el selector muestra solo los **elegibles**: disponibles, con el área adecuada y sin conflicto de interés con el manuscrito. Si no hay ninguno, el sistema se lo explica con un **diagnóstico** (cuántas cuentas de Revisor existen y cuántas excluye cada regla), en lugar de dejarle una lista vacía sin motivo.
+
+Reglas de la asignación:
+
+- Solo hay **un Revisor activo** por manuscrito. Para cambiarlo, primero revoque la asignación vigente.
+- El plazo de **20 días calendario** corre desde el instante de la asignación y se mide con el reloj de la base de datos.
+- Cada Revisor nuevo recibe su propio plazo de 20 días; reasignar no cambia la ronda ni la versión.
+
+## Controlar el plazo: plazos vencidos
+
+**Plazos vencidos** lista las asignaciones que pasaron de los 20 días sin evaluación final. Desde allí puede **revocar** la asignación indicando la causa y un motivo, y asignar a otro Revisor.
+
+| Causa de revocación | Cuándo usarla |
+|---|---|
+| Plazo vencido | El Revisor no evaluó a tiempo. |
+| Conflicto de interés | Se detectó un conflicto con el manuscrito. |
+| Error de asignación | Se eligió a la persona equivocada. |
+| Cuenta inhabilitada | La cuenta del Revisor ya no está activa. |
+
+El sistema **nunca** revoca por su cuenta: la decisión siempre es suya.
+
+## Revisar las evaluaciones y registrar el veredicto
+
+Cuando el Revisor envía su evaluación final, usted la ve con sus puntuaciones y comentarios (incluidos los confidenciales). Luego registra el **veredicto**:
+
+| Decisión | Qué exige | Efecto |
+|---|---|---|
+| **Aceptado** | Una evaluación final registrada. | El manuscrito se publica en el catálogo. |
+| **Requiere correcciones** | Observaciones obligatorias. | Se abre una nueva ronda; el Autor puede editar y enviar una versión nueva. |
+| **Rechazado** | Justificación obligatoria. | Queda cerrado y no aparece en el catálogo. |
+
+Un veredicto registrado **no se edita ni se borra**. Es seguro ante reintentos (no se registra dos veces) y comprueba que nadie haya cambiado el manuscrito mientras usted decidía.
+
+::: {.callout-important}
+## Corregir un veredicto ya emitido
+Una nueva decisión sobre la misma versión solo es posible con la **habilitación expresa del Administrador**. Pídala indicando el motivo; cuando la autorice, el sistema le permite registrar la nueva decisión y deja constancia en el historial y en la auditoría.
+:::
+
+## Incidentes confidenciales
+
+Si un Revisor reporta que el documento delata la identidad del Autor, el reporte aparece en **Incidentes confidenciales** (abiertos primero; puede filtrar por estado). Ninguna otra persona lo ve. Se resuelve una sola vez, con una de tres opciones:
+
+- **Solicitar versión anonimizada** al Autor.
+- **Reasignar** el manuscrito a otro Revisor.
+- **Descartar** el reporte.
+
+## Su propio conflicto de interés
+
+Si usted es autor o coautor de un manuscrito, no lo ve en su bandeja y no puede asignarlo ni decidir sobre él. Si lo intenta por otra vía, el sistema bloquea el intento y lo registra en la auditoría.
+
+## Problemas frecuentes
+
+| Situación | Causa probable | Solución |
+|---|---|---|
+| No hay Revisores en el selector | Ninguno cumple área, disponibilidad y ausencia de conflicto. | Lea el diagnóstico; ajuste el área o habilite Revisores. |
+| «Ya existe una asignación activa» | Ese manuscrito ya tiene un Revisor. | Revoque la vigente antes de asignar otro. |
+| «Ya existe un veredicto registrado para esta versión» | La versión ya fue decidida. | Solicite la habilitación al Administrador si corresponde. |
+| «Los datos cambiaron mientras los editaba» | El manuscrito cambió de estado mientras decidía. | Recargue y revise antes de decidir. |

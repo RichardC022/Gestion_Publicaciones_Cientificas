@@ -1,0 +1,45 @@
+---
+title: "ADR-0004 · Versiones inmutables con sello SHA-256 y PDF en volumen local"
+---
+
+**Estado:** Aceptada · **Fecha:** octubre de 2026
+
+## Contexto
+
+La constitución exige que una versión nueva **nunca sobrescriba** a una anterior y que el historial quede intacto. Cada envío debe poder demostrarse: qué PDF exacto se envió y con qué metadatos. Además hay que decidir **dónde** se guardan los archivos y **cómo** se entregan sin saltarse la autorización, en un único servidor on-premise sin nube.
+
+## Decisión
+
+- Cada envío formal crea una **versión inmutable** (`ManuscriptVersion`) con:
+  - el **PDF exacto** recibido,
+  - su **sello SHA-256** (calculado en *streaming*, sin cargar el archivo completo en memoria),
+  - una **instantánea canónica de los metadatos** tal como se enviaron y su huella.
+- La inmutabilidad se impone en tres niveles: rutas únicas de archivo creadas con `O_CREAT | O_EXCL` (nunca se sobrescribe), el modelo *append-only* y un **disparador de PostgreSQL** que rechaza `UPDATE` y `DELETE`.
+- Los archivos se guardan en un **volumen local de Docker** (`media_data`): originales, copias sanitizadas y copias públicas del catálogo.
+- La entrega se hace con **`X-Accel-Redirect`**: Django decide si la persona puede descargar (y audita), Nginx lee el archivo desde una ubicación `internal`. Los PDF nunca pasan por la memoria de Python.
+- El límite es de **50 MB por PDF** y **60 MB por solicitud** en Nginx.
+- Un respaldo diario cubre la base y el volumen, con retención de 30 días y prueba mensual de restauración.
+
+## Alternativas consideradas
+
+| Alternativa | Por qué no |
+|---|---|
+| Almacenamiento en la nube (S3) | Fuera de las restricciones del proyecto: sin nube obligatoria ni servicios gestionados. |
+| Guardar el PDF en la base (`bytea`) | Hincha la base y los respaldos, y complica servir archivos grandes. |
+| Servir el PDF desde Django | Cada descarga ocuparía un *worker* de Gunicorn y memoria; `X-Accel-Redirect` lo evita. |
+| Reemplazar el archivo y llevar solo una tabla de versiones | Perdería el PDF exacto: incumple la constitución y no sería demostrable. |
+
+## Consecuencias
+
+- ✅ Cada iteración es demostrable: el sello permite comprobar que el PDF conservado no cambió.
+- ✅ Las versiones anteriores permanecen intactas por construcción, no por disciplina.
+- ✅ La autorización de descargas es la misma para todos los archivos y queda auditada.
+- ⚠️ El servidor es un único punto de fallo para los archivos; mitigado con el respaldo diario. El runbook señala como pendiente cifrar el respaldo y copiarlo fuera del servidor.
+- ⚠️ El esquema de rutas del volumen es parte del contrato con Nginx: una prueba comprueba que coincide con la ubicación interna.
+
+## Referencias
+
+- Código: `apps/publications/services/` (`storage.py`, `pdf.py`, `submission.py`, `versions.py`, `downloads.py`), `apps/publications/models.py`.
+- Nginx: ubicaciones `/_protected/` y `/_catalog/` en `nginx/conf.d/default.conf`.
+- Pruebas: `tests/publications/test_new_version.py`, `test_integrity.py`, `test_storage.py`, `tests/test_media_isolation.py`, `scripts/smoke_media_isolation.sh`.
+- Plan: sección 4 y Anexo A (Q1, Q2, Q4, Q5) en `.spec-kit/plan.md`.

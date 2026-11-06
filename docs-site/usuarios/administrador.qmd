@@ -1,0 +1,56 @@
+---
+title: "Soy Administrador"
+subtitle: "Auditar el sistema y habilitar correcciones de veredicto"
+---
+
+El Administrador vela por la integridad del proceso. Dispone de **evidencia inmutable** de las acciones críticas, pero **no ve ni modifica manuscritos, evaluaciones ni PDF**: su ámbito es la auditoría.
+
+## Qué puede y qué no puede hacer
+
+| Puede | No puede |
+|---|---|
+| Consultar el registro de auditoría global. | Ver manuscritos, evaluaciones, comentarios ni PDF. |
+| Ver el detalle de un evento y verificar la integridad de la cadena. | Editar o borrar eventos de auditoría (nadie puede). |
+| Autorizar que un veredicto ya emitido se corrija. | Registrar veredictos ni evaluar. |
+| Recibir avisos y consultar el catálogo público. | Dar de alta cuentas desde la interfaz (se hace por línea de comandos). |
+
+## La auditoría
+
+**Auditoría** muestra los eventos más recientes primero. Cada evento registra quién (actor y rol), cuándo, qué acción, sobre qué entidad, con qué resultado y, cuando corresponde, el motivo. No guarda el contenido de los manuscritos, contraseñas ni comentarios confidenciales: solo identificadores y códigos.
+
+### Filtrar
+
+Combine estos filtros y pulse **Filtrar** (o **Limpiar**):
+
+| Filtro | Ejemplo |
+|---|---|
+| Fechas (desde / hasta) | Eventos de una semana concreta. |
+| Actor | Todo lo que hizo una persona. |
+| Acción | `LOGIN`, `VERDICT_REGISTERED`, `AUDIT_QUERIED`… |
+| Manuscrito | Todo lo que le ocurrió a un manuscrito. |
+| Resultado | Éxitos o fallos. |
+
+::: {.callout-note}
+## Consultar la auditoría también se audita
+Cada consulta de la lista y cada apertura de un detalle genera su propio evento. Si ese evento no puede registrarse, la consulta no se entrega: el sistema responde que el servicio no está disponible.
+:::
+
+### El detalle y la integridad de la cadena
+
+Al abrir un evento ve sus datos y el estado de la **integridad de la cadena**. Cada evento guarda la huella (SHA-256) del anterior, de modo que cualquier alteración rompe la cadena. Además, la base de datos rechaza cualquier `UPDATE` o `DELETE` sobre la tabla de auditoría.
+
+Para una verificación completa, el sistema ejecuta una comprobación periódica de la cadena (cada mes) que también puede lanzar el responsable técnico:
+
+```bash
+docker compose exec backend python manage.py verify_integrity
+```
+
+## Autorizar la corrección de un veredicto
+
+Un veredicto registrado no se edita. Si el Editor necesita corregir una decisión, solicita su habilitación y usted la concede desde el detalle del veredicto, indicando un **motivo de 10 a 1000 caracteres**. La respuesta muestra solo datos públicos del manuscrito (código, decisión y fechas), nunca autores, evaluaciones ni PDF.
+
+La autorización queda en el historial del manuscrito y en la auditoría, y se consume cuando el Editor registra la nueva decisión.
+
+## Cuentas y roles
+
+No hay autorregistro ni pantalla de alta. Las cuentas y los roles los gestiona el responsable técnico con comandos de consola (`create_user`, `seed_roles`); vea [Despliegue y operación](../ingenieria/despliegue.qmd).

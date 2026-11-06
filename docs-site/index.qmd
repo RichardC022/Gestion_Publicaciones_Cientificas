@@ -1,0 +1,69 @@
+---
+title: "Sistema de Gestión de Publicaciones Científicas"
+subtitle: "Documentación para quien usa el sistema y para quien lo mantiene"
+---
+
+El sistema centraliza el ciclo editorial de los manuscritos de la institución: el Autor registra y corrige, el Editor coordina, el Revisor evalúa **sin conocer al Autor** y el Administrador dispone de evidencia inmutable de cada acción crítica. Los artículos aceptados se publican en un catálogo abierto a cualquier persona.
+
+## ¿Por dónde empiezo?
+
+::: {.grid}
+
+::: {.g-col-12 .g-col-md-6}
+### Soy usuario del sistema
+
+Aprenda a iniciar sesión, qué puede hacer con su rol y cómo completar cada tarea paso a paso.
+
+- [Primeros pasos](usuarios/primeros-pasos.qmd)
+- [Soy Autor](usuarios/autor.qmd)
+- [Soy Revisor](usuarios/revisor.qmd)
+- [Soy Editor](usuarios/editor.qmd)
+- [Soy Administrador](usuarios/administrador.qmd)
+- [Catálogo público](usuarios/catalogo.qmd)
+- [Estados y glosario](usuarios/estados-y-glosario.qmd)
+:::
+
+::: {.g-col-12 .g-col-md-6}
+### Soy ingeniero o administrador de sistemas
+
+Entienda cómo está construido, cómo consumir la API y cómo desplegarlo y operarlo.
+
+- [Visión general](ingenieria/vision-general.qmd)
+- [Arquitectura](ingenieria/arquitectura.qmd)
+- [Modelo de dominio y estados](ingenieria/dominio-y-estados.qmd)
+- [Proceso editorial](ingenieria/proceso-editorial.qmd)
+- [La API](ingenieria/api.qmd)
+- [Seguridad](ingenieria/seguridad.qmd)
+- [Pruebas](ingenieria/pruebas.qmd)
+- [Despliegue y operación](ingenieria/despliegue.qmd)
+- [Decisiones de arquitectura (ADR)](ingenieria/adr/index.qmd)
+:::
+
+:::
+
+## El sistema en una imagen
+
+```{mermaid}
+flowchart LR
+    A([Autor]) -->|registra y envía| M[(Manuscrito)]
+    M -->|llega a la bandeja| E([Editor])
+    E -->|asigna un Revisor| R([Revisor])
+    R -->|evalúa a ciegas| E
+    E -->|veredicto| D{Decisión}
+    D -->|Aceptado| C[Catálogo público]
+    D -->|Requiere correcciones| A
+    D -->|Rechazado| F[Archivo]
+    AD([Administrador]) -.->|consulta la auditoría| M
+```
+
+## Reglas que conviene conocer desde el principio
+
+- **Doble ciego.** El Revisor nunca ve nombre, correo ni filiación del Autor, y el Autor nunca ve la identidad del Revisor.
+- **Un solo Revisor activo** por manuscrito, con **20 días calendario** de plazo. Si vence, el Editor decide; el sistema nunca revoca por sí solo.
+- **Nada se sobrescribe.** Cada envío crea una versión nueva con el PDF exacto y los metadatos tal como se enviaron.
+- **Nada se borra.** El retiro de un manuscrito es lógico: desaparece de los listados y del catálogo, pero conserva su historial.
+- **Todo queda auditado.** Si una acción crítica no puede registrarse en la auditoría, no se completa.
+
+## Estado de la documentación
+
+Esta documentación se genera desde el repositorio con [Quarto](https://quarto.org) y se publica en GitHub Pages. La referencia interactiva de la API (Swagger UI) se sirve con el propio sistema en `/api/v1/docs/` cuando el despliegue la habilita; vea [La API](ingenieria/api.qmd).

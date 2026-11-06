@@ -1,0 +1,42 @@
+---
+title: "ADR-0003 · El doble ciego se garantiza por diseño, no por filtrado"
+---
+
+**Estado:** Aceptada · **Fecha:** octubre de 2026
+
+## Contexto
+
+La revisión por pares exige anonimato en ambos sentidos: el Revisor no debe conocer al Autor y el Autor no debe conocer al Revisor. Una filtración (en una respuesta de la API, en un aviso, en el nombre de un archivo, en los metadatos de un PDF) invalida la evaluación. La regla es inquebrantable según la constitución y debe sostenerse **a nivel de la API**, no solo de la interfaz.
+
+## Decisión
+
+El anonimato no depende de «acordarse de ocultar» campos: la información prohibida **nunca llega** a quien no debe verla.
+
+1. **Serializadores de lista blanca** para el Revisor. Solo se serializan los campos autorizados; añadir un campo nuevo al modelo no lo expone por accidente.
+2. **Alcance por asignación.** Las consultas del Revisor parten de `Assignment.objects.for_reviewer(user)`, nunca del repositorio global de manuscritos. Lo ajeno responde `404`.
+3. **Copia sanitizada del PDF.** El Revisor recibe una copia sin `/Info`, XMP, `/PieceInfo`, anotaciones ni contenido activo, con un nombre genérico. El original nunca se le entrega.
+4. **Comentarios separados.** La evaluación distingue *comentarios para el autor* y *comentarios confidenciales*; el Autor solo recibe los primeros.
+5. **Avisos que respetan el ciego** en ambos sentidos.
+6. **Canal confidencial de incidentes:** si el contenido del documento delata al Autor, el Revisor lo reporta sin que el Autor llegue a saberlo.
+7. El Editor y el Administrador sí pueden conocer ambas identidades (RN-06).
+
+## Alternativas consideradas
+
+| Alternativa | Por qué no |
+|---|---|
+| Ocultar los campos en Angular | La API seguiría devolviéndolos: cualquiera con las herramientas del navegador los vería. |
+| Serializar todo y quitar campos con una lista negra (`exclude`) | Un campo nuevo se filtraría por defecto; es la clase de error que esta decisión evita. |
+| Entregar el PDF original y confiar en que no lo identifique | Los metadatos del archivo suelen contener el nombre del autor. |
+
+## Consecuencias
+
+- ✅ Un campo nuevo es privado hasta que alguien lo autoriza explícitamente.
+- ✅ La garantía se prueba, no se supone: las pruebas buscan nombres concretos en cada artefacto.
+- ⚠️ Hay serializadores y *querysets* distintos por rol; es más código, aceptado a cambio de seguridad.
+- ⚠️ La sanitización de PDF puede rechazar archivos que no se dejan limpiar; en ese caso la carga se rechaza.
+
+## Referencias
+
+- Código: `apps/reviews/serializers.py`, `apps/reviews/views.py`, `apps/publications/services/pdf.py`.
+- Pruebas: `tests/reviews/test_double_blind.py`, `tests/reviews/test_reviewer_scope.py`, `tests/phase5.py`, E2E `04-fuga-de-identidad`.
+- Especificación: RN-06 y HU-16 en `.spec-kit/specify.md`.

@@ -1,0 +1,72 @@
+---
+title: "Cómo contribuir"
+subtitle: "Ramas, convenciones, revisión y publicación de esta documentación"
+---
+
+## Metodología
+
+El proyecto sigue **Specification-Driven Development** con SpecKit: primero la constitución y la especificación, después la clarificación, el plan y las tareas, y solo entonces el código. Toda decisión de alcance debe reflejarse en `.spec-kit/specify.md` y `.spec-kit/plan.md` **antes** de implementarse.
+
+## Ramas
+
+| Rama | Uso |
+|---|---|
+| `main` | Producción. |
+| `develop` | Integración principal. |
+| `dev/<integrante>-setup` | Rama de trabajo de cada integrante. |
+
+Flujo habitual: trabaje en su rama `dev/…`, integre `develop` en ella para resolver conflictos, y envíe el cambio a `develop` mediante *pull request*.
+
+## Convenciones
+
+- **Código, endpoints e identificadores en inglés; comentarios, documentación y commits en español.**
+- Commits con prefijo convencional: `feat:`, `fix:`, `docs:`, `test:`, `chore:`, `refactor:`.
+- **SOLID, KISS, DRY y YAGNI.** Reglas de negocio en `services/`; las vistas solo hablan HTTP.
+- Una ruta nueva exige: permiso explícito, entrada en la matriz de acceso (`tests/security/test_access_matrix.py`), anotación OpenAPI (`@extend_schema`) y pruebas.
+- Una respuesta nueva usa el contrato universal; no devuelva JSON a mano fuera del renderer.
+- Toda acción crítica se audita en la misma transacción que la acción.
+- Ningún secreto en el repositorio.
+
+## Antes de abrir un *pull request*
+
+```bash
+# Backend
+docker compose run --rm backend python -m pytest
+
+# Schema OpenAPI sin advertencias
+docker compose run --rm backend python manage.py spectacular --validate --fail-on-warn --file /tmp/openapi.yaml
+
+# Frontend
+cd frontend && npx tsc -p tsconfig.app.json --noEmit && npx tsc -p tsconfig.spec.json --noEmit && npx ng test --watch=false
+```
+
+El CI repite estas comprobaciones y añade las auditorías de dependencias; vea [Pruebas](pruebas.qmd).
+
+## Añadir un endpoint (receta)
+
+1. Escriba el **servicio** en `apps/<app>/services/` con la regla y la transacción.
+2. Cree el **serializador** de entrada y de salida.
+3. Cree la **vista** con sus permisos y anótela con `@extend_schema` (etiqueta, resumen, cuerpo, respuestas y errores de dominio).
+4. Registre la **ruta** en `urls.py` de la *app*.
+5. Clasifíquela en la **matriz de acceso**.
+6. Escriba las **pruebas** (servicio y API) y compruebe que el schema sigue válido.
+7. Si cambia el comportamiento visible para una persona, actualice la [guía de usuario](../usuarios/primeros-pasos.qmd).
+
+## Esta documentación
+
+El sitio vive en `docs-site/` y se construye con [Quarto](https://quarto.org). Las páginas son archivos `.qmd` (Markdown con bloques ejecutables); los diagramas son bloques ```` ```{mermaid} ````.
+
+```bash
+# Vista previa con recarga automática
+cd docs-site && quarto preview
+
+# Construir el sitio completo en docs-site/_site
+cd docs-site && quarto render
+```
+
+Convenciones de escritura:
+
+- En español, con tildes, y en segunda persona de cortesía en las guías de usuario.
+- Cada guía de rol responde tres preguntas: *qué hace este rol*, *cómo se hace cada tarea* y *qué hacer cuando algo falla*.
+- Los enlaces internos son relativos (`../usuarios/autor.qmd`) para que el sitio funcione bajo cualquier URL base de GitHub Pages.
+- Si cambia el comportamiento del sistema, actualice la página correspondiente **en el mismo cambio**.
