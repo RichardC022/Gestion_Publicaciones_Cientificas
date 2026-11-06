@@ -14,6 +14,7 @@ from rest_framework import exceptions
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 
+from config.openapi import PAGINATED
 from config.renderers import PaginatedPayload
 
 DEFAULT_PAGE_SIZE = 20
@@ -28,6 +29,10 @@ class StandardPagination(PageNumberPagination):
     page_size_query_param = "page_size"
     max_page_size = MAX_PAGE_SIZE
     invalid_page_message = "La página solicitada no existe."
+
+    def get_paginated_response_schema(self, schema):
+        """Schema de una página: la lista de elementos, marcada para el hook OpenAPI."""
+        return {"type": "array", "items": schema, PAGINATED: True}
 
     def get_paginated_response(self, data):
         """Return the page marked so the renderer moves the counters to ``meta``."""
