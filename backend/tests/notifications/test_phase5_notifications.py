@@ -172,7 +172,7 @@ class TestNoCrossIdentity:
         flow.withdraw()
 
         text = blob(panel(flow.reviewer) + mails(flow.reviewer))
-        response = client_for(flow.reviewer).get("/api/notifications/").content.decode()
+        response = client_for(flow.reviewer).get("/api/v1/notifications/").content.decode()
 
         assert panel(flow.reviewer)
         for token in AUTHOR_TOKENS:
@@ -184,7 +184,7 @@ class TestNoCrossIdentity:
         flow.judge({"decision": "REJECTED", "justification": "JUSTIFICACION_INTERNA"}, "c-1")
 
         text = blob(panel(flow.author) + mails(flow.author))
-        response = client_for(flow.author).get("/api/notifications/").content.decode()
+        response = client_for(flow.author).get("/api/v1/notifications/").content.decode()
 
         assert len(panel(flow.author)) == 3
         for token in (*REVIEWER_TOKENS, EVALUATION["confidential_comments"], "JUSTIFICACION_INTERNA"):
@@ -224,8 +224,8 @@ class TestMailDelivery:
         notice = panel(flow.author)[0]
         client = client_for(flow.author)
 
-        assert client.patch(f"/api/notifications/{notice.pk}/read/").status_code == 200
+        assert client.patch(f"/api/v1/notifications/{notice.pk}/read/").status_code == 200
 
-        assert client.get("/api/notifications/").json()["unread_count"] == len(panel(flow.author)) - 1
+        assert client.get("/api/v1/notifications/").json()["unread_count"] == len(panel(flow.author)) - 1
         assert not mails(flow.author)[0].read_at
-        assert client_for(UserFactory()).get("/api/notifications/").json()["count"] == 0
+        assert client_for(UserFactory()).get("/api/v1/notifications/").json()["count"] == 0

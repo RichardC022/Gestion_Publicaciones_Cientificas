@@ -38,7 +38,7 @@ from tests.publications.test_manuscript_api import actor, client_for, error_code
 
 pytestmark = pytest.mark.django_db
 
-BASE = "/api/reviewer/assignments/"
+BASE = "/api/v1/reviewer/assignments/"
 FULL = {
     "originality_score": 4,
     "methodology_score": 3,
@@ -217,7 +217,7 @@ class TestRead:
         editor = actor("EDITOR")
 
         listed = client_for(editor).get(
-            f"/api/editor/manuscripts/{assignment.manuscript_id}/evaluations/"
+            f"/api/v1/editor/manuscripts/{assignment.manuscript_id}/evaluations/"
         )
 
         assert listed.status_code == 200 and listed.json()["count"] == 0
@@ -448,7 +448,7 @@ class TestSubmit:
         submit(reviewer, assignment, lock=1)
 
         listed = client_for(actor("EDITOR")).get(
-            f"/api/editor/manuscripts/{assignment.manuscript_id}/evaluations/"
+            f"/api/v1/editor/manuscripts/{assignment.manuscript_id}/evaluations/"
         )
 
         assert listed.json()["count"] == 1

@@ -16,17 +16,18 @@ import { errorInterceptor } from '../../../core/http/error.interceptor';
 import { CatalogArticle } from '../../../core/models/catalog.model';
 import { buildArticle } from '../testing/catalog.fixtures';
 import { CatalogDetailComponent } from './catalog-detail.component';
+import { errorEnvelope } from '../../../core/testing/api-envelope.fixtures';
 
 @Component({ template: '' })
 class BlankComponent {}
 
 const CODE = 'GPC-2026-000001';
-const PAGE = `/api/catalog/${CODE}/`;
-const DOCUMENT = `/api/catalog/${CODE}/document/`;
+const PAGE = `/api/v1/catalog/${CODE}/`;
+const DOCUMENT = `/api/v1/catalog/${CODE}/document/`;
 
 function fail(status: number, code: string, message: string) {
   return [
-    { error: { code, message, details: {} } },
+    errorEnvelope(code, message),
     { status, statusText: String(status) },
   ] as const;
 }
@@ -52,7 +53,7 @@ describe('CatalogDetailComponent', () => {
         ]),
         provideHttpClient(withInterceptors([authInterceptor, errorInterceptor])),
         provideHttpClientTesting(),
-        { provide: API_BASE_URL, useValue: '/api/' },
+        { provide: API_BASE_URL, useValue: '/api/v1/' },
       ],
     });
     http = TestBed.inject(HttpTestingController);
@@ -232,7 +233,7 @@ describe('CatalogDetailComponent', () => {
       http
         .expectOne(DOCUMENT)
         .flush(
-          new Blob([JSON.stringify({ error: { code: 'STATE_CONFLICT', message: 'x', details: {} } })], {
+          new Blob([JSON.stringify(errorEnvelope('STATE_CONFLICT', 'x', {}))], {
             type: 'application/json',
           }),
           { status, statusText: String(status) },

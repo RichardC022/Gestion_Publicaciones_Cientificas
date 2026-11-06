@@ -48,7 +48,5 @@ export function buildPage(
   return { count, next: null, previous: null, results };
 }
 
-/** Envelope de error del backend (plan sección 2.1). */
-export function errorEnvelope(code: string, message: string, details: unknown = {}) {
-  return { error: { code, message, details, request_id: 'rid-1' } };
-}
+/** Error del backend con el contrato universal (ver `core/testing/api-envelope.fixtures`). */
+export { errorEnvelope } from '../../../core/testing/api-envelope.fixtures';

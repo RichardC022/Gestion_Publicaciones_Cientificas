@@ -152,9 +152,28 @@ class Api:
         return status, response_headers, payload
 
 
+def unwrap_envelope(body: dict) -> dict:
+    """Carga de dominio del contrato universal `{success, message, data, errors, meta}`.
+
+    Un éxito devuelve `data` (o la página `{count, next, previous, results}` si hay
+    `meta.pagination`); un error, `{"error": {"code", "message"}}`. Un cuerpo que no
+    cumple el contrato se devuelve tal cual.
+    """
+    if not (isinstance(body, dict) and {"success", "message", "data", "errors", "meta"} <= body.keys()):
+        return body
+    if not body["success"]:
+        first = (body["errors"] or [{}])[0]
+        return {"error": {"code": first.get("code"), "message": body["message"],
+                          "request_id": (body["meta"] or {}).get("request_id")}}
+    pagination = (body["meta"] or {}).get("pagination")
+    if pagination is None:
+        return body["data"] if isinstance(body["data"], dict) else {"data": body["data"]}
+    return {**pagination, "results": body["data"]}
+
+
 def as_json(payload: bytes) -> dict:
     try:
-        return json.loads(payload or b"{}")
+        return unwrap_envelope(json.loads(payload or b"{}"))
     except ValueError:
         return {}
 
@@ -306,7 +325,7 @@ class Scenario:
     # -- utilidades -------------------------------------------------------
     def login(self, identifier: str, phase: str = "login") -> str | None:
         status, _, payload = self.api.call(
-            "POST", "/api/auth/login/", phase=phase,
+            "POST", "/api/v1/auth/login/", phase=phase,
             json_body={"identifier": identifier, "password": self.args.password},
         )
         return as_json(payload).get("access") if status == 200 else None
@@ -369,7 +388,7 @@ class Scenario:
             "affiliation": "Universidad Nacional de Loja", "is_corresponding": True,
         }]
         status, _, payload = self.api.call(
-            "POST", "/api/manuscripts/", phase=phase, token=token,
+            "POST", "/api/v1/manuscripts/", phase=phase, token=token,
             json_body={
                 "title": f"Artículo de carga {index:02d} {uuid.uuid4().hex[:6]}",
                 "abstract": "Resumen del estudio de carga.", "keywords": ["carga", "prueba"],
@@ -381,29 +400,29 @@ class Scenario:
         manuscript_id = as_json(payload)["id"]
         body, content_type = multipart("file", "articulo.pdf", pdf)
         status, _, _ = self.api.call(
-            "POST", f"/api/manuscripts/{manuscript_id}/draft-file/", phase=phase, token=token,
+            "POST", f"/api/v1/manuscripts/{manuscript_id}/draft-file/", phase=phase, token=token,
             body=body, headers={"Content-Type": content_type},
         )
         if status != 201:
             return None
         status, _, payload = self.api.call(
-            "POST", f"/api/manuscripts/{manuscript_id}/submit/", phase=phase, token=token,
+            "POST", f"/api/v1/manuscripts/{manuscript_id}/submit/", phase=phase, token=token,
             headers={"Idempotency-Key": uuid.uuid4().hex},
         )
         return (manuscript_id, as_json(payload)["code"]) if status == 201 else None
 
     def start_review(self, manuscript_id: str, code: str) -> str | None:
         """Asigna al revisor y devuelve el id de su asignación (se busca por código)."""
-        me = self.api.call("GET", "/api/auth/me/", phase="setup", token=self.tokens["reviewer"])
+        me = self.api.call("GET", "/api/v1/auth/me/", phase="setup", token=self.tokens["reviewer"])
         reviewer_id = as_json(me[2])["user"]["id"]
         status, _, _ = self.api.call(
-            "POST", f"/api/editor/submissions/{manuscript_id}/start-review/", phase="setup",
+            "POST", f"/api/v1/editor/submissions/{manuscript_id}/start-review/", phase="setup",
             token=self.tokens["editor"], json_body={"reviewer_id": reviewer_id},
         )
         if status != 200:
             return None
         _, _, payload = self.api.call(
-            "GET", "/api/reviewer/assignments/", phase="setup", token=self.tokens["reviewer"]
+            "GET", "/api/v1/reviewer/assignments/", phase="setup", token=self.tokens["reviewer"]
         )
         for row in as_json(payload).get("results", []):
             if row.get("manuscript_code") == code:
@@ -412,7 +431,7 @@ class Scenario:
 
     def accept(self, manuscript_id: str, assignment_id: str) -> bool:
         reviewer = self.tokens["reviewer"]
-        base = f"/api/reviewer/assignments/{assignment_id}/evaluation/"
+        base = f"/api/v1/reviewer/assignments/{assignment_id}/evaluation/"
         evaluation = {
             "originality_score": 4, "methodology_score": 4, "clarity_score": 4,
             "relevance_score": 4, "ethics_score": 4, "recommendation": "ACCEPT",
@@ -431,11 +450,11 @@ class Scenario:
         if status != 200:
             return False
         status, headers, _ = self.api.call(
-            "GET", f"/api/editor/submissions/{manuscript_id}/", phase="setup",
+            "GET", f"/api/v1/editor/submissions/{manuscript_id}/", phase="setup",
             token=self.tokens["editor"],
         )
         status, _, _ = self.api.call(
-            "POST", f"/api/editor/manuscripts/{manuscript_id}/verdicts/", phase="setup",
+            "POST", f"/api/v1/editor/manuscripts/{manuscript_id}/verdicts/", phase="setup",
             token=self.tokens["editor"], json_body={"decision": "ACCEPTED"},
             headers={"Idempotency-Key": uuid.uuid4().hex, "If-Match": headers.get("etag", '"0"')},
         )
@@ -466,7 +485,7 @@ class Scenario:
     def phase_catalog(self) -> None:
         users, rounds = self.args.users, 6
         print(f"\n3. Catálogo: {users} personas × {rounds} consultas", flush=True)
-        status, _, payload = self.api.call("GET", "/api/catalog/", phase="catalog_probe")
+        status, _, payload = self.api.call("GET", "/api/v1/catalog/", phase="catalog_probe")
         results = as_json(payload).get("results", [])
         self.codes = [row.get("code") for row in results if row.get("code")]
         self.report.check("el catálogo lista artículos", status == 200 and bool(self.codes),
@@ -474,9 +493,9 @@ class Scenario:
 
         def person(i: int) -> int:
             bad = 0
-            paths = ["/api/catalog/", "/api/catalog/?search=carga", "/api/catalog/?page=1&page_size=5",
-                     f"/api/catalog/{self.codes[i % len(self.codes)]}/", "/api/catalog/?area=Agronom%C3%ADa",
-                     "/api/catalog/?search=prueba&language=es"]
+            paths = ["/api/v1/catalog/", "/api/v1/catalog/?search=carga", "/api/v1/catalog/?page=1&page_size=5",
+                     f"/api/v1/catalog/{self.codes[i % len(self.codes)]}/", "/api/v1/catalog/?area=Agronom%C3%ADa",
+                     "/api/v1/catalog/?search=prueba&language=es"]
             for path in paths[:rounds]:
                 status, _, _ = self.api.call("GET", path, phase="catalog")
                 bad += status != 200
@@ -496,7 +515,7 @@ class Scenario:
         big_code = None
         for code in self.codes:
             _, headers, _ = self.api.call(
-                "GET", f"/api/catalog/{code}/document/", phase="catalog_probe", read_body=False
+                "GET", f"/api/v1/catalog/{code}/document/", phase="catalog_probe", read_body=False
             )
             if int(headers.get("content-length", "0")) >= self.big_size // 2:
                 big_code = code
@@ -507,13 +526,13 @@ class Scenario:
 
         def catalog_download(i: int) -> tuple[int, int]:
             status, headers, payload = self.api.call(
-                "GET", f"/api/catalog/{big_code}/document/", phase="download_catalog"
+                "GET", f"/api/v1/catalog/{big_code}/document/", phase="download_catalog"
             )
             return status, len(payload)
 
         def reviewer_download(i: int) -> tuple[int, int]:
             status, _, payload = self.api.call(
-                "GET", f"/api/reviewer/assignments/{self.review_assignment}/document/",
+                "GET", f"/api/v1/reviewer/assignments/{self.review_assignment}/document/",
                 phase="download_sanitized", token=self.tokens["reviewer"],
             )
             return status, len(payload)
@@ -547,7 +566,7 @@ class Scenario:
         def upload(i: int) -> int:
             token = self.tokens[f"author-{base + i:02d}"]
             created = self.api.call(
-                "POST", "/api/manuscripts/", phase="upload_setup", token=token,
+                "POST", "/api/v1/manuscripts/", phase="upload_setup", token=token,
                 json_body={"title": f"Carga grande {i} {uuid.uuid4().hex[:6]}",
                            "abstract": "Resumen.", "keywords": ["carga"], "area": "Agronomía",
                            "language": "es", "authors": [{
@@ -558,7 +577,7 @@ class Scenario:
             manuscript_id = as_json(created[2]).get("id")
             body, content_type = multipart("file", "grande.pdf", pdfs[i])
             status, _, _ = self.api.call(
-                "POST", f"/api/manuscripts/{manuscript_id}/draft-file/", phase="upload", token=token,
+                "POST", f"/api/v1/manuscripts/{manuscript_id}/draft-file/", phase="upload", token=token,
                 body=body, headers={"Content-Type": content_type},
             )
             return status
@@ -588,7 +607,7 @@ class Scenario:
         reader = threading.Thread(target=read_samples, daemon=True)
         reader.start()
         sock = self.api.open_socket(120)
-        head = (f"POST /api/manuscripts/{manuscript_id}/draft-file/ HTTP/1.1\r\nHost: localhost\r\n"
+        head = (f"POST /api/v1/manuscripts/{manuscript_id}/draft-file/ HTTP/1.1\r\nHost: localhost\r\n"
                 f"Authorization: Bearer {token}\r\nContent-Type: {content_type}\r\n"
                 f"Content-Length: {len(body)}\r\nConnection: close\r\n\r\n").encode()
         sock.sendall(head)
@@ -619,7 +638,7 @@ class Scenario:
     def new_draft(self, index: int) -> tuple[str, str]:
         token = self.tokens[f"author-{index:02d}"]
         created = self.api.call(
-            "POST", "/api/manuscripts/", phase="edge_setup", token=token,
+            "POST", "/api/v1/manuscripts/", phase="edge_setup", token=token,
             json_body={"title": f"Borde {uuid.uuid4().hex[:6]}", "abstract": "Resumen.",
                        "keywords": ["borde"], "area": "Agronomía", "language": "es",
                        "authors": [{"full_name": f"Autor{index:02d} Carga",
@@ -633,7 +652,7 @@ class Scenario:
         self.last_manuscript_id = manuscript_id
         body, content_type = multipart("file", "borde.pdf", content)
         return self.api.call(
-            "POST", f"/api/manuscripts/{manuscript_id}/draft-file/", phase=phase, token=token,
+            "POST", f"/api/v1/manuscripts/{manuscript_id}/draft-file/", phase=phase, token=token,
             body=body, headers={"Content-Type": content_type},
         )
 
@@ -643,7 +662,7 @@ class Scenario:
             [*COMPOSE, "logs", "--no-log-prefix", "--since", since, "backend"],
             capture_output=True, text=True, check=False,
         ).stdout
-        return len(re.findall(rf"POST /api/manuscripts/{manuscript_id}/draft-file/", logs))
+        return len(re.findall(rf"POST /api/v1/manuscripts/{manuscript_id}/draft-file/", logs))
 
     def phase_edges(self) -> None:
         print("\n6. Bordes de Nginx y del backend", flush=True)
@@ -682,7 +701,7 @@ class Scenario:
 
         def trickle(i: int) -> None:
             body = b"x" * (2 * MIB)
-            head = (f"POST /api/manuscripts/00000000-0000-0000-0000-000000000000/draft-file/ HTTP/1.1\r\n"
+            head = (f"POST /api/v1/manuscripts/00000000-0000-0000-0000-000000000000/draft-file/ HTTP/1.1\r\n"
                     f"Host: localhost\r\nContent-Type: application/octet-stream\r\n"
                     f"Content-Length: {len(body)}\r\nConnection: close\r\n\r\n").encode()
             sock = self.api.open_socket(30)
@@ -720,7 +739,7 @@ class Scenario:
     def phase_timeouts(self) -> None:
         print("\n7. Corte por inactividad del cuerpo (client_body_timeout 120 s)", flush=True)
         sock = self.api.open_socket(150)
-        sock.sendall((b"POST /api/manuscripts/00000000-0000-0000-0000-000000000000/draft-file/ HTTP/1.1\r\n"
+        sock.sendall((b"POST /api/v1/manuscripts/00000000-0000-0000-0000-000000000000/draft-file/ HTTP/1.1\r\n"
                       b"Host: localhost\r\nContent-Type: application/octet-stream\r\n"
                       b"Content-Length: 1048576\r\n\r\n") + b"x" * 1024)
         started = time.monotonic()

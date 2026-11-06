@@ -53,7 +53,7 @@ export interface AuditEventDetail extends AuditEvent {
 export const CORRECTION_REASON_MIN_LENGTH = 10;
 export const CORRECTION_REASON_MAX_LENGTH = 1000;
 
-/** Respuesta de `POST /api/admin/verdicts/{id}/authorize-correction/`: sin autores, evaluaciones ni PDF. */
+/** Respuesta de `POST /api/v1/admin/verdicts/{id}/authorize-correction/`: sin autores, evaluaciones ni PDF. */
 export interface CorrectionAuthorized {
   id: string;
   verdict_id: string;

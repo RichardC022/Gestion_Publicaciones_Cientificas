@@ -27,7 +27,7 @@ from tests.publications.test_submission import media_root, seeded_roles, submit 
 
 pytestmark = pytest.mark.django_db
 
-CATALOG = "/api/catalog/"
+CATALOG = "/api/v1/catalog/"
 
 
 @pytest.fixture
@@ -146,7 +146,7 @@ class TestCorrectionCycle:
 
         # El Administrador habilita la corrección; el Editor la ve y la consume.
         assert flow.authorize_correction(original.pk).status_code == 201
-        detail = client_for(flow.editor).get(f"/api/editor/submissions/{manuscript.pk}/").json()
+        detail = client_for(flow.editor).get(f"/api/v1/editor/submissions/{manuscript.pk}/").json()
         assert detail["correction_authorization"]["verdict_id"] == str(original.pk)
         corrected = flow.judge({"decision": "ACCEPTED"}, "r-2")
 
@@ -181,7 +181,7 @@ class TestCorrectionCycle:
         flow.authorize_correction(original.pk)
         flow.judge({"decision": "ACCEPTED"}, "r-2")
 
-        history = client_for(flow.editor).get(f"/api/editor/manuscripts/{manuscript.pk}/verdicts/").json()["results"]
+        history = client_for(flow.editor).get(f"/api/v1/editor/manuscripts/{manuscript.pk}/verdicts/").json()["results"]
         newest = manuscript.verdicts.latest("created_at")
         assert [row["decision"] for row in history] == ["REJECTED", "ACCEPTED"]
         assert history[0]["justification"] == "Primera lectura: no cumple."  # el original, intacto
@@ -200,11 +200,11 @@ class TestCorrectionCycle:
         flow.authorize_correction(manuscript.verdicts.get().pk)
         client = client_for(flow.admin)
 
-        assert client.get(f"/api/manuscripts/{manuscript.pk}/").status_code in (403, 404)
-        assert client.get(f"/api/editor/manuscripts/{manuscript.pk}/evaluations/").status_code == 403
-        assert client.get(f"/api/manuscripts/{manuscript.pk}/versions/").status_code in (403, 404)
+        assert client.get(f"/api/v1/manuscripts/{manuscript.pk}/").status_code in (403, 404)
+        assert client.get(f"/api/v1/editor/manuscripts/{manuscript.pk}/evaluations/").status_code == 403
+        assert client.get(f"/api/v1/manuscripts/{manuscript.pk}/versions/").status_code in (403, 404)
         body = client.post(
-            f"/api/admin/verdicts/{manuscript.verdicts.get().pk}/authorize-correction/",
+            f"/api/v1/admin/verdicts/{manuscript.verdicts.get().pk}/authorize-correction/",
             {"reason": "Un motivo suficientemente largo."}, format="json", HTTP_IDEMPOTENCY_KEY="otra-clave",
         )
         assert body.status_code == 409

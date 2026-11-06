@@ -31,7 +31,7 @@ from tests.publications.test_manuscript_api import actor, client_for
 
 pytestmark = pytest.mark.django_db
 
-LIST_URL = "/api/catalog/"
+LIST_URL = "/api/v1/catalog/"
 
 
 @pytest.fixture(autouse=True)
@@ -125,7 +125,7 @@ class TestMinimization:
         assert body["authors"] == [
             {"full_name": "Ana Lucía Torres", "affiliation": "Universidad Nacional de Loja"}
         ]
-        assert body["document_url"] == f"/api/catalog/{entry.manuscript.code}/document/"
+        assert body["document_url"] == f"/api/v1/catalog/{entry.manuscript.code}/document/"
         text = response.content.decode()
         for forbidden in ("ana.privada", "created_by", "original_filename", "sha256", "reviewer", "evaluation"):
             assert forbidden not in text
@@ -388,7 +388,7 @@ class TestWithdrawalRetiresTheArticle:
 
         with django_capture_on_commit_callbacks(execute=True):
             response = client_for(owner).post(
-                f"/api/manuscripts/{entry.manuscript_id}/withdraw/",
+                f"/api/v1/manuscripts/{entry.manuscript_id}/withdraw/",
                 {"reason": "Retiro por error en los datos."},
                 format="json",
             )
@@ -412,7 +412,7 @@ class TestWithdrawalRetiresTheArticle:
 
         with django_capture_on_commit_callbacks(execute=True):
             response = client_for(owner).post(
-                f"/api/manuscripts/{entry.manuscript_id}/withdraw/",
+                f"/api/v1/manuscripts/{entry.manuscript_id}/withdraw/",
                 {"reason": "Retiro por error en los datos."},
                 format="json",
             )

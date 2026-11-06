@@ -18,7 +18,7 @@ import {
 } from '../testing/reviewer.fixtures';
 import { EvaluationHistoryComponent, PAGE_SIZE } from './evaluation-history.component';
 
-const LIST = '/api/reviewer/evaluations/';
+const LIST = '/api/v1/reviewer/evaluations/';
 const PAGE_URL = '/app/reviewer/history';
 
 describe('EvaluationHistoryComponent', () => {
@@ -31,7 +31,7 @@ describe('EvaluationHistoryComponent', () => {
         provideRouter([{ path: 'app/reviewer/history', component: EvaluationHistoryComponent }]),
         provideHttpClient(),
         provideHttpClientTesting(),
-        { provide: API_BASE_URL, useValue: '/api/' },
+        { provide: API_BASE_URL, useValue: '/api/v1/' },
       ],
     });
     http = TestBed.inject(HttpTestingController);
@@ -166,7 +166,7 @@ describe('EvaluationHistoryComponent', () => {
       toggle(element).click();
       await settle();
       expect(element.querySelector('.history__detail app-loading-spinner')).not.toBeNull();
-      http.expectOne('/api/reviewer/evaluations/ev-1/').flush(buildHistoryDetail());
+      http.expectOne('/api/v1/reviewer/evaluations/ev-1/').flush(buildHistoryDetail());
       await settle();
 
       const detail = element.querySelector('.history__detail')!;
@@ -189,7 +189,7 @@ describe('EvaluationHistoryComponent', () => {
 
       toggle(element).click();
       await settle();
-      http.expectOne('/api/reviewer/evaluations/ev-1/').flush({
+      http.expectOne('/api/v1/reviewer/evaluations/ev-1/').flush({
         ...buildHistoryDetail(),
         confidential_comments: 'Comentario solo para el Editor.',
       });
@@ -203,7 +203,7 @@ describe('EvaluationHistoryComponent', () => {
       const { element, settle } = await render([buildHistoryRow()]);
       toggle(element).click();
       await settle();
-      http.expectOne('/api/reviewer/evaluations/ev-1/').flush(buildHistoryDetail());
+      http.expectOne('/api/v1/reviewer/evaluations/ev-1/').flush(buildHistoryDetail());
       await settle();
 
       toggle(element).click();
@@ -212,7 +212,7 @@ describe('EvaluationHistoryComponent', () => {
       toggle(element).click();
       await settle();
 
-      http.expectNone('/api/reviewer/evaluations/ev-1/');
+      http.expectNone('/api/v1/reviewer/evaluations/ev-1/');
       expect(text(element.querySelector('.history__detail'))).toContain('Aclarar la metodología.');
     });
 
@@ -221,7 +221,7 @@ describe('EvaluationHistoryComponent', () => {
       toggle(element).click();
       await settle();
 
-      http.expectOne('/api/reviewer/evaluations/ev-1/').flush(errorEnvelope('SERVER_ERROR', 'x'), {
+      http.expectOne('/api/v1/reviewer/evaluations/ev-1/').flush(errorEnvelope('SERVER_ERROR', 'x'), {
         status: 500,
         statusText: 'Server Error',
       });
@@ -230,7 +230,7 @@ describe('EvaluationHistoryComponent', () => {
 
       element.querySelector<HTMLButtonElement>('.history__detail .btn')!.click();
       await settle();
-      http.expectOne('/api/reviewer/evaluations/ev-1/').flush(buildHistoryDetail());
+      http.expectOne('/api/v1/reviewer/evaluations/ev-1/').flush(buildHistoryDetail());
       await settle();
 
       expect(text(element.querySelector('.history__detail'))).toContain('Aclarar la metodología.');

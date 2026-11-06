@@ -1,24 +1,31 @@
 """Root URL configuration for the REST API."""
 
-from django.http import HttpRequest, JsonResponse
 from django.urls import include, path
+from rest_framework.permissions import AllowAny
+from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from apps.users.views import DashboardView
 from config.health import HealthView
 
 
-def api_root(request: HttpRequest) -> JsonResponse:
+class ApiRootView(APIView):
     """Return a minimal service descriptor for the API root."""
-    return JsonResponse(
-        {
-            "service": "gestion-publicaciones-cientificas",
-            "api": "v1",
-        }
-    )
+
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def get(self, request, *args, **kwargs):
+        return Response(
+            {
+                "service": "gestion-publicaciones-cientificas",
+                "api": "v1",
+            }
+        )
 
 
 urlpatterns = [
-    path("", api_root, name="api-root"),
+    path("", ApiRootView.as_view(), name="api-root"),
     path("health/", HealthView.as_view(), name="health"),
     path("auth/", include("apps.users.urls")),
     path("dashboard/", DashboardView.as_view(), name="dashboard"),

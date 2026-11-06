@@ -22,7 +22,7 @@ pytestmark = pytest.mark.django_db
 def make_key(user, key: str, *, expires_in: timedelta) -> IdempotencyKey:
     return IdempotencyKey.objects.create(
         user=user,
-        endpoint="POST /api/manuscripts/x/submit/",
+        endpoint="POST /api/v1/manuscripts/x/submit/",
         key=key,
         request_hash="b" * 64,
         response_status=200,

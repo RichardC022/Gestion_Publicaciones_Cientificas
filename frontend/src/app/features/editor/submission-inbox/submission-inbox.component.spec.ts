@@ -36,7 +36,7 @@ describe('SubmissionInboxComponent', () => {
         ]),
         provideHttpClient(),
         provideHttpClientTesting(),
-        { provide: API_BASE_URL, useValue: '/api/' },
+        { provide: API_BASE_URL, useValue: '/api/v1/' },
       ],
     });
     http = TestBed.inject(HttpTestingController);
@@ -45,7 +45,7 @@ describe('SubmissionInboxComponent', () => {
 
   afterEach(() => http.verify());
 
-  const listRequest = (): TestRequest => http.expectOne((r) => r.url === '/api/editor/submissions/');
+  const listRequest = (): TestRequest => http.expectOne((r) => r.url === '/api/v1/editor/submissions/');
 
   const open = async (url = INBOX) => {
     const harness = await RouterTestingHarness.create();

@@ -12,6 +12,9 @@ from __future__ import annotations
 
 from rest_framework import exceptions
 from rest_framework.pagination import PageNumberPagination
+from rest_framework.response import Response
+
+from config.renderers import PaginatedPayload
 
 DEFAULT_PAGE_SIZE = 20
 MAX_PAGE_SIZE = 100
@@ -25,6 +28,17 @@ class StandardPagination(PageNumberPagination):
     page_size_query_param = "page_size"
     max_page_size = MAX_PAGE_SIZE
     invalid_page_message = "La página solicitada no existe."
+
+    def get_paginated_response(self, data):
+        """Return the page marked so the renderer moves the counters to ``meta``."""
+        return Response(
+            PaginatedPayload(
+                count=self.page.paginator.count,
+                next=self.get_next_link(),
+                previous=self.get_previous_link(),
+                results=data,
+            )
+        )
 
     def get_page_size(self, request) -> int:
         """Return the requested page size or raise a ``400`` error."""

@@ -27,7 +27,7 @@ describe('EditorService', () => {
       providers: [
         provideHttpClient(),
         provideHttpClientTesting(),
-        { provide: API_BASE_URL, useValue: '/api/' },
+        { provide: API_BASE_URL, useValue: '/api/v1/' },
       ],
     });
     service = TestBed.inject(EditorService);
@@ -44,7 +44,7 @@ describe('EditorService', () => {
         .listSubmissions({ search: 'clima', area: '', page: 2, page_size: 20 })
         .subscribe((value) => (result = value));
 
-      const request = http.expectOne((r) => r.url === '/api/editor/submissions/');
+      const request = http.expectOne((r) => r.url === '/api/v1/editor/submissions/');
       expect(request.request.method).toBe('GET');
       expect(request.request.params.get('search')).toBe('clima');
       expect(request.request.params.get('page')).toBe('2');
@@ -60,7 +60,7 @@ describe('EditorService', () => {
       service.listSubmissions().subscribe({ error: (e: ApiError) => (error = e) });
 
       http
-        .expectOne('/api/editor/submissions/')
+        .expectOne('/api/v1/editor/submissions/')
         .flush(errorEnvelope('FORBIDDEN', 'Acceso denegado.'), {
           status: 403,
           statusText: 'Forbidden',
@@ -77,7 +77,7 @@ describe('EditorService', () => {
       let snapshot: { etag: string | null } | undefined;
       service.getSubmission('s-1').subscribe((value) => (snapshot = value));
 
-      http.expectOne('/api/editor/submissions/s-1/').flush(detail, { headers: { ETag: '"3"' } });
+      http.expectOne('/api/v1/editor/submissions/s-1/').flush(detail, { headers: { ETag: '"3"' } });
 
       expect(snapshot).toEqual({ submission: detail, etag: '"3"' });
     });
@@ -87,7 +87,7 @@ describe('EditorService', () => {
       service.getSubmission('s-9').subscribe({ error: (e: ApiError) => (error = e) });
 
       http
-        .expectOne('/api/editor/submissions/s-9/')
+        .expectOne('/api/v1/editor/submissions/s-9/')
         .flush(errorEnvelope('NOT_FOUND', 'No encontrado.'), {
           status: 404,
           statusText: 'Not Found',
@@ -102,7 +102,7 @@ describe('EditorService', () => {
       let status: string | undefined;
       service.startReview('s-1').subscribe((result) => (status = result.status));
 
-      const request = http.expectOne('/api/editor/submissions/s-1/start-review/');
+      const request = http.expectOne('/api/v1/editor/submissions/s-1/start-review/');
       expect(request.request.method).toBe('POST');
       expect(request.request.body).toEqual({});
       request.flush({
@@ -120,7 +120,7 @@ describe('EditorService', () => {
       service.startReview('s-1').subscribe({ error: (e: ApiError) => (error = e) });
 
       http
-        .expectOne('/api/editor/submissions/s-1/start-review/')
+        .expectOne('/api/v1/editor/submissions/s-1/start-review/')
         .flush(
           errorEnvelope('STATE_CONFLICT', 'Solo un manuscrito enviado puede pasar a revisión.'),
           {
@@ -144,7 +144,7 @@ describe('EditorService · asignaciones', () => {
       providers: [
         provideHttpClient(),
         provideHttpClientTesting(),
-        { provide: API_BASE_URL, useValue: '/api/' },
+        { provide: API_BASE_URL, useValue: '/api/v1/' },
       ],
     });
     service = TestBed.inject(EditorService);
@@ -158,7 +158,7 @@ describe('EditorService · asignaciones', () => {
     let page: { diagnosis?: unknown } | undefined;
     service.listEligibleReviewers('s-1').subscribe((value) => (page = value));
 
-    const request = http.expectOne((r) => r.url === '/api/editor/reviewers/');
+    const request = http.expectOne((r) => r.url === '/api/v1/editor/reviewers/');
     expect(request.request.method).toBe('GET');
     expect(request.request.params.get('manuscript_id')).toBe('s-1');
     expect(request.request.params.get('page_size')).toBe('100');
@@ -172,7 +172,7 @@ describe('EditorService · asignaciones', () => {
     let result: { due_at: string } | undefined;
     service.assignReviewer('s-1', 'r-1').subscribe((value) => (result = value));
 
-    const request = http.expectOne('/api/editor/manuscripts/s-1/assignments/');
+    const request = http.expectOne('/api/v1/editor/manuscripts/s-1/assignments/');
     expect(request.request.method).toBe('POST');
     expect(request.request.body).toEqual({ reviewer_id: 'r-1' });
     request.flush(assignment, { status: 201, statusText: 'Created' });
@@ -185,7 +185,7 @@ describe('EditorService · asignaciones', () => {
     service.assignReviewer('s-1', 'r-2').subscribe({ error: (e: ApiError) => (error = e) });
 
     http
-      .expectOne('/api/editor/manuscripts/s-1/assignments/')
+      .expectOne('/api/v1/editor/manuscripts/s-1/assignments/')
       .flush(errorEnvelope('ASSIGNMENT_CONFLICT', 'El manuscrito ya tiene un Revisor activo.'), {
         status: 409,
         statusText: 'Conflict',
@@ -201,7 +201,7 @@ describe('EditorService · asignaciones', () => {
       .revokeAssignment('a-1', 'ASSIGNMENT_ERROR', 'Se asignó al Revisor equivocado.')
       .subscribe((value) => (status = value.status));
 
-    const request = http.expectOne('/api/editor/assignments/a-1/revoke/');
+    const request = http.expectOne('/api/v1/editor/assignments/a-1/revoke/');
     expect(request.request.method).toBe('POST');
     expect(request.request.body).toEqual({
       cause: 'ASSIGNMENT_ERROR',
@@ -219,7 +219,7 @@ describe('EditorService · asignaciones', () => {
       .subscribe({ error: (e: ApiError) => (error = e) });
 
     http
-      .expectOne('/api/editor/assignments/a-1/revoke/')
+      .expectOne('/api/v1/editor/assignments/a-1/revoke/')
       .flush(errorEnvelope('VALIDATION_ERROR', 'Causa inválida.'), {
         status: 400,
         statusText: 'Bad Request',
@@ -238,7 +238,7 @@ describe('EditorService · veredicto', () => {
       providers: [
         provideHttpClient(),
         provideHttpClientTesting(),
-        { provide: API_BASE_URL, useValue: '/api/' },
+        { provide: API_BASE_URL, useValue: '/api/v1/' },
       ],
     });
     service = TestBed.inject(EditorService);
@@ -260,7 +260,7 @@ describe('EditorService · veredicto', () => {
       .listEvaluations('s-1')
       .subscribe((value) => (reviewer = value.results[0].reviewer.full_name));
 
-    const request = http.expectOne((r) => r.url === '/api/editor/manuscripts/s-1/evaluations/');
+    const request = http.expectOne((r) => r.url === '/api/v1/editor/manuscripts/s-1/evaluations/');
     expect(request.request.method).toBe('GET');
     expect(request.request.params.get('page_size')).toBe('100');
     request.flush(page([buildEvaluation()]));
@@ -275,7 +275,7 @@ describe('EditorService · veredicto', () => {
       .subscribe((value) => (decisions = value.results.map((v) => v.decision)));
 
     http
-      .expectOne((r) => r.url === '/api/editor/manuscripts/s-1/verdicts/')
+      .expectOne((r) => r.url === '/api/v1/editor/manuscripts/s-1/verdicts/')
       .flush(
         page([
           buildVerdict({ decision: 'REQUIRES_CORRECTIONS' }),
@@ -298,7 +298,7 @@ describe('EditorService · veredicto', () => {
       )
       .subscribe((value) => (registered = value));
 
-    const request = http.expectOne('/api/editor/manuscripts/s-1/verdicts/');
+    const request = http.expectOne('/api/v1/editor/manuscripts/s-1/verdicts/');
     expect(request.request.method).toBe('POST');
     expect(request.request.headers.get('If-Match')).toBe('"4"');
     expect(request.request.headers.get('Idempotency-Key')).toBe('clave-1');
@@ -324,7 +324,7 @@ describe('EditorService · veredicto', () => {
       .subscribe({ error: (e: ApiError) => (error = e) });
 
     http
-      .expectOne('/api/editor/manuscripts/s-1/verdicts/')
+      .expectOne('/api/v1/editor/manuscripts/s-1/verdicts/')
       .flush(errorEnvelope('VERDICT_CONFLICT', 'La versión evaluada ya tiene un veredicto.'), {
         status: 409,
         statusText: 'Conflict',
@@ -346,7 +346,7 @@ describe('EditorService · veredicto', () => {
       .subscribe({ error: (e: ApiError) => (error = e) });
 
     http
-      .expectOne('/api/editor/manuscripts/s-1/verdicts/')
+      .expectOne('/api/v1/editor/manuscripts/s-1/verdicts/')
       .flush(errorEnvelope('FORBIDDEN', 'Conflicto de interés.'), {
         status: 403,
         statusText: 'Forbidden',
@@ -365,7 +365,7 @@ describe('EditorService · vencidas', () => {
       providers: [
         provideHttpClient(),
         provideHttpClientTesting(),
-        { provide: API_BASE_URL, useValue: '/api/' },
+        { provide: API_BASE_URL, useValue: '/api/v1/' },
       ],
     });
     service = TestBed.inject(EditorService);
@@ -380,7 +380,7 @@ describe('EditorService · vencidas', () => {
       .listExpiredAssignments(2, 20)
       .subscribe((value) => (codes = value.results.map((a) => a.manuscript_code)));
 
-    const request = http.expectOne((r) => r.url === '/api/editor/assignments/expired/');
+    const request = http.expectOne((r) => r.url === '/api/v1/editor/assignments/expired/');
     expect(request.request.method).toBe('GET');
     expect(request.request.params.get('page')).toBe('2');
     expect(request.request.params.get('page_size')).toBe('20');
@@ -397,7 +397,7 @@ describe('EditorService · vencidas', () => {
   it('la primera página no envía el parámetro page', () => {
     service.listExpiredAssignments().subscribe();
 
-    const request = http.expectOne((r) => r.url === '/api/editor/assignments/expired/');
+    const request = http.expectOne((r) => r.url === '/api/v1/editor/assignments/expired/');
     expect(request.request.params.has('page')).toBe(false);
     request.flush({ count: 0, next: null, previous: null, results: [] });
   });
@@ -407,7 +407,7 @@ describe('EditorService · vencidas', () => {
     service.listExpiredAssignments().subscribe({ error: (e: ApiError) => (error = e) });
 
     http
-      .expectOne((r) => r.url === '/api/editor/assignments/expired/')
+      .expectOne((r) => r.url === '/api/v1/editor/assignments/expired/')
       .flush(errorEnvelope('FORBIDDEN', 'Acceso denegado.'), {
         status: 403,
         statusText: 'Forbidden',
@@ -422,7 +422,7 @@ describe('EditorService · vencidas', () => {
       let result: unknown;
       service.listIncidents('OPEN', 2, 20).subscribe((value) => (result = value));
 
-      const request = http.expectOne((r) => r.url === '/api/editor/incidents/');
+      const request = http.expectOne((r) => r.url === '/api/v1/editor/incidents/');
       expect(request.request.method).toBe('GET');
       expect(request.request.params.get('status')).toBe('OPEN');
       expect(request.request.params.get('page')).toBe('2');
@@ -435,7 +435,7 @@ describe('EditorService · vencidas', () => {
     it('«todos» no envía el parámetro de estado', () => {
       service.listIncidents('ALL').subscribe();
 
-      const request = http.expectOne((r) => r.url === '/api/editor/incidents/');
+      const request = http.expectOne((r) => r.url === '/api/v1/editor/incidents/');
       expect(request.request.params.has('status')).toBe(false);
       expect(request.request.params.has('page')).toBe(false);
       request.flush(buildIncidentPage([]));
@@ -446,7 +446,7 @@ describe('EditorService · vencidas', () => {
       let result: unknown;
       service.resolveIncident('i-1', 'DISMISS').subscribe((value) => (result = value));
 
-      const request = http.expectOne('/api/editor/incidents/i-1/resolve/');
+      const request = http.expectOne('/api/v1/editor/incidents/i-1/resolve/');
       expect(request.request.method).toBe('POST');
       expect(request.request.body).toEqual({ resolution: 'DISMISS' });
       request.flush(resolved);
@@ -459,7 +459,7 @@ describe('EditorService · vencidas', () => {
       service.resolveIncident('i-1', 'REASSIGN').subscribe({ error: (e: ApiError) => (error = e) });
 
       http
-        .expectOne('/api/editor/incidents/i-1/resolve/')
+        .expectOne('/api/v1/editor/incidents/i-1/resolve/')
         .flush(errorEnvelope('STATE_CONFLICT', 'El incidente ya fue resuelto.'), {
           status: 409,
           statusText: 'Conflict',

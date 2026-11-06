@@ -63,7 +63,7 @@ describe('Módulo Editor: integración con las rutas reales', () => {
         NOTIFICATION_SERVICE_STUB,
         provideHttpClient(),
         provideHttpClientTesting(),
-        { provide: API_BASE_URL, useValue: '/api/' },
+        { provide: API_BASE_URL, useValue: '/api/v1/' },
       ],
     });
     http = TestBed.inject(HttpTestingController);
@@ -75,10 +75,10 @@ describe('Módulo Editor: integración con las rutas reales', () => {
 
   const signIn = (...roles: Role[]) => store.setSession({ user: USER, roles, access: 'token' });
 
-  const inbox = () => http.expectOne((r) => r.url === '/api/editor/submissions/');
-  const detail = () => http.expectOne('/api/editor/submissions/s-1/');
-  const expired = () => http.expectOne((r) => r.url === '/api/editor/assignments/expired/');
-  const incidents = () => http.expectOne((r) => r.url === '/api/editor/incidents/');
+  const inbox = () => http.expectOne((r) => r.url === '/api/v1/editor/submissions/');
+  const detail = () => http.expectOne('/api/v1/editor/submissions/s-1/');
+  const expired = () => http.expectOne((r) => r.url === '/api/v1/editor/assignments/expired/');
+  const incidents = () => http.expectOne((r) => r.url === '/api/v1/editor/incidents/');
 
   /** Abre una URL; `settle` además responde lo que el formulario de veredicto pide al montarse. */
   const open = async (url: string) => {

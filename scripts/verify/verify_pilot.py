@@ -96,14 +96,14 @@ class Verifier:
     def api_snapshot(self) -> dict:
         """Lo que ve un usuario: el catálogo y el PDF que se descarga por Nginx."""
         scenario = self.scenario
-        _, _, payload = self.api.call("GET", "/api/catalog/", phase="snapshot")
+        _, _, payload = self.api.call("GET", "/api/v1/catalog/", phase="snapshot")
         codes = sorted(row["code"] for row in load_test.as_json(payload).get("results", []))
         documents = {}
         for code in codes:
-            status, _, body = self.api.call("GET", f"/api/catalog/{code}/document/", phase="snapshot")
+            status, _, body = self.api.call("GET", f"/api/v1/catalog/{code}/document/", phase="snapshot")
             documents[code] = hashlib.sha256(body).hexdigest() if status == 200 else f"HTTP {status}"
         status, _, body = self.api.call(
-            "GET", f"/api/reviewer/assignments/{scenario.review_assignment}/document/",
+            "GET", f"/api/v1/reviewer/assignments/{scenario.review_assignment}/document/",
             phase="snapshot", token=scenario.login("load-reviewer"))
         return {"codes": codes, "catalog": documents,
                 "sanitized": hashlib.sha256(body).hexdigest() if status == 200 else f"HTTP {status}"}
@@ -308,7 +308,7 @@ class Verifier:
 
         # Control positivo: lo autorizado sí se entrega por Nginx.
         code = self.before_api["codes"][0]
-        status, hdrs, body = self.raw(self.api, f"/api/catalog/{code}/document/")
+        status, hdrs, body = self.raw(self.api, f"/api/v1/catalog/{code}/document/")
         headers = {k.lower(): v for k, v in hdrs}
         self.check("control positivo: el catálogo entrega el PDF por Nginx",
                    status == 200 and body.startswith(b"%PDF") and headers.get("content-type") == "application/pdf",
@@ -375,13 +375,13 @@ class Verifier:
         token = self.scenario.login("load-reviewer")
         urls = {
             "SPA /": ("/", None), "SPA /catalog": ("/catalog", None),
-            "API salud": ("/api/health/", None), "API catálogo": ("/api/catalog/", None),
+            "API salud": ("/api/health/", None), "API catálogo": ("/api/v1/catalog/", None),
             "API 404": ("/api/no-existe/", None), "estático inexistente": ("/static/no-existe.css", None),
             "/media/ denegado": ("/media/x", None), "/_protected/ denegado": ("/_protected/x", None),
-            "PDF del catálogo": (f"/api/catalog/{self.before_api['codes'][0]}/document/", None),
+            "PDF del catálogo": (f"/api/v1/catalog/{self.before_api['codes'][0]}/document/", None),
             "PDF sanitizado del revisor": (
-                f"/api/reviewer/assignments/{self.scenario.review_assignment}/document/", token),
-            "API sin credenciales (401)": ("/api/manuscripts/", None),
+                f"/api/v1/reviewer/assignments/{self.scenario.review_assignment}/document/", token),
+            "API sin credenciales (401)": ("/api/v1/manuscripts/", None),
         }
         for label, (path, bearer) in urls.items():
             status, hdrs, _ = self.raw(self.api, path, token=bearer)
@@ -407,7 +407,7 @@ class Verifier:
 
         connection = self.api.connect()
         body = json.dumps({"identifier": "load-editor", "password": self.args.password})
-        connection.request("POST", "/api/auth/login/", body=body, headers={"Content-Type": "application/json"})
+        connection.request("POST", "/api/v1/auth/login/", body=body, headers={"Content-Type": "application/json"})
         response = connection.getresponse()
         response.read()
         cookies = [v for k, v in response.getheaders() if k.lower() == "set-cookie"]
@@ -437,10 +437,10 @@ class Verifier:
         created = compose(*base)
         self.check("create_user da de alta una cuenta con dos roles", created.returncode == 0, text(created).strip()[-80:])
         connection = self.api.connect()
-        connection.request("POST", "/api/auth/login/", body=json.dumps({"identifier": "alta-prueba", "password": password}),
+        connection.request("POST", "/api/v1/auth/login/", body=json.dumps({"identifier": "alta-prueba", "password": password}),
                            headers={"Content-Type": "application/json"})
         response = connection.getresponse()
-        payload = json.loads(response.read() or b"{}")
+        payload = load_test.as_json(response.read())
         connection.close()
         self.check("la cuenta nueva inicia sesión por la API", response.status == 200 and "access" in payload, str(response.status))
         again = compose(*base)

@@ -68,7 +68,7 @@ def decided(editor, django_capture_on_commit_callbacks):
 
 
 def url(verdict) -> str:
-    return f"/api/admin/verdicts/{verdict.pk}/authorize-correction/"
+    return f"/api/v1/admin/verdicts/{verdict.pk}/authorize-correction/"
 
 
 def authorize(user, verdict, *, key="clave-1", reason=REASON, **extra):
@@ -104,7 +104,7 @@ class TestAccess:
 
     def test_unknown_verdict_answers_404(self, admin) -> None:
         response = client_for(admin).post(
-            "/api/admin/verdicts/5d0f4d0e-0000-4000-8000-000000000000/authorize-correction/",
+            "/api/v1/admin/verdicts/5d0f4d0e-0000-4000-8000-000000000000/authorize-correction/",
             {"reason": REASON}, format="json", HTTP_IDEMPOTENCY_KEY="k",
         )
 
@@ -156,8 +156,8 @@ class TestResponse:
         authorize(admin, decided)
         client = client_for(admin)
 
-        assert client.get(f"/api/manuscripts/{decided.manuscript_id}/").status_code in (403, 404)
-        assert client.get(f"/api/editor/manuscripts/{decided.manuscript_id}/evaluations/").status_code == 403
+        assert client.get(f"/api/v1/manuscripts/{decided.manuscript_id}/").status_code in (403, 404)
+        assert client.get(f"/api/v1/editor/manuscripts/{decided.manuscript_id}/evaluations/").status_code == 403
 
 
 class TestOriginalIsUntouched:
@@ -310,7 +310,7 @@ class TestAuditDetailFlag:
         return AuditLog.objects.get(action="VERDICT_REGISTERED", entity_id=decided.manuscript_id)
 
     def detail(self, admin, decided) -> dict:
-        response = client_for(admin).get(f"/api/admin/audit/{self.event(decided).event_id}/")
+        response = client_for(admin).get(f"/api/v1/admin/audit/{self.event(decided).event_id}/")
         assert response.status_code == 200
         return response.json()
 
@@ -349,17 +349,17 @@ class TestAuditDetailFlag:
     def test_non_verdict_events_carry_no_flag(self, decided, admin) -> None:
         other = AuditService.record(action="LOGIN", entity_type="SESSION")
 
-        body = client_for(admin).get(f"/api/admin/audit/{other.event_id}/").json()
+        body = client_for(admin).get(f"/api/v1/admin/audit/{other.event_id}/").json()
 
         assert "can_authorize_correction" not in body and "verdict" not in body
 
     def test_the_list_never_carries_the_flag(self, decided, admin) -> None:
-        rows = client_for(admin).get("/api/admin/audit/").json()["results"]
+        rows = client_for(admin).get("/api/v1/admin/audit/").json()["results"]
 
         assert not any("can_authorize_correction" in row for row in rows)
 
     def test_the_detail_exposes_no_authors_or_comments(self, decided, admin) -> None:
-        text = client_for(admin).get(f"/api/admin/audit/{self.event(decided).event_id}/").content.decode()
+        text = client_for(admin).get(f"/api/v1/admin/audit/{self.event(decided).event_id}/").content.decode()
 
         for forbidden in ("Marcela", "Quizhpe", JUSTIFICATION, "comments_for_author", "email"):
             assert forbidden not in text

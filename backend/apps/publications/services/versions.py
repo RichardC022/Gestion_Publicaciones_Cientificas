@@ -12,7 +12,7 @@ snapshot and the three SHA-256 seals (plan sections 4.2-4.5).
   fails — storage, sanitization or the audit — the database rolls back
   and the directories this call created are removed; a directory that
   already existed is never touched.
-* :func:`submit_new_version` is ``POST /api/manuscripts/{id}/versions/``:
+* :func:`submit_new_version` is ``POST /api/v1/manuscripts/{id}/versions/``:
   from ``REQUIRES_CORRECTIONS``, it creates the next consecutive
   version, ties it to the current round (closing it), moves the
   manuscript back to ``SUBMITTED`` and keeps every previous version

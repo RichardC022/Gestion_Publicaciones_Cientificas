@@ -65,56 +65,64 @@ REVIEWER_OBJECT = Rule(("REVIEWER",), (ASSIGNED,), "assignment")
 
 #: (method, route) -> rule. Routes are written as the URLconf spells them.
 MATRIX: dict[tuple[str, str], Rule] = {
-    ("GET", "api/admin/audit/"): Rule(("ADMIN",)),
-    ("GET", "api/admin/audit/<uuid:pk>/"): Rule(("ADMIN",), None, "audit"),
-    ("POST", "api/admin/verdicts/<uuid:pk>/authorize-correction/"): Rule(("ADMIN",), None, "verdict"),
-    ("POST", "api/auth/logout/"): Rule(AUTHENTICATED),
-    ("GET", "api/auth/me/"): Rule(AUTHENTICATED),
-    ("GET", "api/catalog/"): Rule(PUBLIC),
-    ("GET", "api/catalog/<str:code>/"): Rule(PUBLIC),
-    ("GET", "api/catalog/<str:code>/document/"): Rule(PUBLIC),
-    ("GET", "api/dashboard/"): Rule(AUTHENTICATED),
-    ("POST", "api/editor/assignments/<uuid:pk>/revoke/"): Rule(("EDITOR",), None, "assignment"),
-    ("GET", "api/editor/assignments/expired/"): Rule(("EDITOR",)),
-    ("GET", "api/editor/incidents/"): Rule(("EDITOR",)),
-    ("POST", "api/editor/incidents/<uuid:pk>/resolve/"): Rule(("EDITOR",), None, "incident"),
-    ("GET", "api/editor/manuscripts/<uuid:pk>/assignments/"): EDITOR_OBJECT,
-    ("POST", "api/editor/manuscripts/<uuid:pk>/assignments/"): EDITOR_OBJECT,
-    ("GET", "api/editor/manuscripts/<uuid:pk>/evaluations/"): EDITOR_OBJECT,
-    ("GET", "api/editor/manuscripts/<uuid:pk>/verdicts/"): EDITOR_OBJECT,
-    ("POST", "api/editor/manuscripts/<uuid:pk>/verdicts/"): EDITOR_OBJECT,
-    ("GET", "api/editor/reviewers/"): Rule(("EDITOR",)),
-    ("GET", "api/editor/submissions/"): Rule(("EDITOR",)),
-    ("GET", "api/editor/submissions/<uuid:pk>/"): EDITOR_OBJECT,
-    ("POST", "api/editor/submissions/<uuid:pk>/start-review/"): EDITOR_OBJECT,
-    ("GET", "api/manuscripts/"): Rule(("AUTHOR", "EDITOR")),
-    ("POST", "api/manuscripts/"): Rule(("AUTHOR",)),
-    ("GET", "api/manuscripts/<uuid:pk>/"): AUTHOR_OR_EDITOR,
-    ("PATCH", "api/manuscripts/<uuid:pk>/"): AUTHOR_ONLY,
-    ("POST", "api/manuscripts/<uuid:pk>/draft-file/"): AUTHOR_ONLY,
-    ("GET", "api/manuscripts/<uuid:pk>/history/"): AUTHOR_OR_EDITOR,
-    ("POST", "api/manuscripts/<uuid:pk>/submit/"): AUTHOR_ONLY,
-    ("GET", "api/manuscripts/<uuid:pk>/versions/"): AUTHOR_OR_EDITOR,
-    ("POST", "api/manuscripts/<uuid:pk>/versions/"): AUTHOR_ONLY,
-    ("GET", "api/manuscripts/<uuid:pk>/versions/<uuid:version_id>/file/"): AUTHOR_OR_EDITOR,
-    ("POST", "api/manuscripts/<uuid:pk>/withdraw/"): AUTHOR_ONLY,
-    ("GET", "api/notifications/"): Rule(AUTHENTICATED),
-    ("PATCH", "api/notifications/<uuid:pk>/read/"): Rule(AUTHENTICATED, (OWNER,), "notification"),
-    ("POST", "api/notifications/read-all/"): Rule(AUTHENTICATED),
-    ("GET", "api/reviewer/assignments/"): Rule(("REVIEWER",)),
-    ("GET", "api/reviewer/assignments/<uuid:pk>/"): REVIEWER_OBJECT,
-    ("POST", "api/reviewer/assignments/<uuid:pk>/conflict/"): REVIEWER_OBJECT,
-    ("GET", "api/reviewer/assignments/<uuid:pk>/document/"): REVIEWER_OBJECT,
-    ("GET", "api/reviewer/assignments/<uuid:pk>/evaluation/"): REVIEWER_OBJECT,
-    ("PUT", "api/reviewer/assignments/<uuid:pk>/evaluation/"): REVIEWER_OBJECT,
-    ("POST", "api/reviewer/assignments/<uuid:pk>/evaluation/submit/"): REVIEWER_OBJECT,
-    ("POST", "api/reviewer/assignments/<uuid:pk>/identity-leak/"): REVIEWER_OBJECT,
-    ("GET", "api/reviewer/evaluations/"): Rule(("REVIEWER",)),
-    ("GET", "api/reviewer/evaluations/<uuid:pk>/"): Rule(("REVIEWER",), (ASSIGNED,), "evaluation"),
+    ("GET", "api/v1/admin/audit/"): Rule(("ADMIN",)),
+    ("GET", "api/v1/admin/audit/<uuid:pk>/"): Rule(("ADMIN",), None, "audit"),
+    ("POST", "api/v1/admin/verdicts/<uuid:pk>/authorize-correction/"): Rule(("ADMIN",), None, "verdict"),
+    ("POST", "api/v1/auth/logout/"): Rule(AUTHENTICATED),
+    ("GET", "api/v1/auth/me/"): Rule(AUTHENTICATED),
+    ("GET", "api/v1/catalog/"): Rule(PUBLIC),
+    ("GET", "api/v1/catalog/<str:code>/"): Rule(PUBLIC),
+    ("GET", "api/v1/catalog/<str:code>/document/"): Rule(PUBLIC),
+    ("GET", "api/v1/dashboard/"): Rule(AUTHENTICATED),
+    ("POST", "api/v1/editor/assignments/<uuid:pk>/revoke/"): Rule(("EDITOR",), None, "assignment"),
+    ("GET", "api/v1/editor/assignments/expired/"): Rule(("EDITOR",)),
+    ("GET", "api/v1/editor/incidents/"): Rule(("EDITOR",)),
+    ("POST", "api/v1/editor/incidents/<uuid:pk>/resolve/"): Rule(("EDITOR",), None, "incident"),
+    ("GET", "api/v1/editor/manuscripts/<uuid:pk>/assignments/"): EDITOR_OBJECT,
+    ("POST", "api/v1/editor/manuscripts/<uuid:pk>/assignments/"): EDITOR_OBJECT,
+    ("GET", "api/v1/editor/manuscripts/<uuid:pk>/evaluations/"): EDITOR_OBJECT,
+    ("GET", "api/v1/editor/manuscripts/<uuid:pk>/verdicts/"): EDITOR_OBJECT,
+    ("POST", "api/v1/editor/manuscripts/<uuid:pk>/verdicts/"): EDITOR_OBJECT,
+    ("GET", "api/v1/editor/reviewers/"): Rule(("EDITOR",)),
+    ("GET", "api/v1/editor/submissions/"): Rule(("EDITOR",)),
+    ("GET", "api/v1/editor/submissions/<uuid:pk>/"): EDITOR_OBJECT,
+    ("POST", "api/v1/editor/submissions/<uuid:pk>/start-review/"): EDITOR_OBJECT,
+    ("GET", "api/v1/manuscripts/"): Rule(("AUTHOR", "EDITOR")),
+    ("POST", "api/v1/manuscripts/"): Rule(("AUTHOR",)),
+    ("GET", "api/v1/manuscripts/<uuid:pk>/"): AUTHOR_OR_EDITOR,
+    ("PATCH", "api/v1/manuscripts/<uuid:pk>/"): AUTHOR_ONLY,
+    ("POST", "api/v1/manuscripts/<uuid:pk>/draft-file/"): AUTHOR_ONLY,
+    ("GET", "api/v1/manuscripts/<uuid:pk>/history/"): AUTHOR_OR_EDITOR,
+    ("POST", "api/v1/manuscripts/<uuid:pk>/submit/"): AUTHOR_ONLY,
+    ("GET", "api/v1/manuscripts/<uuid:pk>/versions/"): AUTHOR_OR_EDITOR,
+    ("POST", "api/v1/manuscripts/<uuid:pk>/versions/"): AUTHOR_ONLY,
+    ("GET", "api/v1/manuscripts/<uuid:pk>/versions/<uuid:version_id>/file/"): AUTHOR_OR_EDITOR,
+    ("POST", "api/v1/manuscripts/<uuid:pk>/withdraw/"): AUTHOR_ONLY,
+    ("GET", "api/v1/notifications/"): Rule(AUTHENTICATED),
+    ("PATCH", "api/v1/notifications/<uuid:pk>/read/"): Rule(AUTHENTICATED, (OWNER,), "notification"),
+    ("POST", "api/v1/notifications/read-all/"): Rule(AUTHENTICATED),
+    ("GET", "api/v1/reviewer/assignments/"): Rule(("REVIEWER",)),
+    ("GET", "api/v1/reviewer/assignments/<uuid:pk>/"): REVIEWER_OBJECT,
+    ("POST", "api/v1/reviewer/assignments/<uuid:pk>/conflict/"): REVIEWER_OBJECT,
+    ("GET", "api/v1/reviewer/assignments/<uuid:pk>/document/"): REVIEWER_OBJECT,
+    ("GET", "api/v1/reviewer/assignments/<uuid:pk>/evaluation/"): REVIEWER_OBJECT,
+    ("PUT", "api/v1/reviewer/assignments/<uuid:pk>/evaluation/"): REVIEWER_OBJECT,
+    ("POST", "api/v1/reviewer/assignments/<uuid:pk>/evaluation/submit/"): REVIEWER_OBJECT,
+    ("POST", "api/v1/reviewer/assignments/<uuid:pk>/identity-leak/"): REVIEWER_OBJECT,
+    ("GET", "api/v1/reviewer/evaluations/"): Rule(("REVIEWER",)),
+    ("GET", "api/v1/reviewer/evaluations/<uuid:pk>/"): Rule(("REVIEWER",), (ASSIGNED,), "evaluation"),
 }
 
 #: Routes that are open by design and carry their own tests.
-OUTSIDE_THE_MATRIX = {"api/auth/login/", "api/auth/refresh/", "api/health/"}
+OUTSIDE_THE_MATRIX = {
+    # Públicas por diseño: el inicio de sesión, su renovación, el health y la raíz de la API.
+    "api/v1/auth/login/",
+    "api/v1/auth/refresh/",
+    "api/v1/health/",
+    "api/v1/",
+    # Alias sin versión del health que usan Docker y los scripts de operación.
+    "api/health/",
+}
 
 
 def declared_routes() -> set[tuple[str, str]]:
@@ -174,10 +182,10 @@ def world(django_capture_on_commit_callbacks, submit, media_root) -> World:  # n
     in_review = flow.submit_manuscript()
     assignment = flow.start_review()
     client_for(flow.reviewer).put(
-        f"/api/reviewer/assignments/{assignment.pk}/evaluation/", EVALUATION, format="json", HTTP_IF_MATCH='"0"'
+        f"/api/v1/reviewer/assignments/{assignment.pk}/evaluation/", EVALUATION, format="json", HTTP_IF_MATCH='"0"'
     )
     reported = client_for(flow.reviewer).post(
-        f"/api/reviewer/assignments/{assignment.pk}/identity-leak/",
+        f"/api/v1/reviewer/assignments/{assignment.pk}/identity-leak/",
         {"report_type": "IDENTITY_LEAK", "description": "El PDF menciona al grupo de investigación."},
         format="json",
     )
@@ -243,15 +251,15 @@ class TestAccessMatrix:
         admin = world.client(ADMIN)
         o = world.objects
         urls = [
-            f"/api/manuscripts/{o['manuscript']}/", f"/api/manuscripts/{o['manuscript']}/history/",
-            f"/api/manuscripts/{o['manuscript']}/versions/",
-            f"/api/manuscripts/{o['manuscript']}/versions/{o['version']}/file/",
-            f"/api/editor/submissions/{o['manuscript']}/", f"/api/editor/manuscripts/{o['manuscript']}/evaluations/",
-            f"/api/reviewer/assignments/{o['assignment']}/", f"/api/reviewer/assignments/{o['assignment']}/document/",
-            f"/api/reviewer/assignments/{o['assignment']}/evaluation/", f"/api/reviewer/evaluations/{o['evaluation']}/",
+            f"/api/v1/manuscripts/{o['manuscript']}/", f"/api/v1/manuscripts/{o['manuscript']}/history/",
+            f"/api/v1/manuscripts/{o['manuscript']}/versions/",
+            f"/api/v1/manuscripts/{o['manuscript']}/versions/{o['version']}/file/",
+            f"/api/v1/editor/submissions/{o['manuscript']}/", f"/api/v1/editor/manuscripts/{o['manuscript']}/evaluations/",
+            f"/api/v1/reviewer/assignments/{o['assignment']}/", f"/api/v1/reviewer/assignments/{o['assignment']}/document/",
+            f"/api/v1/reviewer/assignments/{o['assignment']}/evaluation/", f"/api/v1/reviewer/evaluations/{o['evaluation']}/",
         ]
         assert [admin.get(url).status_code for url in urls] == [403] * len(urls)
-        assert admin.get("/api/manuscripts/").status_code == 403
+        assert admin.get("/api/v1/manuscripts/").status_code == 403
 
 
 class TestForeignAndMissingObjectsAreIndistinguishable:
@@ -300,8 +308,8 @@ class TestEditorWithAConflict:
         client = client_for(both)
         o = world.objects
         urls = [
-            f"/api/editor/submissions/{o['manuscript']}/", f"/api/editor/manuscripts/{o['manuscript']}/evaluations/",
-            f"/api/editor/manuscripts/{o['manuscript']}/assignments/", f"/api/editor/manuscripts/{o['manuscript']}/verdicts/",
+            f"/api/v1/editor/submissions/{o['manuscript']}/", f"/api/v1/editor/manuscripts/{o['manuscript']}/evaluations/",
+            f"/api/v1/editor/manuscripts/{o['manuscript']}/assignments/", f"/api/v1/editor/manuscripts/{o['manuscript']}/verdicts/",
         ]
         assert [client.get(url).status_code for url in urls] == [404] * len(urls)
 
@@ -312,10 +320,10 @@ class TestDraftsOfOthers:
 
         draft = ready_draft(world.other_author)
         editor = world.client(EDITOR)
-        for url in (f"/api/manuscripts/{draft.pk}/", f"/api/manuscripts/{draft.pk}/history/",
-                    f"/api/manuscripts/{draft.pk}/versions/", f"/api/editor/submissions/{draft.pk}/"):
+        for url in (f"/api/v1/manuscripts/{draft.pk}/", f"/api/v1/manuscripts/{draft.pk}/history/",
+                    f"/api/v1/manuscripts/{draft.pk}/versions/", f"/api/v1/editor/submissions/{draft.pk}/"):
             assert editor.get(url).status_code == 404, url
-        listed = editor.get("/api/manuscripts/").json()["results"]
+        listed = editor.get("/api/v1/manuscripts/").json()["results"]
         assert str(draft.pk) not in {row["id"] for row in listed}
 
 
@@ -326,9 +334,9 @@ class TestNoIdentityOutsideTheEditorialRoles:
         o = world.objects
         reviewer = world.client(ASSIGNED)
         urls = [
-            "/api/auth/me/", "/api/dashboard/", "/api/notifications/", "/api/reviewer/assignments/",
-            f"/api/reviewer/assignments/{o['assignment']}/", f"/api/reviewer/assignments/{o['assignment']}/evaluation/",
-            "/api/reviewer/evaluations/", f"/api/reviewer/evaluations/{o['evaluation']}/",
+            "/api/v1/auth/me/", "/api/v1/dashboard/", "/api/v1/notifications/", "/api/v1/reviewer/assignments/",
+            f"/api/v1/reviewer/assignments/{o['assignment']}/", f"/api/v1/reviewer/assignments/{o['assignment']}/evaluation/",
+            "/api/v1/reviewer/evaluations/", f"/api/v1/reviewer/evaluations/{o['evaluation']}/",
         ]
         forbidden = (*AUTHOR_TOKENS, "metadata_snapshot", "original_filename", "created_by", "affiliation")
         found = []
@@ -339,7 +347,7 @@ class TestNoIdentityOutsideTheEditorialRoles:
 
     def test_the_administrators_audit_holds_no_identity_of_either_side(self, world) -> None:
         admin = world.client(ADMIN)
-        body = admin.get("/api/admin/audit/", {"page_size": 100}).content.decode().lower()
+        body = admin.get("/api/v1/admin/audit/", {"page_size": 100}).content.decode().lower()
         leaked = [token for token in (*AUTHOR_TOKENS, *REVIEWER_TOKENS, "metadata_snapshot") if token.lower() in body]
         assert not leaked, leaked
 
@@ -347,7 +355,7 @@ class TestNoIdentityOutsideTheEditorialRoles:
         author = world.client(OWNER)
         body = "".join(
             author.get(url).content.decode()
-            for url in ("/api/notifications/", f"/api/manuscripts/{world.objects['manuscript']}/",
-                        f"/api/manuscripts/{world.objects['manuscript']}/history/")
+            for url in ("/api/v1/notifications/", f"/api/v1/manuscripts/{world.objects['manuscript']}/",
+                        f"/api/v1/manuscripts/{world.objects['manuscript']}/history/")
         ).lower()
         assert [token for token in REVIEWER_TOKENS if token.lower() in body] == []

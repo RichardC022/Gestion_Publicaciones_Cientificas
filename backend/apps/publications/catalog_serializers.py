@@ -57,4 +57,4 @@ class PublicCatalogSerializer(serializers.ModelSerializer):
         return PublicAuthorSerializer(authors, many=True).data
 
     def get_document_url(self, entry: CatalogEntry) -> str:
-        return f"/api/catalog/{entry.manuscript.code}/document/"
+        return f"/api/v1/catalog/{entry.manuscript.code}/document/"

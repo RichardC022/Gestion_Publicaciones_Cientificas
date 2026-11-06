@@ -1,6 +1,5 @@
 """Tests for the ``X-Request-ID`` middleware (TSK-11)."""
 
-import json
 import logging
 import re
 
@@ -10,6 +9,7 @@ from django.test import Client, override_settings
 
 from config import middleware
 from config.middleware import RequestIDLogFilter
+from tests.contract import success_of
 
 GENERATED_ID = re.compile(r"^[0-9a-f]{32}$")
 
@@ -22,7 +22,7 @@ def test_response_carries_generated_request_id(client):
     assert response.status_code == 200
     request_id = response["X-Request-ID"]
     assert GENERATED_ID.fullmatch(request_id)
-    assert json.loads(response.content)["request_id"] == request_id
+    assert success_of(response)["data"]["request_id"] == request_id
 
 
 @override_settings(ROOT_URLCONF="tests.api_urls")
@@ -32,7 +32,7 @@ def test_valid_client_request_id_is_preserved(client):
 
     assert response.status_code == 200
     assert response["X-Request-ID"] == "client-abc-123"
-    assert json.loads(response.content)["request_id"] == "client-abc-123"
+    assert success_of(response)["data"]["request_id"] == "client-abc-123"
 
 
 @pytest.mark.parametrize(
@@ -102,4 +102,4 @@ def test_request_id_is_readable_for_auditing(client):
     response = client.get("/echo/", secure=True, HTTP_X_REQUEST_ID="rid-audit")
 
     assert response.status_code == 200
-    assert json.loads(response.content)["request_id"] == "rid-audit"
+    assert success_of(response)["data"]["request_id"] == "rid-audit"

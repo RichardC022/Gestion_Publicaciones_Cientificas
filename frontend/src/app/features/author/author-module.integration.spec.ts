@@ -53,7 +53,7 @@ describe('Módulo Autor: integración con las rutas reales', () => {
         NOTIFICATION_SERVICE_STUB,
         provideHttpClient(),
         provideHttpClientTesting(),
-        { provide: API_BASE_URL, useValue: '/api/' },
+        { provide: API_BASE_URL, useValue: '/api/v1/' },
       ],
     });
     http = TestBed.inject(HttpTestingController);
@@ -68,8 +68,8 @@ describe('Módulo Autor: integración con las rutas reales', () => {
 
   const signIn = (...roles: Role[]) => store.setSession({ user: USER, roles, access: 'token' });
 
-  const list = () => http.expectOne((r) => r.url === '/api/manuscripts/');
-  const detail = () => http.expectOne('/api/manuscripts/m-1/');
+  const list = () => http.expectOne((r) => r.url === '/api/v1/manuscripts/');
+  const detail = () => http.expectOne('/api/v1/manuscripts/m-1/');
 
   /** Abre una URL y responde las solicitudes que cada pantalla hace al cargar. */
   const open = async (url: string) => {
@@ -107,7 +107,7 @@ describe('Módulo Autor: integración con las rutas reales', () => {
         else if (selector === 'app-version-history') {
           detail().flush(buildManuscript());
           http
-            .expectOne((r) => r.url === '/api/manuscripts/m-1/history/')
+            .expectOne((r) => r.url === '/api/v1/manuscripts/m-1/history/')
             .flush({ count: 0, next: null, previous: null, results: [] });
         }
         await settle();
@@ -188,7 +188,7 @@ describe('Módulo Autor: integración con las rutas reales', () => {
       expect(router.url).toBe('/app/author/manuscripts/m-1/history');
       detail().flush(buildManuscript({ status: 'DRAFT' }));
       http
-        .expectOne((r) => r.url === '/api/manuscripts/m-1/history/')
+        .expectOne((r) => r.url === '/api/v1/manuscripts/m-1/history/')
         .flush({ count: 0, next: null, previous: null, results: [] });
       await settle();
       expect(element.querySelector('app-version-history')).not.toBeNull();

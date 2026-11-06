@@ -19,7 +19,7 @@ DEFAULT_ORDERING = "-created_at"
 
 
 class ManuscriptFilterSerializer(serializers.Serializer):
-    """Validated filter parameters of ``GET /api/manuscripts/``."""
+    """Validated filter parameters of ``GET /api/v1/manuscripts/``."""
 
     status = serializers.ChoiceField(choices=Manuscript.Status.choices, required=False)
     area = serializers.CharField(max_length=120, required=False)

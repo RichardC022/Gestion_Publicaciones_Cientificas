@@ -49,17 +49,17 @@ describe('authInterceptor', () => {
 
   it('añade el bearer a un endpoint protegido', () => {
     store.setSession({ user: USER, roles: ['AUTHOR'], access: 'token-vigente' });
-    expect(getTokenOf('/api/manuscripts/')).toBe('Bearer token-vigente');
+    expect(getTokenOf('/api/v1/manuscripts/')).toBe('Bearer token-vigente');
   });
 
   it('sin sesión no añade cabecera', () => {
-    expect(getTokenOf('/api/manuscripts/')).toBeNull();
+    expect(getTokenOf('/api/v1/manuscripts/')).toBeNull();
   });
 
   it('login, refresh y catálogo público nunca llevan bearer', () => {
     store.setSession({ user: USER, roles: ['AUTHOR'], access: 'token-vigente' });
 
-    const publicUrls = ['/api/auth/login/', '/api/auth/refresh/', '/api/catalog/'];
+    const publicUrls = ['/api/v1/auth/login/', '/api/v1/auth/refresh/', '/api/v1/catalog/'];
     for (const url of publicUrls) {
       client.post(url, {}).subscribe();
       expect(httpMock.expectOne(url).request.headers.get('Authorization')).toBeNull();

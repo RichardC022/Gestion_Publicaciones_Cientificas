@@ -6,6 +6,7 @@ import { API_BASE_URL } from '../../../core/http/api-base-url.token';
 import { DashboardResponse } from '../../../core/models/dashboard.model';
 import { Role } from '../../../core/models/role.model';
 import { UnifiedDashboardComponent } from './unified-dashboard.component';
+import { errorEnvelope } from '../../../core/testing/api-envelope.fixtures';
 
 const USER = {
   id: 'uuid-1',
@@ -44,14 +45,14 @@ describe('UnifiedDashboardComponent', () => {
   };
 
   const flush = (response: DashboardResponse) =>
-    httpMock.expectOne('/api/dashboard/').flush(response);
+    httpMock.expectOne('/api/v1/dashboard/').flush(response);
 
   beforeEach(() => {
     TestBed.configureTestingModule({
       providers: [
         provideHttpClient(),
         provideHttpClientTesting(),
-        { provide: API_BASE_URL, useValue: '/api/' },
+        { provide: API_BASE_URL, useValue: '/api/v1/' },
       ],
     });
     httpMock = TestBed.inject(HttpTestingController);
@@ -190,8 +191,8 @@ describe('UnifiedDashboardComponent', () => {
   it('un fallo global del panel muestra error con Reintentar', async () => {
     const fixture = await render();
     httpMock
-      .expectOne('/api/dashboard/')
-      .flush({ error: { code: 'SERVER_ERROR', message: 'Error interno.' } }, {
+      .expectOne('/api/v1/dashboard/')
+      .flush(errorEnvelope('SERVER_ERROR', 'Error interno.'), {
         status: 500,
         statusText: 'Server Error',
       });

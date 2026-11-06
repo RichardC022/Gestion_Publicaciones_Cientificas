@@ -167,9 +167,9 @@ class TestNoAutomaticDecision:
         run(django_capture_on_commit_callbacks)
         client = client_for(editor)
 
-        listed = client.get("/api/editor/assignments/expired/").json()["results"]
+        listed = client.get("/api/v1/editor/assignments/expired/").json()["results"]
         blocked = client.post(
-            f"/api/editor/manuscripts/{manuscript.pk}/assignments/",
+            f"/api/v1/editor/manuscripts/{manuscript.pk}/assignments/",
             {"reviewer_id": str(make_reviewer().pk)},
             format="json",
         )

@@ -23,9 +23,9 @@ import { EvaluationFormComponent } from './evaluation-form.component';
 @Component({ template: '' })
 class BlankComponent {}
 
-const DETAIL = '/api/reviewer/assignments/a-1/';
-const EVALUATION = '/api/reviewer/assignments/a-1/evaluation/';
-const SUBMIT = '/api/reviewer/assignments/a-1/evaluation/submit/';
+const DETAIL = '/api/v1/reviewer/assignments/a-1/';
+const EVALUATION = '/api/v1/reviewer/assignments/a-1/evaluation/';
+const SUBMIT = '/api/v1/reviewer/assignments/a-1/evaluation/submit/';
 const PAGE_URL = '/app/reviewer/assignments/a-1/evaluate';
 const NOW = new Date('2026-10-27T12:00:00Z');
 
@@ -56,7 +56,7 @@ describe('EvaluationFormComponent', () => {
         ]),
         provideHttpClient(),
         provideHttpClientTesting(),
-        { provide: API_BASE_URL, useValue: '/api/' },
+        { provide: API_BASE_URL, useValue: '/api/v1/' },
       ],
     });
     http = TestBed.inject(HttpTestingController);
@@ -703,7 +703,7 @@ describe('EvaluationFormComponent', () => {
       inDialog(dialog, 'Declarar conflicto').click();
       await view.settle();
       http
-        .expectOne((r) => r.url === '/api/reviewer/assignments/a-1/conflict/')
+        .expectOne((r) => r.url === '/api/v1/reviewer/assignments/a-1/conflict/')
         .flush(buildCompleteEvaluation({ conflict_declared: true }), { headers: { ETag: '"3"' } });
       await view.settle();
 
@@ -729,7 +729,7 @@ describe('EvaluationFormComponent', () => {
       inDialog(dialog, 'Declarar conflicto').click();
       await view.settle();
       http
-        .expectOne((r) => r.url === '/api/reviewer/assignments/a-1/conflict/')
+        .expectOne((r) => r.url === '/api/v1/reviewer/assignments/a-1/conflict/')
         .error(new ProgressEvent('error'));
       await view.settle();
 
@@ -752,7 +752,7 @@ describe('EvaluationFormComponent', () => {
       inDialog(dialog, 'Enviar reporte confidencial').click();
       await view.settle();
       http
-        .expectOne((r) => r.url === '/api/reviewer/assignments/a-1/identity-leak/')
+        .expectOne((r) => r.url === '/api/v1/reviewer/assignments/a-1/identity-leak/')
         .flush(
           {
             id: 'i-1',
@@ -786,7 +786,7 @@ describe('EvaluationFormComponent', () => {
       inDialog(dialog, 'Enviar reporte confidencial').click();
       await view.settle();
       http
-        .expectOne((r) => r.url === '/api/reviewer/assignments/a-1/identity-leak/')
+        .expectOne((r) => r.url === '/api/v1/reviewer/assignments/a-1/identity-leak/')
         .error(new ProgressEvent('error'));
       await view.settle();
 

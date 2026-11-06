@@ -1,6 +1,6 @@
 """Administrator endpoint of the verdict correction (plan section 2.7, TSK-77).
 
-``POST /api/admin/verdicts/{id}/authorize-correction/`` is the only write
+``POST /api/v1/admin/verdicts/{id}/authorize-correction/`` is the only write
 of the administrator role (CA-HU-13-12). It needs the active ``ADMIN``
 role, ``Idempotency-Key`` and a ``reason`` of 10 to 1000 characters. The
 answer carries the manuscript's public code, the decision and the dates:

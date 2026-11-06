@@ -12,7 +12,7 @@ import { errorEnvelope } from '../testing/manuscript.fixtures';
 import { MAX_PDF_BYTES } from './pdf-file.validation';
 import { PdfUploaderComponent } from './pdf-uploader.component';
 
-const URL = '/api/manuscripts/m-1/draft-file/';
+const URL = '/api/v1/manuscripts/m-1/draft-file/';
 
 const CURRENT: DraftFileSummary = {
   filename: 'borrador-anterior.pdf',
@@ -47,7 +47,7 @@ describe('PdfUploaderComponent', () => {
       providers: [
         provideHttpClient(),
         provideHttpClientTesting(),
-        { provide: API_BASE_URL, useValue: '/api/' },
+        { provide: API_BASE_URL, useValue: '/api/v1/' },
       ],
     });
     http = TestBed.inject(HttpTestingController);
@@ -463,7 +463,7 @@ describe('PdfUploaderComponent', () => {
   });
 
   describe('nueva versión (target="version")', () => {
-    const VERSION_URL = '/api/manuscripts/m-1/versions/';
+    const VERSION_URL = '/api/v1/manuscripts/m-1/versions/';
     const RESULT: SubmissionResult = {
       code: 'GPC-2026-000001',
       status: 'SUBMITTED',

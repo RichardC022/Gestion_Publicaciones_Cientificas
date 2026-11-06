@@ -29,7 +29,7 @@ export class AuditService {
     return `${this.baseUrl}admin/audit/`;
   }
 
-  /** Eventos, del más reciente al más antiguo, con filtros combinados (`GET /api/admin/audit/`). */
+  /** Eventos, del más reciente al más antiguo, con filtros combinados (`GET /api/v1/admin/audit/`). */
   list(filters: AuditFilters, page = 1, pageSize = 25): Observable<Paginated<AuditEvent>> {
     return this.http
       .get<Paginated<AuditEvent>>(this.url, {
@@ -44,7 +44,7 @@ export class AuditService {
 
   /**
    * Habilita que el Editor decida de nuevo sobre un veredicto
-   * (`POST /api/admin/verdicts/{id}/authorize-correction/`). El veredicto
+   * (`POST /api/v1/admin/verdicts/{id}/authorize-correction/`). El veredicto
    * original no se toca. `idempotencyKey` identifica esta intención: un
    * reintento con la misma clave devuelve lo ya registrado.
    */
@@ -62,7 +62,7 @@ export class AuditService {
       .pipe(catchError((error) => throwError(() => toApiError(error))));
   }
 
-  /** Un evento por su identificador público (`GET /api/admin/audit/{id}/`). */
+  /** Un evento por su identificador público (`GET /api/v1/admin/audit/{id}/`). */
   get(id: string): Observable<AuditEventDetail> {
     return this.http
       .get<AuditEventDetail>(`${this.url}${encodeURIComponent(id)}/`)

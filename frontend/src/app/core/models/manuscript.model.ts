@@ -181,7 +181,7 @@ export interface ManuscriptPayload {
   authors: AuthorPayload[];
 }
 
-/** Filtros del listado (`GET /api/manuscripts/`, plan sección 2.1). */
+/** Filtros del listado (`GET /api/v1/manuscripts/`, plan sección 2.1). */
 export interface ManuscriptListParams {
   status?: ManuscriptStatus;
   date_from?: string;

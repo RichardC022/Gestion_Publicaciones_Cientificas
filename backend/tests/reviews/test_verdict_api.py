@@ -29,7 +29,7 @@ from tests.reviews.test_editor_api import make_assignment, make_reviewer, result
 
 pytestmark = pytest.mark.django_db
 
-BASE = "/api/editor/manuscripts/"
+BASE = "/api/v1/editor/manuscripts/"
 
 
 @pytest.fixture(autouse=True)
@@ -458,7 +458,7 @@ class TestEvaluations:
         for path in (
             evaluations_url(manuscript),
             verdicts_url(manuscript),
-            f"/api/manuscripts/{manuscript.pk}/",
+            f"/api/v1/manuscripts/{manuscript.pk}/",
         ):
             response = client_for(owner).get(path)
             assert "Solo para el Editor." not in response.content.decode()

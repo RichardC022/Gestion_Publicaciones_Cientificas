@@ -31,11 +31,11 @@ from tests.factories import FACTORY_PASSWORD, UserFactory, UserRoleFactory
 
 pytestmark = pytest.mark.django_db
 
-LOGIN_URL = "/api/auth/login/"
-REFRESH_URL = "/api/auth/refresh/"
-LOGOUT_URL = "/api/auth/logout/"
-ME_URL = "/api/auth/me/"
-DASHBOARD_URL = "/api/dashboard/"
+LOGIN_URL = "/api/v1/auth/login/"
+REFRESH_URL = "/api/v1/auth/refresh/"
+LOGOUT_URL = "/api/v1/auth/logout/"
+ME_URL = "/api/v1/auth/me/"
+DASHBOARD_URL = "/api/v1/dashboard/"
 COOKIE = settings.REFRESH_COOKIE_NAME
 WRONG_PASSWORD = "secreto-equivocado"
 

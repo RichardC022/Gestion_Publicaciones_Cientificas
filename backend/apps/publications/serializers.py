@@ -247,7 +247,7 @@ class SubmissionSerializer(serializers.Serializer):
 
 
 class WithdrawalSerializer(serializers.Serializer):
-    """Body of ``POST /api/manuscripts/{id}/withdraw/``.
+    """Body of ``POST /api/v1/manuscripts/{id}/withdraw/``.
 
     The reason is optional here: whether it is mandatory depends on the
     manuscript status, which the service checks under the row lock.

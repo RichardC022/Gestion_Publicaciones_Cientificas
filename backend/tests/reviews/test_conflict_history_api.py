@@ -36,7 +36,7 @@ from tests.publications.test_manuscript_api import actor, client_for, error_code
 
 pytestmark = pytest.mark.django_db
 
-BASE = "/api/reviewer/"
+BASE = "/api/v1/reviewer/"
 AUTHOR_NAME = "Ana Autora Reservada"
 SECRET = "nota-confidencial-solo-editor"
 FULL = {

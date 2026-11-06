@@ -40,7 +40,7 @@ describe('ManuscriptDetailComponent', () => {
         ]),
         provideHttpClient(),
         provideHttpClientTesting(),
-        { provide: API_BASE_URL, useValue: '/api/' },
+        { provide: API_BASE_URL, useValue: '/api/v1/' },
       ],
     });
     http = TestBed.inject(HttpTestingController);
@@ -58,7 +58,7 @@ describe('ManuscriptDetailComponent', () => {
       harness.detectChanges();
     };
     http
-      .expectOne('/api/manuscripts/m-1/')
+      .expectOne('/api/v1/manuscripts/m-1/')
       .flush(buildManuscript(overrides as Partial<Manuscript>), { headers: { ETag: '"2"' } });
     await settle();
     return { element, settle };
@@ -193,7 +193,7 @@ describe('ManuscriptDetailComponent', () => {
 
       (element.querySelector('.uploader__actions .btn--success') as HTMLButtonElement).click();
       http
-        .expectOne('/api/manuscripts/m-1/draft-file/')
+        .expectOne('/api/v1/manuscripts/m-1/draft-file/')
         .flush(
           { filename: 'nuevo.pdf', size_bytes: 8, uploaded_at: '2026-10-25T12:00:00Z' },
           { status: 201, statusText: 'Created' },
@@ -375,7 +375,7 @@ describe('ManuscriptDetailComponent', () => {
 
       expect(element.querySelector('app-loading-spinner')).not.toBeNull();
 
-      http.expectOne('/api/manuscripts/m-1/').flush(buildManuscript());
+      http.expectOne('/api/v1/manuscripts/m-1/').flush(buildManuscript());
       await harness.fixture.whenStable();
       harness.detectChanges();
       expect(element.querySelector('app-loading-spinner')).toBeNull();
@@ -390,7 +390,7 @@ describe('ManuscriptDetailComponent', () => {
         harness.detectChanges();
       };
 
-      http.expectOne('/api/manuscripts/m-1/').flush(errorEnvelope('NOT_FOUND', 'No encontrado.'), {
+      http.expectOne('/api/v1/manuscripts/m-1/').flush(errorEnvelope('NOT_FOUND', 'No encontrado.'), {
         status: 404,
         statusText: 'Not Found',
       });
@@ -403,7 +403,7 @@ describe('ManuscriptDetailComponent', () => {
 
       (element.querySelector('app-error-state button') as HTMLButtonElement).click();
       await settle();
-      http.expectOne('/api/manuscripts/m-1/').flush(buildManuscript({ title: 'Recuperado' }));
+      http.expectOne('/api/v1/manuscripts/m-1/').flush(buildManuscript({ title: 'Recuperado' }));
       await settle();
 
       expect(element.querySelector('h1')?.textContent).toBe('Recuperado');
@@ -416,7 +416,7 @@ describe('ManuscriptDetailComponent', () => {
     const REASON_OPTIONAL = MANUSCRIPT_STATUSES.filter(
       (status) => !(REASON_REQUIRED as readonly string[]).includes(status),
     );
-    const WITHDRAW_URL = '/api/manuscripts/m-1/withdraw/';
+    const WITHDRAW_URL = '/api/v1/manuscripts/m-1/withdraw/';
 
     const withdrawButton = (element: HTMLElement) =>
       Array.from(element.querySelectorAll('.actions button')).find(
@@ -621,7 +621,7 @@ describe('ManuscriptDetailComponent', () => {
       });
       await settle();
       http
-        .expectOne('/api/manuscripts/m-1/')
+        .expectOne('/api/v1/manuscripts/m-1/')
         .flush(buildManuscript({ is_active: false, withdrawn_at: '2026-10-22T17:00:00Z' }));
       await settle();
 
@@ -657,7 +657,7 @@ describe('ManuscriptDetailComponent', () => {
     );
 
   describe('envío formal', () => {
-    const SUBMIT_URL = '/api/manuscripts/m-1/submit/';
+    const SUBMIT_URL = '/api/v1/manuscripts/m-1/submit/';
     const DRAFT_FILE = {
       filename: 'articulo.pdf',
       size_bytes: 2_621_440,
@@ -788,7 +788,7 @@ describe('ManuscriptDetailComponent', () => {
       expect(request.request.headers.get('Idempotency-Key')).toMatch(KEY_FORMAT);
       request.flush(RESULT, { status: 201, statusText: 'Created' });
       http
-        .expectOne('/api/manuscripts/m-1/')
+        .expectOne('/api/v1/manuscripts/m-1/')
         .flush(buildManuscript({ status: 'SUBMITTED', current_version: 1 }));
       await settle();
     });
@@ -799,7 +799,7 @@ describe('ManuscriptDetailComponent', () => {
 
       http.expectOne(SUBMIT_URL).flush(RESULT, { status: 201, statusText: 'Created' });
       http
-        .expectOne('/api/manuscripts/m-1/')
+        .expectOne('/api/v1/manuscripts/m-1/')
         .flush(buildManuscript({ status: 'SUBMITTED', current_version: 1 }));
       await settle();
 
@@ -823,7 +823,7 @@ describe('ManuscriptDetailComponent', () => {
 
       http.expectOne(SUBMIT_URL).flush(RESULT, { status: 201, statusText: 'Created' });
       http
-        .expectOne('/api/manuscripts/m-1/')
+        .expectOne('/api/v1/manuscripts/m-1/')
         .flush(buildManuscript({ status: 'SUBMITTED', current_version: 1 }));
       await settle();
 
@@ -844,7 +844,7 @@ describe('ManuscriptDetailComponent', () => {
 
       const request = http.expectOne(SUBMIT_URL);
       request.flush(RESULT, { status: 201, statusText: 'Created' });
-      http.expectOne('/api/manuscripts/m-1/').flush(buildManuscript({ status: 'SUBMITTED' }));
+      http.expectOne('/api/v1/manuscripts/m-1/').flush(buildManuscript({ status: 'SUBMITTED' }));
     });
 
     it('si falla por un corte, el reintento usa la MISMA clave de idempotencia', async () => {
@@ -867,7 +867,7 @@ describe('ManuscriptDetailComponent', () => {
       const retry = http.expectOne(SUBMIT_URL);
       expect(retry.request.headers.get('Idempotency-Key')).toBe(key);
       retry.flush(RESULT, { status: 201, statusText: 'Created' });
-      http.expectOne('/api/manuscripts/m-1/').flush(buildManuscript({ status: 'SUBMITTED' }));
+      http.expectOne('/api/v1/manuscripts/m-1/').flush(buildManuscript({ status: 'SUBMITTED' }));
     });
 
     it('un envío rechazado por datos faltantes explica qué falta y el siguiente intento usa clave nueva', async () => {
@@ -896,7 +896,7 @@ describe('ManuscriptDetailComponent', () => {
       const second = http.expectOne(SUBMIT_URL);
       expect(second.request.headers.get('Idempotency-Key')).not.toBe(key);
       second.flush(RESULT, { status: 201, statusText: 'Created' });
-      http.expectOne('/api/manuscripts/m-1/').flush(buildManuscript({ status: 'SUBMITTED' }));
+      http.expectOne('/api/v1/manuscripts/m-1/').flush(buildManuscript({ status: 'SUBMITTED' }));
     });
 
     it('si el manuscrito ya no era un borrador (409) avisa y muestra el estado real', async () => {
@@ -909,7 +909,7 @@ describe('ManuscriptDetailComponent', () => {
       });
       await settle();
       http
-        .expectOne('/api/manuscripts/m-1/')
+        .expectOne('/api/v1/manuscripts/m-1/')
         .flush(buildManuscript({ status: 'SUBMITTED', current_version: 1 }));
       await settle();
 
@@ -920,7 +920,7 @@ describe('ManuscriptDetailComponent', () => {
   });
 
   describe('nueva versión en correcciones', () => {
-    const VERSION_URL = '/api/manuscripts/m-1/versions/';
+    const VERSION_URL = '/api/v1/manuscripts/m-1/versions/';
     const RESULT = {
       code: 'GPC-2026-000001',
       status: 'SUBMITTED',
@@ -979,7 +979,7 @@ describe('ManuscriptDetailComponent', () => {
       expect(((request.request.body as FormData).get('file') as File).name).toBe('corregido.pdf');
       request.flush(RESULT, { status: 201, statusText: 'Created' });
       http
-        .expectOne('/api/manuscripts/m-1/')
+        .expectOne('/api/v1/manuscripts/m-1/')
         .flush(buildManuscript({ status: 'SUBMITTED', current_version: 2, current_round: 1 }));
       await settle();
 
@@ -1007,7 +1007,7 @@ describe('ManuscriptDetailComponent', () => {
         .flush(errorEnvelope('STATE_CONFLICT', 'Cambió.'), { status: 409, statusText: 'Conflict' });
       await settle();
       http
-        .expectOne('/api/manuscripts/m-1/')
+        .expectOne('/api/v1/manuscripts/m-1/')
         .flush(buildManuscript({ status: 'SUBMITTED', current_version: 2 }));
       await settle();
 

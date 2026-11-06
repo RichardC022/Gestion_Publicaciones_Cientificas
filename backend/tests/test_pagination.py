@@ -1,23 +1,21 @@
 """Tests for the standard pagination contract (TSK-11)."""
 
-import json
-
 from django.test import override_settings
 
 from tests.api_urls import TOTAL_ITEMS
+from tests.contract import error_of as _error_of
+from tests.contract import success_of
 
-PAGINATION_KEYS = {"count", "next", "previous", "results"}
+PAGINATION_KEYS = {"count", "next", "previous"}
 
 
 def _payload_of(response):
-    payload = json.loads(response.content)
-    assert set(payload.keys()) == PAGINATION_KEYS
-    return payload
-
-
-def _error_of(response):
-    payload = json.loads(response.content)
-    return payload["error"]
+    """Return ``{"count", "next", "previous", "results"}`` rebuilt from the envelope."""
+    payload = success_of(response)
+    pagination = payload["meta"]["pagination"]
+    assert set(pagination.keys()) == PAGINATION_KEYS
+    assert isinstance(payload["data"], list)
+    return {**pagination, "results": payload["data"]}
 
 
 @override_settings(ROOT_URLCONF="tests.api_urls")
@@ -60,7 +58,7 @@ def test_page_size_above_100_returns_400(client):
     assert response.status_code == 400
     error = _error_of(response)
     assert error["code"] == "VALIDATION_ERROR"
-    assert "page_size" in error["details"]
+    assert error["details"] == ["El parámetro page_size debe ser un entero entre 1 y 100."]
     assert error["request_id"] == response["X-Request-ID"]
 
 
@@ -90,7 +88,7 @@ def test_non_integer_page_returns_400(client):
     assert response.status_code == 400
     error = _error_of(response)
     assert error["code"] == "VALIDATION_ERROR"
-    assert "page" in error["details"]
+    assert error["details"] == ["El parámetro page debe ser un entero mayor o igual que 1."]
 
 
 @override_settings(ROOT_URLCONF="tests.api_urls")

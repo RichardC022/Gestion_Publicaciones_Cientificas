@@ -22,8 +22,8 @@ from apps.users.services.dashboard import SECTION_BUILDERS, SECTION_ERROR_MESSAG
 
 pytestmark = pytest.mark.django_db
 
-DASHBOARD_URL = "/api/dashboard/"
-LOGIN_URL = "/api/auth/login/"
+DASHBOARD_URL = "/api/v1/dashboard/"
+LOGIN_URL = "/api/v1/auth/login/"
 PASSWORD = "institucional-123"
 
 

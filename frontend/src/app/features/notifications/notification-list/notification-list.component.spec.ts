@@ -12,8 +12,9 @@ import { NotificationService } from '../../../core/services/notification.service
 import { HTTP_ERROR_CASES, errorResponse } from '../../../core/testing/http-error.fixtures';
 import { buildNotice, buildNoticePage, buildNoticePayload } from '../testing/notification.fixtures';
 import { NotificationListComponent } from './notification-list.component';
+import { errorEnvelope } from '../../../core/testing/api-envelope.fixtures';
 
-const LIST = (r: { url: string }) => r.url === '/api/notifications/';
+const LIST = (r: { url: string }) => r.url === '/api/v1/notifications/';
 
 describe('NotificationListComponent', () => {
   let http: HttpTestingController;
@@ -28,7 +29,7 @@ describe('NotificationListComponent', () => {
         ]),
         provideHttpClient(withInterceptors([authInterceptor, errorInterceptor])),
         provideHttpClientTesting(),
-        { provide: API_BASE_URL, useValue: '/api/' },
+        { provide: API_BASE_URL, useValue: '/api/v1/' },
       ],
     });
     http = TestBed.inject(HttpTestingController);
@@ -110,7 +111,7 @@ describe('NotificationListComponent', () => {
       http
         .expectOne(LIST)
         .flush(
-          { error: { code: 'SERVER_ERROR', message: 'Error.' } },
+          errorEnvelope('SERVER_ERROR', 'Error.'),
           { status: 500, statusText: 'Error' },
         );
       await harness.fixture.whenStable();
@@ -210,7 +211,7 @@ describe('NotificationListComponent', () => {
       markButton(items(element)[0])!.click();
       await settle();
       http
-        .expectOne('/api/notifications/n-1/read/')
+        .expectOne('/api/v1/notifications/n-1/read/')
         .flush(buildNotice({ id: 'n-1', is_read: true, read_at: '2026-11-07T15:00:00Z' }));
       await settle();
 
@@ -229,7 +230,7 @@ describe('NotificationListComponent', () => {
       markButton(items(element)[0])!.click();
       await settle();
       http
-        .expectOne('/api/notifications/n-1/read/')
+        .expectOne('/api/v1/notifications/n-1/read/')
         .flush(buildNotice({ id: 'n-1', is_read: true, read_at: '2026-11-07T15:00:00Z' }));
       await settle();
 
@@ -243,7 +244,7 @@ describe('NotificationListComponent', () => {
       (items(element)[0].querySelector('a') as HTMLAnchorElement).click();
       await settle();
 
-      const request = http.expectOne('/api/notifications/n-1/read/');
+      const request = http.expectOne('/api/v1/notifications/n-1/read/');
       expect(request.request.method).toBe('PATCH');
       request.flush(buildNotice({ id: 'n-1', is_read: true }));
     });
@@ -254,9 +255,9 @@ describe('NotificationListComponent', () => {
       markButton(items(element)[0])!.click();
       await settle();
       http
-        .expectOne('/api/notifications/n-1/read/')
+        .expectOne('/api/v1/notifications/n-1/read/')
         .flush(
-          { error: { code: 'NOT_FOUND', message: 'No existe.' } },
+          errorEnvelope('NOT_FOUND', 'No existe.'),
           { status: 404, statusText: 'Not Found' },
         );
       await settle();
@@ -273,7 +274,7 @@ describe('NotificationListComponent', () => {
 
         markButton(items(element)[0])!.click();
         await settle();
-        http.expectOne('/api/notifications/n-1/read/').flush(...errorResponse(testCase));
+        http.expectOne('/api/v1/notifications/n-1/read/').flush(...errorResponse(testCase));
         await settle();
 
         expect(text(element.querySelector('[role="alert"]'))).toContain(testCase.shown);
@@ -289,7 +290,7 @@ describe('NotificationListComponent', () => {
 
         markAllButton(element).click();
         await settle();
-        http.expectOne('/api/notifications/read-all/').flush(...errorResponse(testCase));
+        http.expectOne('/api/v1/notifications/read-all/').flush(...errorResponse(testCase));
         await settle();
 
         expect(text(element.querySelector('[role="alert"]'))).toContain(testCase.shown);
@@ -306,7 +307,7 @@ describe('NotificationListComponent', () => {
       markAllButton(element).click();
       await settle();
       http
-        .expectOne('/api/notifications/read-all/')
+        .expectOne('/api/v1/notifications/read-all/')
         .flush(null, { status: 204, statusText: 'No Content' });
       await settle();
       // Se vuelve a leer la lista para mostrar el estado real.
@@ -340,9 +341,9 @@ describe('NotificationListComponent', () => {
       markAllButton(element).click();
       await settle();
       http
-        .expectOne('/api/notifications/read-all/')
+        .expectOne('/api/v1/notifications/read-all/')
         .flush(
-          { error: { code: 'SERVER_ERROR', message: 'Error.' } },
+          errorEnvelope('SERVER_ERROR', 'Error.'),
           { status: 500, statusText: 'Error' },
         );
       await settle();

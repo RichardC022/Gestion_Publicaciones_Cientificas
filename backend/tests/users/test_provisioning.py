@@ -27,7 +27,7 @@ def create(**overrides) -> str:
 
 
 def login(identifier: str, password: str):
-    return APIClient().post("/api/auth/login/", {"identifier": identifier, "password": password}, format="json")
+    return APIClient().post("/api/v1/auth/login/", {"identifier": identifier, "password": password}, format="json")
 
 
 class TestProvisionUser:
@@ -114,9 +114,9 @@ class TestSeedDevUsers:
         for identifier, role in (("autor", "AUTHOR"), ("editor", "EDITOR"), ("revisor", "REVIEWER"), ("admin", "ADMIN")):
             body = login(identifier, "Gpc-dev-2026").json()
             assert "access" in body and role in APIClient().get(
-                "/api/auth/me/", HTTP_AUTHORIZATION=f"Bearer {body['access']}").json()["roles"]
+                "/api/v1/auth/me/", HTTP_AUTHORIZATION=f"Bearer {body['access']}").json()["roles"]
         multi = login("autor.revisor", "Gpc-dev-2026").json()["access"]
-        roles = APIClient().get("/api/auth/me/", HTTP_AUTHORIZATION=f"Bearer {multi}").json()["roles"]
+        roles = APIClient().get("/api/v1/auth/me/", HTTP_AUTHORIZATION=f"Bearer {multi}").json()["roles"]
         assert set(roles) == {"AUTHOR", "REVIEWER"}
         assert ReviewerProfile.objects.filter(user__institutional_id="revisor").exists()
 
@@ -152,6 +152,6 @@ class TestSupportOperationsDocumentedInTheRunbook:
         ).update(is_active=False, revoked_at=timezone.now())
 
         token = login("ana", result.password).json()["access"]
-        me = APIClient().get("/api/auth/me/", HTTP_AUTHORIZATION=f"Bearer {token}").json()
+        me = APIClient().get("/api/v1/auth/me/", HTTP_AUTHORIZATION=f"Bearer {token}").json()
         assert me["roles"] == ["AUTHOR"]
         assert UserRole.objects.filter(user=result.user, role__code="EDITOR", is_active=False).count() == 1

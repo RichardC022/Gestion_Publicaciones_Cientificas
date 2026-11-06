@@ -17,11 +17,12 @@ import {
   buildEventDetail,
 } from '../testing/audit.fixtures';
 import { AuditLogDetailComponent } from './audit-log-detail.component';
+import { errorEnvelope } from '../../../core/testing/api-envelope.fixtures';
 
 @Component({ template: '' })
 class BlankComponent {}
 
-const URL = `/api/admin/audit/${EVENT_ID}/`;
+const URL = `/api/v1/admin/audit/${EVENT_ID}/`;
 
 describe('AuditLogDetailComponent', () => {
   let http: HttpTestingController;
@@ -35,7 +36,7 @@ describe('AuditLogDetailComponent', () => {
         ]),
         provideHttpClient(withInterceptors([authInterceptor, errorInterceptor])),
         provideHttpClientTesting(),
-        { provide: API_BASE_URL, useValue: '/api/' },
+        { provide: API_BASE_URL, useValue: '/api/v1/' },
       ],
     });
     http = TestBed.inject(HttpTestingController);
@@ -209,7 +210,7 @@ describe('AuditLogDetailComponent', () => {
           decided_at: '2026-10-22T15:00:00Z',
         },
       });
-      const POST = '/api/admin/verdicts/vd-1/authorize-correction/';
+      const POST = '/api/v1/admin/verdicts/vd-1/authorize-correction/';
 
       const dialog = (element: HTMLElement) =>
         element.querySelector('app-verdict-correction-dialog dialog') as HTMLDialogElement;
@@ -385,7 +386,7 @@ describe('AuditLogDetailComponent', () => {
         await settle();
 
         http.expectOne(POST).flush(
-          { error: { code: 'CORRECTION_NOT_AUTHORIZED', message: 'Este veredicto ya tiene una autorización de corrección activa.' } },
+          errorEnvelope('CORRECTION_NOT_AUTHORIZED', 'Este veredicto ya tiene una autorización de corrección activa.'),
           { status: 409, statusText: 'Conflict' },
         );
         await settle();
@@ -405,7 +406,7 @@ describe('AuditLogDetailComponent', () => {
         await settle();
 
         http.expectOne(POST).flush(
-          { error: { code: 'FORBIDDEN', message: 'No autorizado.' } },
+          errorEnvelope('FORBIDDEN', 'No autorizado.'),
           { status: 403, statusText: 'Forbidden' },
         );
         await settle();
@@ -436,7 +437,7 @@ describe('AuditLogDetailComponent', () => {
 
       http
         .expectOne(URL)
-        .flush({ error: { code: 'NOT_FOUND', message: 'No encontrado.' } }, { status: 404, statusText: 'Not Found' });
+        .flush(errorEnvelope('NOT_FOUND', 'No encontrado.'), { status: 404, statusText: 'Not Found' });
       await settle();
 
       expect(text(element.querySelector('[role="alert"]'))).toContain('El evento solicitado no existe.');
@@ -448,7 +449,7 @@ describe('AuditLogDetailComponent', () => {
 
       http
         .expectOne(URL)
-        .flush({ error: { code: 'FORBIDDEN', message: 'No autorizado.' } }, { status: 403, statusText: 'Forbidden' });
+        .flush(errorEnvelope('FORBIDDEN', 'No autorizado.'), { status: 403, statusText: 'Forbidden' });
       await settle();
 
       expect(element.querySelector('app-error-state')).not.toBeNull();
@@ -458,7 +459,7 @@ describe('AuditLogDetailComponent', () => {
       const { element, settle } = await open();
       http
         .expectOne(URL)
-        .flush({ error: { code: 'AUDIT_UNAVAILABLE', message: 'No disponible.' } }, { status: 503, statusText: 'Service Unavailable' });
+        .flush(errorEnvelope('AUDIT_UNAVAILABLE', 'No disponible.'), { status: 503, statusText: 'Service Unavailable' });
       await settle();
 
       element.querySelector<HTMLButtonElement>('app-error-state button')!.click();

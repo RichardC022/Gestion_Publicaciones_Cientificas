@@ -20,6 +20,7 @@ import { API_BASE_URL } from './api-base-url.token';
 import { requestIdInterceptor } from './request-id.interceptor';
 import { ApiFeedbackStore } from './api-feedback.store';
 import { errorInterceptor } from './error.interceptor';
+import { errorEnvelope } from '../testing/api-envelope.fixtures';
 
 @Component({ template: '' })
 class DummyComponent {}
@@ -36,9 +37,7 @@ const USER: SessionUser = {
 
 const SESSION: LoginResponse = { access: 'access-nuevo', user: USER, roles: ['AUTHOR'] };
 
-const envelope = (code: string, message: string) => ({
-  error: { code, message, details: {}, request_id: 'rid-9' },
-});
+const envelope = (code: string, message: string) => errorEnvelope(code, message, {}, 'rid-9');
 
 describe('errorInterceptor', () => {
   let client: HttpClient;
@@ -59,7 +58,7 @@ describe('errorInterceptor', () => {
           withInterceptors([requestIdInterceptor, authInterceptor, errorInterceptor]),
         ),
         provideHttpClientTesting(),
-        { provide: API_BASE_URL, useValue: '/api/' },
+        { provide: API_BASE_URL, useValue: '/api/v1/' },
       ],
     });
     client = TestBed.inject(HttpClient);
@@ -81,23 +80,23 @@ describe('errorInterceptor', () => {
   it('un 401 refresca una sola vez y reintenta con el token nuevo', () => {
     store.setSession({ user: USER, roles: ['AUTHOR'], access: 'access-viejo' });
     let result: unknown;
-    client.get('/api/manuscripts/').subscribe((response) => (result = response));
+    client.get('/api/v1/manuscripts/').subscribe((response) => (result = response));
 
     // Primer intento: expirado.
     httpMock
-      .expectOne('/api/manuscripts/')
+      .expectOne('/api/v1/manuscripts/')
       .flush(envelope('AUTH_INVALID', 'Credenciales inválidas.'), {
         status: 401,
         statusText: 'Unauthorized',
       });
 
     // Un único refresh, compartido por la ola de 401.
-    const refresh = httpMock.expectOne('/api/auth/refresh/');
+    const refresh = httpMock.expectOne('/api/v1/auth/refresh/');
     expect(refresh.request.headers.get('Authorization')).toBeNull();
     refresh.flush(SESSION);
 
     // Reintento con el token renovado.
-    const retried = httpMock.expectOne('/api/manuscripts/');
+    const retried = httpMock.expectOne('/api/v1/manuscripts/');
     expect(retried.request.headers.get('Authorization')).toBe('Bearer access-nuevo');
     retried.flush({ ok: true });
 
@@ -109,21 +108,21 @@ describe('errorInterceptor', () => {
     store.setSession({ user: USER, roles: ['AUTHOR'], access: 'access-viejo' });
     let first: unknown;
     let second: unknown;
-    client.get('/api/manuscripts/a/').subscribe((value) => (first = value));
-    client.get('/api/manuscripts/b/').subscribe((value) => (second = value));
+    client.get('/api/v1/manuscripts/a/').subscribe((value) => (first = value));
+    client.get('/api/v1/manuscripts/b/').subscribe((value) => (second = value));
 
     httpMock
-      .expectOne('/api/manuscripts/a/')
+      .expectOne('/api/v1/manuscripts/a/')
       .flush(envelope('AUTH_INVALID', 'Credenciales inválidas.'), { status: 401, statusText: 'Unauthorized' });
     httpMock
-      .expectOne('/api/manuscripts/b/')
+      .expectOne('/api/v1/manuscripts/b/')
       .flush(envelope('AUTH_INVALID', 'Credenciales inválidas.'), { status: 401, statusText: 'Unauthorized' });
 
-    const refresh = httpMock.expectOne('/api/auth/refresh/');
+    const refresh = httpMock.expectOne('/api/v1/auth/refresh/');
     refresh.flush(SESSION);
 
-    httpMock.expectOne('/api/manuscripts/a/').flush('a');
-    httpMock.expectOne('/api/manuscripts/b/').flush('b');
+    httpMock.expectOne('/api/v1/manuscripts/a/').flush('a');
+    httpMock.expectOne('/api/v1/manuscripts/b/').flush('b');
 
     expect(first).toBe('a');
     expect(second).toBe('b');
@@ -136,15 +135,15 @@ describe('errorInterceptor', () => {
     await router.navigateByUrl('/panel');
 
     let failure: { status: number } | undefined;
-    client.get('/api/manuscripts/').subscribe({ error: (error) => (failure = error) });
+    client.get('/api/v1/manuscripts/').subscribe({ error: (error) => (failure = error) });
     httpMock
-      .expectOne('/api/manuscripts/')
+      .expectOne('/api/v1/manuscripts/')
       .flush(envelope('AUTH_INVALID', 'Credenciales inválidas.'), {
         status: 401,
         statusText: 'Unauthorized',
       });
     httpMock
-      .expectOne('/api/auth/refresh/')
+      .expectOne('/api/v1/auth/refresh/')
       .flush(envelope('AUTH_INVALID', 'Credenciales inválidas.'), {
         status: 401,
         statusText: 'Unauthorized',
@@ -158,10 +157,10 @@ describe('errorInterceptor', () => {
 
   it('el 401 del propio login no dispara refresh', () => {
     let failure: { code: string } | undefined;
-    client.post('/api/auth/login/', {}).subscribe({ error: (error) => (failure = error) });
+    client.post('/api/v1/auth/login/', {}).subscribe({ error: (error) => (failure = error) });
 
     httpMock
-      .expectOne('/api/auth/login/')
+      .expectOne('/api/v1/auth/login/')
       .flush(envelope('AUTH_INVALID', 'Credenciales institucionales inválidas.'), {
         status: 401,
         statusText: 'Unauthorized',
@@ -175,10 +174,10 @@ describe('errorInterceptor', () => {
 
   it('429 publica un aviso accionable que respeta Retry-After', () => {
     let failure: { retryAfterSeconds: number | null } | undefined;
-    client.get('/api/manuscripts/').subscribe({ error: (error) => (failure = error) });
+    client.get('/api/v1/manuscripts/').subscribe({ error: (error) => (failure = error) });
 
     httpMock
-      .expectOne('/api/manuscripts/')
+      .expectOne('/api/v1/manuscripts/')
       .flush(envelope('AUTH_LOCKED', 'Demasiados intentos fallidos. Intente de nuevo en unos minutos.'), {
         status: 429,
         statusText: 'Too Many Requests',
@@ -194,10 +193,10 @@ describe('errorInterceptor', () => {
   });
 
   it('409 publica el conflicto de estado como aviso accionable', () => {
-    client.get('/api/manuscripts/').subscribe({ error: () => undefined });
+    client.get('/api/v1/manuscripts/').subscribe({ error: () => undefined });
 
     httpMock
-      .expectOne('/api/manuscripts/')
+      .expectOne('/api/v1/manuscripts/')
       .flush(envelope('STATE_CONFLICT', 'La acción no es válida en el estado actual.'), {
         status: 409,
         statusText: 'Conflict',
@@ -210,9 +209,9 @@ describe('errorInterceptor', () => {
   });
 
   it('413 y 503 publican mensajes accionables específicos', () => {
-    client.get('/api/manuscripts/1/draft-file/').subscribe({ error: () => undefined });
+    client.get('/api/v1/manuscripts/1/draft-file/').subscribe({ error: () => undefined });
     httpMock
-      .expectOne('/api/manuscripts/1/draft-file/')
+      .expectOne('/api/v1/manuscripts/1/draft-file/')
       .flush(envelope('PDF_TOO_LARGE', 'El archivo supera el límite de 50 MB.'), {
         status: 413,
         statusText: 'Payload Too Large',
@@ -221,9 +220,9 @@ describe('errorInterceptor', () => {
 
     feedback.dismiss();
 
-    client.get('/api/dashboard/').subscribe({ error: () => undefined });
+    client.get('/api/v1/dashboard/').subscribe({ error: () => undefined });
     httpMock
-      .expectOne('/api/dashboard/')
+      .expectOne('/api/v1/dashboard/')
       .flush(envelope('AUDIT_UNAVAILABLE', 'No se pudo registrar la auditoría.'), {
         status: 503,
         statusText: 'Service Unavailable',
@@ -233,10 +232,10 @@ describe('errorInterceptor', () => {
   });
 
   it('403 publica acceso denegado y conserva el request_id', () => {
-    client.get('/api/manuscripts/').subscribe({ error: () => undefined });
+    client.get('/api/v1/manuscripts/').subscribe({ error: () => undefined });
 
     httpMock
-      .expectOne('/api/manuscripts/')
+      .expectOne('/api/v1/manuscripts/')
       .flush(envelope('FORBIDDEN', 'Acceso denegado.'), { status: 403, statusText: 'Forbidden' });
 
     const message = feedback.feedback();
@@ -246,8 +245,8 @@ describe('errorInterceptor', () => {
   });
 
   it('toda petición de API sale con X-Request-ID válido', () => {
-    client.get('/api/manuscripts/').subscribe({ error: () => undefined });
-    const request = httpMock.expectOne('/api/manuscripts/');
+    client.get('/api/v1/manuscripts/').subscribe({ error: () => undefined });
+    const request = httpMock.expectOne('/api/v1/manuscripts/');
     const requestId = request.request.headers.get('X-Request-ID');
     expect(requestId).toMatch(/^[A-Za-z0-9@._~-]{1,64}$/);
     request.flush(envelope('NOT_FOUND', 'No encontrado.'), { status: 404, statusText: 'Not Found' });
@@ -255,10 +254,10 @@ describe('errorInterceptor', () => {
 
   it('un 401 del login llega al componente con el mensaje del envelope (regresión TSK-26)', () => {
     let failure: ApiError | undefined;
-    client.post('/api/auth/login/', {}).subscribe({ error: (error) => (failure = error) });
+    client.post('/api/v1/auth/login/', {}).subscribe({ error: (error) => (failure = error) });
 
     httpMock
-      .expectOne('/api/auth/login/')
+      .expectOne('/api/v1/auth/login/')
       .flush(envelope('AUTH_INVALID', 'Credenciales institucionales inválidas.'), {
         status: 401,
         statusText: 'Unauthorized',
@@ -273,12 +272,12 @@ describe('errorInterceptor', () => {
   });
 
   it('una URL relativa de la API sale al backend con slash absoluto (regresión TSK-26)', () => {
-    client.post('api/auth/refresh/', {}).subscribe({ error: () => undefined });
+    client.post('api/v1/auth/refresh/', {}).subscribe({ error: () => undefined });
 
     // El interceptor más externo la normaliza ANTES de que el navegador
     // la resuelva contra la ruta del documento (`/catalog` ->
     // `/catalogapi/auth/refresh`).
-    const request = httpMock.expectOne('/api/auth/refresh/');
+    const request = httpMock.expectOne('/api/v1/auth/refresh/');
     expect(request.request.headers.get('X-Request-ID')).toMatch(/^[A-Za-z0-9@._~-]{1,64}$/);
     request.flush(envelope('AUTH_INVALID', 'Credenciales inválidas.'), {
       status: 401,

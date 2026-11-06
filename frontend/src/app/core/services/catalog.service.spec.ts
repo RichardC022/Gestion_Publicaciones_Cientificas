@@ -9,6 +9,7 @@ import { API_BASE_URL } from '../http/api-base-url.token';
 import { errorInterceptor } from '../http/error.interceptor';
 import { ApiError } from '../models/api-error.model';
 import { CatalogService } from './catalog.service';
+import { errorEnvelope } from '../testing/api-envelope.fixtures';
 
 describe('CatalogService', () => {
   let service: CatalogService;
@@ -19,7 +20,7 @@ describe('CatalogService', () => {
       providers: [
         provideHttpClient(withInterceptors([authInterceptor, errorInterceptor])),
         provideHttpClientTesting(),
-        { provide: API_BASE_URL, useValue: '/api/' },
+        { provide: API_BASE_URL, useValue: '/api/v1/' },
       ],
     });
     service = TestBed.inject(CatalogService);
@@ -32,7 +33,7 @@ describe('CatalogService', () => {
     it('pide la primera página con el tamaño indicado', () => {
       service.list({}, 1, 12).subscribe();
 
-      const request = http.expectOne((r) => r.url === '/api/catalog/');
+      const request = http.expectOne((r) => r.url === '/api/v1/catalog/');
       expect(request.request.method).toBe('GET');
       expect(request.request.params.get('page_size')).toBe('12');
       expect(request.request.params.has('page')).toBe(false);
@@ -44,7 +45,7 @@ describe('CatalogService', () => {
         .list({ search: 'glaciares', area: 'Agronomía', language: 'es', ordering: 'title' }, 3, 12)
         .subscribe();
 
-      const request = http.expectOne((r) => r.url === '/api/catalog/');
+      const request = http.expectOne((r) => r.url === '/api/v1/catalog/');
       const params = request.request.params;
       expect(params.get('search')).toBe('glaciares');
       expect(params.get('area')).toBe('Agronomía');
@@ -60,7 +61,7 @@ describe('CatalogService', () => {
       let page: unknown;
       service.list({}).subscribe((value) => (page = value));
 
-      http.expectOne((r) => r.url === '/api/catalog/').flush(buildArticlePage([buildArticle()], 1));
+      http.expectOne((r) => r.url === '/api/v1/catalog/').flush(buildArticlePage([buildArticle()], 1));
 
       expect(page).toEqual(buildArticlePage([buildArticle()], 1));
     });
@@ -70,9 +71,9 @@ describe('CatalogService', () => {
       service.list({}).subscribe({ error: (e: ApiError) => (error = e) });
 
       http
-        .expectOne((r) => r.url === '/api/catalog/')
+        .expectOne((r) => r.url === '/api/v1/catalog/')
         .flush(
-          { error: { code: 'VALIDATION_ERROR', message: 'Filtro inválido.', details: {} } },
+          errorEnvelope('VALIDATION_ERROR', 'Filtro inválido.', {}),
           { status: 400, statusText: 'Bad Request' },
         );
 
@@ -86,7 +87,7 @@ describe('CatalogService', () => {
       let article: unknown;
       service.get('GPC-2026-000001').subscribe((value) => (article = value));
 
-      http.expectOne('/api/catalog/GPC-2026-000001/').flush(buildArticle());
+      http.expectOne('/api/v1/catalog/GPC-2026-000001/').flush(buildArticle());
 
       expect(article).toEqual(buildArticle());
     });
@@ -94,7 +95,7 @@ describe('CatalogService', () => {
     it('codifica el código en la ruta', () => {
       service.get('a/b ?').subscribe({ error: () => undefined });
 
-      http.expectOne('/api/catalog/a%2Fb%20%3F/').flush({}, { status: 404, statusText: 'Not Found' });
+      http.expectOne('/api/v1/catalog/a%2Fb%20%3F/').flush({}, { status: 404, statusText: 'Not Found' });
     });
 
     it('un 404 llega normalizado', () => {
@@ -102,9 +103,9 @@ describe('CatalogService', () => {
       service.get('GPC-2026-999999').subscribe({ error: (e: ApiError) => (error = e) });
 
       http
-        .expectOne('/api/catalog/GPC-2026-999999/')
+        .expectOne('/api/v1/catalog/GPC-2026-999999/')
         .flush(
-          { error: { code: 'NOT_FOUND', message: 'Artículo no encontrado.', details: {} } },
+          errorEnvelope('NOT_FOUND', 'Artículo no encontrado.', {}),
           { status: 404, statusText: 'Not Found' },
         );
 
@@ -117,7 +118,7 @@ describe('CatalogService', () => {
       let blob: Blob | undefined;
       service.document('GPC-2026-000001').subscribe((value) => (blob = value));
 
-      const request = http.expectOne('/api/catalog/GPC-2026-000001/document/');
+      const request = http.expectOne('/api/v1/catalog/GPC-2026-000001/document/');
       expect(request.request.responseType).toBe('blob');
       request.flush(new Blob(['%PDF'], { type: 'application/pdf' }));
 
@@ -129,10 +130,10 @@ describe('CatalogService', () => {
       service.document('GPC-2026-000001').subscribe({ error: (e: ApiError) => (error = e) });
 
       const body = JSON.stringify({
-        error: { code: 'STATE_CONFLICT', message: 'Documento no disponible.', details: {} },
+        ...errorEnvelope('STATE_CONFLICT', 'Documento no disponible.'),
       });
       http
-        .expectOne('/api/catalog/GPC-2026-000001/document/')
+        .expectOne('/api/v1/catalog/GPC-2026-000001/document/')
         .flush(new Blob([body], { type: 'application/json' }), { status: 410, statusText: 'Gone' });
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
 
@@ -171,11 +172,11 @@ describe('CatalogService', () => {
       service.list({}).subscribe({ error: (e: ApiError) => (error = e) });
 
       http
-        .expectOne((r) => r.url === '/api/catalog/')
-        .flush({ error: { code: 'AUTH_INVALID', message: 'x', details: {} } }, { status: 401, statusText: 'Unauthorized' });
+        .expectOne((r) => r.url === '/api/v1/catalog/')
+        .flush(errorEnvelope('AUTH_INVALID', 'x', {}), { status: 401, statusText: 'Unauthorized' });
 
       expect(error.status).toBe(401);
-      http.expectNone('/api/auth/refresh/');
+      http.expectNone('/api/v1/auth/refresh/');
     });
   });
 });

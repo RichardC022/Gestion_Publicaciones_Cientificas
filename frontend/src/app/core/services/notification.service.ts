@@ -29,7 +29,7 @@ export class NotificationService {
     return `${this.baseUrl}notifications/`;
   }
 
-  /** Avisos del más reciente al más antiguo (`GET /api/notifications/`). */
+  /** Avisos del más reciente al más antiguo (`GET /api/v1/notifications/`). */
   list(filter: NoticeFilter, page = 1, pageSize = 20): Observable<NoticePage> {
     return this.http
       .get<NoticePage>(this.url, {

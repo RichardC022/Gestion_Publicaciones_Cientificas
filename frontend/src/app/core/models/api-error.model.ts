@@ -1,10 +1,13 @@
 import { HttpErrorResponse, HttpHeaders } from '@angular/common/http';
 
+import { errorDetailsOf, isApiEnvelope } from './api-envelope.model';
+
 /**
  * Error de API normalizado (plan sección 3.6).
  *
  * Todo fallo HTTP de la SPA se convierte a `ApiError` con `code`,
- * `message`, `details` y `request_id` del envelope del backend, más
+ * `message`, `details` y `request_id` tomados del contrato universal del
+ * backend (`errors[0]`, `message` y `meta.request_id`), más
  * `userMessage` accionable en español y `retryAfterSeconds` cuando la
  * respuesta incluye `Retry-After` (429 del límite de intentos).
  */
@@ -18,15 +21,6 @@ export interface ApiError {
   details: unknown;
   requestId: string | null;
   retryAfterSeconds: number | null;
-}
-
-interface ErrorEnvelope {
-  error?: {
-    code?: string;
-    message?: string;
-    details?: unknown;
-    request_id?: string;
-  };
 }
 
 /** Mensajes accionables por código de dominio (catálogo del plan 2.10). */
@@ -90,10 +84,10 @@ export function toApiError(error: unknown): ApiError {
     };
   }
 
-  const envelope = (error.error as ErrorEnvelope | null)?.error ?? {};
-  const code = typeof envelope.code === 'string' && envelope.code ? envelope.code : 'SERVER_ERROR';
-  const envelopeMessage =
-    typeof envelope.message === 'string' && envelope.message ? envelope.message : '';
+  const body = isApiEnvelope(error.error) ? error.error : null;
+  const first = body?.errors[0];
+  const code = typeof first?.code === 'string' && first.code ? first.code : 'SERVER_ERROR';
+  const envelopeMessage = typeof body?.message === 'string' && body.message ? body.message : '';
   const retryAfterSeconds = parseRetryAfter(error.headers);
 
   let userMessage =
@@ -112,8 +106,8 @@ export function toApiError(error: unknown): ApiError {
     code,
     message: envelopeMessage || userMessage,
     userMessage,
-    details: envelope.details ?? {},
-    requestId: typeof envelope.request_id === 'string' ? envelope.request_id : null,
+    details: body ? errorDetailsOf(body.errors) : {},
+    requestId: typeof body?.meta.request_id === 'string' ? body.meta.request_id : null,
     retryAfterSeconds,
   };
 }

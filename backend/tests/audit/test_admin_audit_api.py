@@ -22,7 +22,7 @@ from tests.publications.test_manuscript_api import actor, client_for
 
 pytestmark = pytest.mark.django_db
 
-LIST_URL = "/api/admin/audit/"
+LIST_URL = "/api/v1/admin/audit/"
 
 
 @pytest.fixture(autouse=True)
@@ -321,6 +321,6 @@ class TestAdminScope:
     def test_admin_still_cannot_reach_editorial_endpoints(self, client) -> None:
         manuscript = ManuscriptFactory()
 
-        assert client.get(f"/api/manuscripts/{manuscript.pk}/").status_code in (403, 404)
-        assert client.get("/api/editor/submissions/").status_code == 403
-        assert client.get("/api/reviewer/assignments/").status_code == 403
+        assert client.get(f"/api/v1/manuscripts/{manuscript.pk}/").status_code in (403, 404)
+        assert client.get("/api/v1/editor/submissions/").status_code == 403
+        assert client.get("/api/v1/reviewer/assignments/").status_code == 403

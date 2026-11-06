@@ -89,7 +89,7 @@ describe('VersionHistoryComponent', () => {
         ]),
         provideHttpClient(),
         provideHttpClientTesting(),
-        { provide: API_BASE_URL, useValue: '/api/' },
+        { provide: API_BASE_URL, useValue: '/api/v1/' },
       ],
     });
     http = TestBed.inject(HttpTestingController);
@@ -97,7 +97,7 @@ describe('VersionHistoryComponent', () => {
 
   afterEach(() => http.verify());
 
-  const historyRequest = () => http.expectOne((r) => r.url === '/api/manuscripts/m-1/history/');
+  const historyRequest = () => http.expectOne((r) => r.url === '/api/v1/manuscripts/m-1/history/');
 
   /** Abre la pantalla y responde el manuscrito y su historial. */
   const open = async (
@@ -113,7 +113,7 @@ describe('VersionHistoryComponent', () => {
       harness.detectChanges();
     };
     http
-      .expectOne('/api/manuscripts/m-1/')
+      .expectOne('/api/v1/manuscripts/m-1/')
       .flush(buildManuscript(manuscript), { headers: { ETag: '"1"' } });
     historyRequest().flush(page(entries, next));
     await settle();
@@ -318,7 +318,7 @@ describe('VersionHistoryComponent', () => {
 
       downloadButton(element, 0).click();
       await settle();
-      const request = http.expectOne('/api/manuscripts/m-1/versions/v-1/file/');
+      const request = http.expectOne('/api/v1/manuscripts/m-1/versions/v-1/file/');
       expect(request.request.responseType).toBe('blob');
       request.flush(new Blob(['%PDF-1.7'], { type: 'application/pdf' }), {
         headers: { 'Content-Disposition': 'attachment; filename="GPC-2026-000001-v1.pdf"' },
@@ -334,7 +334,7 @@ describe('VersionHistoryComponent', () => {
 
       downloadButton(element, 1).click();
       await settle();
-      http.expectOne('/api/manuscripts/m-1/versions/v-2/file/').flush(new Blob(['%PDF-1.7']));
+      http.expectOne('/api/v1/manuscripts/m-1/versions/v-2/file/').flush(new Blob(['%PDF-1.7']));
       await settle();
 
       expect(clicked[0].download).toBe('GPC-2026-000001-v2.pdf');
@@ -350,9 +350,9 @@ describe('VersionHistoryComponent', () => {
       expect(downloadButton(element, 0).disabled).toBe(true);
       downloadButton(element, 1).click();
       await settle();
-      http.expectNone('/api/manuscripts/m-1/versions/v-2/file/');
+      http.expectNone('/api/v1/manuscripts/m-1/versions/v-2/file/');
 
-      http.expectOne('/api/manuscripts/m-1/versions/v-1/file/').flush(new Blob(['x']));
+      http.expectOne('/api/v1/manuscripts/m-1/versions/v-1/file/').flush(new Blob(['x']));
       await settle();
       expect(downloadButton(element, 0).disabled).toBe(false);
     });
@@ -363,7 +363,7 @@ describe('VersionHistoryComponent', () => {
       downloadButton(element, 0).click();
       await settle();
       http
-        .expectOne('/api/manuscripts/m-1/versions/v-1/file/')
+        .expectOne('/api/v1/manuscripts/m-1/versions/v-1/file/')
         .flush(new Blob([JSON.stringify(errorEnvelope('AUDIT_UNAVAILABLE', 'Sin auditoría.'))]), {
           status: 503,
           statusText: 'Service Unavailable',
@@ -389,7 +389,7 @@ describe('VersionHistoryComponent', () => {
 
       expect(element.querySelector('app-loading-spinner')).not.toBeNull();
 
-      http.expectOne('/api/manuscripts/m-1/').flush(buildManuscript());
+      http.expectOne('/api/v1/manuscripts/m-1/').flush(buildManuscript());
       historyRequest().flush(page([]));
       await harness.fixture.whenStable();
       harness.detectChanges();
@@ -412,11 +412,11 @@ describe('VersionHistoryComponent', () => {
         harness.detectChanges();
       };
 
-      http.expectOne('/api/manuscripts/m-1/').flush(errorEnvelope('NOT_FOUND', 'No encontrado.'), {
+      http.expectOne('/api/v1/manuscripts/m-1/').flush(errorEnvelope('NOT_FOUND', 'No encontrado.'), {
         status: 404,
         statusText: 'Not Found',
       });
-      http.match((r) => r.url === '/api/manuscripts/m-1/history/'); // cancelada por el error
+      http.match((r) => r.url === '/api/v1/manuscripts/m-1/history/'); // cancelada por el error
       await settle();
 
       expect(element.querySelector('app-error-state')?.textContent).toContain(
@@ -426,7 +426,7 @@ describe('VersionHistoryComponent', () => {
 
       (element.querySelector('app-error-state button') as HTMLButtonElement).click();
       await settle();
-      http.expectOne('/api/manuscripts/m-1/').flush(buildManuscript());
+      http.expectOne('/api/v1/manuscripts/m-1/').flush(buildManuscript());
       historyRequest().flush(page(HISTORY));
       await settle();
 
@@ -440,7 +440,7 @@ describe('VersionHistoryComponent', () => {
       const { element, settle } = await open(
         HISTORY.slice(0, 2),
         undefined,
-        '/api/manuscripts/m-1/history/?page=2',
+        '/api/v1/manuscripts/m-1/history/?page=2',
       );
       expect(items(element).length).toBe(2);
 
@@ -449,7 +449,7 @@ describe('VersionHistoryComponent', () => {
       ) as HTMLButtonElement;
       more.click();
       await settle();
-      const request = http.expectOne((r) => r.url === '/api/manuscripts/m-1/history/');
+      const request = http.expectOne((r) => r.url === '/api/v1/manuscripts/m-1/history/');
       expect(request.request.params.get('page')).toBe('2');
       request.flush(page(HISTORY.slice(2, 4)));
       await settle();

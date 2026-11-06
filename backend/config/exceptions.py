@@ -1,15 +1,21 @@
 """Standard error envelope and DRF exception handling.
 
-Every API error response uses the uniform envelope defined in the
-implementation plan (section 2.1)::
+Every API error response uses the universal contract shared with the
+successful responses (see ``config.renderers``)::
 
     {
-        "error": {
-            "code": "STATE_CONFLICT",
-            "message": "La acción no es válida en el estado actual.",
-            "details": {},
-            "request_id": "..."
-        }
+        "success": false,
+        "message": "La acción no es válida en el estado actual.",
+        "data": null,
+        "errors": [
+            {
+                "code": "STATE_CONFLICT",
+                "message": "La acción no es válida en el estado actual.",
+                "field": null,
+                "details": {}
+            }
+        ],
+        "meta": {"request_id": "..."}
     }
 
 ``ErrorCode`` holds the catalog from the plan (section 2.10) and
@@ -151,17 +157,56 @@ _TYPED_ERRORS: tuple[tuple[type[exceptions.APIException], str, str], ...] = (
 )
 
 
+def _first_message(detail: Any) -> str:
+    """Return the first human-readable string found in a DRF error detail."""
+    if isinstance(detail, str):
+        return detail
+    if isinstance(detail, dict):
+        for value in detail.values():
+            found = _first_message(value)
+            if found:
+                return found
+    if isinstance(detail, (list, tuple)):
+        for value in detail:
+            found = _first_message(value)
+            if found:
+                return found
+    return ""
+
+
+def _build_errors(code: str, message: str, details: Any) -> list[dict[str, Any]]:
+    """Build the ``errors`` list of the universal contract.
+
+    Each entry is ``{"code", "message", "field", "details"}``:
+
+    * a validation error keyed by field yields one entry per top-level field,
+      with ``details`` holding that field's original (possibly nested) detail,
+      so a client can rebuild ``{field: details}`` without loss;
+    * any other error yields a single entry carrying the original ``details``.
+    """
+    if code == ErrorCode.VALIDATION_ERROR and isinstance(details, dict) and details:
+        return [
+            {
+                "code": code,
+                "message": _first_message(value) or message,
+                "field": str(field),
+                "details": value,
+            }
+            for field, value in details.items()
+        ]
+    return [{"code": code, "message": message, "field": None, "details": details}]
+
+
 def build_error_envelope(
     code: str, message: str, details: Any, request_id: str | None
 ) -> dict[str, Any]:
-    """Return the standard error envelope."""
+    """Return the universal envelope of an error response."""
     return {
-        "error": {
-            "code": code,
-            "message": message,
-            "details": details,
-            "request_id": request_id,
-        }
+        "success": False,
+        "message": message,
+        "data": None,
+        "errors": _build_errors(code, message, details),
+        "meta": {"request_id": request_id},
     }
 
 
@@ -262,4 +307,36 @@ def exception_handler(exc: BaseException, context: dict[str, Any]) -> Any:
     if extra_headers:
         for header, value in extra_headers.items():
             response[header] = value
+    return response
+
+
+def _is_api_path(request: Any) -> bool:
+    return str(getattr(request, "path", "")).startswith("/api/")
+
+
+def not_found_handler(request: Any, exception: Exception | None = None) -> Any:
+    """``handler404``: JSON con el contrato universal para rutas ``/api/``."""
+    from django.http import JsonResponse
+    from django.views.defaults import page_not_found
+
+    if not _is_api_path(request):
+        return page_not_found(request, exception)
+    request_id = get_request_id(request) or new_request_id()
+    envelope = build_error_envelope(ErrorCode.NOT_FOUND, "No encontrado.", {}, request_id)
+    response = JsonResponse(envelope, status=404)
+    response["X-Request-ID"] = request_id
+    return response
+
+
+def server_error_handler(request: Any) -> Any:
+    """``handler500``: JSON genérico con el contrato universal para ``/api/``."""
+    from django.http import JsonResponse
+    from django.views.defaults import server_error
+
+    if not _is_api_path(request):
+        return server_error(request)
+    request_id = get_request_id(request) or new_request_id()
+    envelope = build_error_envelope(ErrorCode.SERVER_ERROR, _SERVER_ERROR_MESSAGE, {}, request_id)
+    response = JsonResponse(envelope, status=500)
+    response["X-Request-ID"] = request_id
     return response

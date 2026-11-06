@@ -265,7 +265,7 @@ class TestSubmitIdempotency:
         first = submit(owner, manuscript, key="envio-1")
 
         [row] = stored_rows(owner)
-        assert row.key == "envio-1" and row.endpoint == f"POST /api/manuscripts/{manuscript.pk}/submit/"
+        assert row.key == "envio-1" and row.endpoint == f"POST /api/v1/manuscripts/{manuscript.pk}/submit/"
         assert row.response_status == 201 and row.response_body == first.json()
         assert row.request_hash == request_hash(str(manuscript.pk))
         assert abs((row.expires_at - row.created_at) - IDEMPOTENCY_TTL) < timedelta(seconds=5)
@@ -357,7 +357,7 @@ class TestSubmitIdempotency:
 
     def test_a_validation_failure_does_not_consume_the_key_either(self, owner, submit) -> None:
         created = client_for(owner).post(
-            "/api/manuscripts/",
+            "/api/v1/manuscripts/",
             {"authors": [{
                 "full_name": owner.get_full_name(), "email": owner.email,
                 "affiliation": "UNL", "is_corresponding": True,
@@ -424,7 +424,7 @@ class TestServiceLevelReplay:
     def scope(self, owner, manuscript, digest=None):
         return IdempotencyScope(
             user=owner,
-            endpoint=f"POST /api/manuscripts/{manuscript.pk}/submit/",
+            endpoint=f"POST /api/v1/manuscripts/{manuscript.pk}/submit/",
             key="envio-1",
             request_hash=lambda: request_hash(digest or str(manuscript.pk)),
             render=lambda result: (201, {"code": result.manuscript.code}),
@@ -453,7 +453,7 @@ class TestServiceLevelReplay:
     def test_an_expired_key_is_replaced_and_the_operation_runs_again(self, owner) -> None:
         manuscript = ready_draft(owner)
         stale = IdempotencyKey.objects.create(
-            user=owner, endpoint=f"POST /api/manuscripts/{manuscript.pk}/submit/", key="envio-1",
+            user=owner, endpoint=f"POST /api/v1/manuscripts/{manuscript.pk}/submit/", key="envio-1",
             request_hash=request_hash("viejo"), response_status=201, response_body={"viejo": True},
             expires_at=timezone.now() - timedelta(seconds=1),
         )
@@ -519,7 +519,7 @@ class TestVersionIdempotency:
         send(owner, corrected, key="version-1")
 
         [row] = stored_rows(owner).filter(key="version-1")
-        assert row.endpoint == f"POST /api/manuscripts/{corrected.pk}/versions/"
+        assert row.endpoint == f"POST /api/v1/manuscripts/{corrected.pk}/versions/"
         assert row.request_hash == request_hash(str(corrected.pk), sha256_of_chunks([CORRECTED_PDF]))
 
     def test_a_replay_does_not_announce_the_version_again(self, owner, corrected, send) -> None:

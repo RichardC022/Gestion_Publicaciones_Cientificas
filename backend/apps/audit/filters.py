@@ -15,7 +15,7 @@ from apps.audit.serializers import MANUSCRIPT_ENTITY
 
 
 class AuditFilterSerializer(serializers.Serializer):
-    """Validated filter parameters of ``GET /api/admin/audit/``."""
+    """Validated filter parameters of ``GET /api/v1/admin/audit/``."""
 
     date_from = serializers.DateField(required=False)
     date_to = serializers.DateField(required=False)

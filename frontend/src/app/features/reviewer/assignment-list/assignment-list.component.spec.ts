@@ -18,7 +18,7 @@ import { AssignmentListComponent, PAGE_SIZE } from './assignment-list.component'
 @Component({ template: '' })
 class BlankComponent {}
 
-const LIST = '/api/reviewer/assignments/';
+const LIST = '/api/v1/reviewer/assignments/';
 const PAGE_URL = '/app/reviewer/assignments';
 
 describe('AssignmentListComponent', () => {
@@ -34,7 +34,7 @@ describe('AssignmentListComponent', () => {
         ]),
         provideHttpClient(),
         provideHttpClientTesting(),
-        { provide: API_BASE_URL, useValue: '/api/' },
+        { provide: API_BASE_URL, useValue: '/api/v1/' },
       ],
     });
     http = TestBed.inject(HttpTestingController);

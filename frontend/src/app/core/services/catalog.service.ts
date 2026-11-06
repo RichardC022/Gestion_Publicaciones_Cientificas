@@ -12,7 +12,7 @@ import { toApiError } from '../models/api-error.model';
 /**
  * Catálogo público (plan secciones 2.6 y 3.6): búsqueda, ficha y PDF.
  *
- * Los tres endpoints son anónimos: `/api/catalog/**` está en la lista de
+ * Los tres endpoints son anónimos: `/api/v1/catalog/**` está en la lista de
  * rutas públicas, así que el interceptor de autenticación no añade
  * `Authorization` ni el de errores intenta refrescar una sesión. El
  * catálogo funciona igual con o sin sesión iniciada.
@@ -26,7 +26,7 @@ export class CatalogService {
     return `${this.baseUrl}catalog/`;
   }
 
-  /** Búsqueda y filtros combinados, paginados (`GET /api/catalog/`). */
+  /** Búsqueda y filtros combinados, paginados (`GET /api/v1/catalog/`). */
   list(filters: CatalogFilters, page = 1, pageSize = 12): Observable<Paginated<CatalogArticle>> {
     return this.http
       .get<Paginated<CatalogArticle>>(this.url, {
@@ -39,7 +39,7 @@ export class CatalogService {
       .pipe(catchError((error) => throwError(() => toApiError(error))));
   }
 
-  /** Ficha pública (`GET /api/catalog/{code}/`); un artículo no disponible responde `404`. */
+  /** Ficha pública (`GET /api/v1/catalog/{code}/`); un artículo no disponible responde `404`. */
   get(code: string): Observable<CatalogArticle> {
     return this.http
       .get<CatalogArticle>(`${this.url}${encodeURIComponent(code)}/`)
@@ -47,7 +47,7 @@ export class CatalogService {
   }
 
   /**
-   * PDF público (`GET /api/catalog/{code}/document/`). Un artículo retirado
+   * PDF público (`GET /api/v1/catalog/{code}/document/`). Un artículo retirado
    * responde `410`; uno que no es público, `404`; sin almacenamiento, `503`.
    */
   document(code: string): Observable<Blob> {

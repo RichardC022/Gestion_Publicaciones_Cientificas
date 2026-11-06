@@ -7,6 +7,7 @@ import { provideRouter } from '@angular/router';
 import { AuthStore } from '../../../core/auth/auth.store';
 import { API_BASE_URL } from '../../../core/http/api-base-url.token';
 import { LoginComponent } from './login.component';
+import { errorEnvelope } from '../../../core/testing/api-envelope.fixtures';
 
 const SESSION = {
   access: 'access-1',
@@ -22,9 +23,7 @@ const SESSION = {
   roles: ['AUTHOR'],
 };
 
-const envelope = (code: string, message: string) => ({
-  error: { code, message, details: {}, request_id: 'rid-1' },
-});
+const envelope = (code: string, message: string) => errorEnvelope(code, message, {}, 'rid-1');
 
 describe('LoginComponent', () => {
   let httpMock: HttpTestingController;
@@ -58,7 +57,7 @@ describe('LoginComponent', () => {
         ]),
         provideHttpClient(),
         provideHttpClientTesting(),
-        { provide: API_BASE_URL, useValue: '/api/' },
+        { provide: API_BASE_URL, useValue: '/api/v1/' },
       ],
     });
     httpMock = TestBed.inject(HttpTestingController);
@@ -71,7 +70,7 @@ describe('LoginComponent', () => {
     const element = fixture.nativeElement as HTMLElement;
 
     httpMock
-      .expectOne('/api/auth/login/')
+      .expectOne('/api/v1/auth/login/')
       .flush(envelope('AUTH_INVALID', 'Credenciales institucionales inválidas.'), {
         status: 401,
         statusText: 'Unauthorized',
@@ -90,7 +89,7 @@ describe('LoginComponent', () => {
     const fixture = await render();
 
     await fillAndSubmit(fixture);
-    httpMock.expectOne('/api/auth/login/').flush(SESSION);
+    httpMock.expectOne('/api/v1/auth/login/').flush(SESSION);
     await fixture.whenStable();
 
     expect(store.isAuthenticated()).toBe(true);
@@ -103,7 +102,7 @@ describe('LoginComponent', () => {
     const fixture = await render();
 
     await fillAndSubmit(fixture);
-    httpMock.expectOne('/api/auth/login/').flush(SESSION);
+    httpMock.expectOne('/api/v1/auth/login/').flush(SESSION);
     await fixture.whenStable();
 
     expect(router.url).toBe('/app/author/manuscripts');
@@ -115,7 +114,7 @@ describe('LoginComponent', () => {
     const fixture = await render();
 
     await fillAndSubmit(fixture);
-    httpMock.expectOne('/api/auth/login/').flush(SESSION);
+    httpMock.expectOne('/api/v1/auth/login/').flush(SESSION);
     await fixture.whenStable();
 
     expect(router.url).toBe('/app/dashboard');
@@ -127,7 +126,7 @@ describe('LoginComponent', () => {
     const element = fixture.nativeElement as HTMLElement;
 
     httpMock
-      .expectOne('/api/auth/login/')
+      .expectOne('/api/v1/auth/login/')
       .flush(envelope('AUTH_LOCKED', 'Demasiados intentos fallidos. Intente de nuevo en unos minutos.'), {
         status: 429,
         statusText: 'Too Many Requests',

@@ -24,7 +24,7 @@ from tests.publications.test_submission import media_root, seeded_roles, submit 
 
 pytestmark = pytest.mark.django_db
 
-AUDIT_URL = "/api/admin/audit/"
+AUDIT_URL = "/api/v1/admin/audit/"
 IPV6 = "2001:DB8:0:0:0:0:0:1"
 
 
@@ -47,7 +47,7 @@ def actions_for(admin, manuscript) -> list[str]:
 class TestChainAfterTheCycle:
     def test_files_and_chain_verify_after_acceptance_and_withdrawal(self, flow) -> None:
         manuscript = flow.accepted()
-        assert anonymous().get(f"/api/catalog/{manuscript.code}/document/").status_code == 200
+        assert anonymous().get(f"/api/v1/catalog/{manuscript.code}/document/").status_code == 200
         assert flow.withdraw().status_code == 200
 
         assert "sin discrepancias" in verify_everything()
@@ -57,7 +57,7 @@ class TestChainAfterTheCycle:
         manuscript = flow.accepted()
 
         response = anonymous().get(
-            f"/api/catalog/{manuscript.code}/document/",
+            f"/api/v1/catalog/{manuscript.code}/document/",
             HTTP_X_FORWARDED_FOR=IPV6,
             HTTP_USER_AGENT="Mozilla/5.0 (X11; Linux)",
         )
@@ -94,7 +94,7 @@ class TestChainAfterTheCycle:
 class TestAdministratorView:
     def test_the_admin_sees_the_whole_cycle_of_one_manuscript(self, flow) -> None:
         manuscript = flow.accepted()
-        anonymous().get(f"/api/catalog/{manuscript.code}/document/")
+        anonymous().get(f"/api/v1/catalog/{manuscript.code}/document/")
         flow.withdraw()
 
         actions = set(actions_for(flow.admin, manuscript))
@@ -111,7 +111,7 @@ class TestAdministratorView:
     def test_the_view_carries_no_personal_data_or_content_of_the_cycle(self, flow) -> None:
         manuscript = flow.accepted()
         anonymous().get(
-            f"/api/catalog/{manuscript.code}/document/",
+            f"/api/v1/catalog/{manuscript.code}/document/",
             HTTP_X_FORWARDED_FOR="203.0.113.77", HTTP_USER_AGENT="NavegadorDePrueba/1.0",
         )
         flow.withdraw()

@@ -37,7 +37,7 @@ export const DASHBOARD_SECTION_LABELS: Readonly<
   admin: 'Administrador',
 };
 
-/** Respuesta única de `GET /api/dashboard/` (plan sección 2.2). */
+/** Respuesta única de `GET /api/v1/dashboard/` (plan sección 2.2). */
 export interface DashboardResponse {
   user: SessionUser;
   roles: Role[];

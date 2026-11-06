@@ -254,7 +254,7 @@ class TestRequiresCorrections:
                  django_capture_on_commit_callbacks, observations="Corregir.")
 
         response = client_for(owner).post(
-            f"/api/manuscripts/{manuscript.pk}/versions/",
+            f"/api/v1/manuscripts/{manuscript.pk}/versions/",
             {"file": SimpleUploadedFile("v2.pdf", clean_pdf(pages=2), "application/pdf")},
             format="multipart",
             HTTP_IDEMPOTENCY_KEY="nueva-version-1",

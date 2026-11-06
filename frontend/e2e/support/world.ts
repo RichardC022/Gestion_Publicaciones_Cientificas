@@ -1,4 +1,4 @@
-import { Api, evaluate, judge, Scenario, startReview, submitManuscript } from './api';
+import { Api, evaluate, judge, payload, Scenario, startReview, submitManuscript } from './api';
 import { RUN, Who } from './env';
 
 /** Datos con los que las pruebas de accesibilidad, teclado y responsive recorren cada pantalla. */
@@ -24,7 +24,7 @@ export async function buildWorld(tag: string): Promise<World> {
   await startReview(editor, accepted.id, reviewer.userId);
   await evaluate(reviewer, accepted.id);
   await judge(editor, accepted.id, { decision: 'ACCEPTED' });
-  const assignments = await (await reviewer.get('reviewer/assignments/')).json();
+  const assignments = await payload(await reviewer.get('reviewer/assignments/'));
   const assignmentId = assignments.results.find(
     (r: { manuscript_code: string }) => r.manuscript_code === pending.code,
   ).id;
@@ -43,9 +43,9 @@ export async function buildWorld(tag: string): Promise<World> {
       },
     ],
   });
-  const draftId = (await draft.json()).id;
+  const draftId = (await payload(draft)).id;
   const admin = await Api.login('admin');
-  const audit = await (await admin.get('admin/audit/?page_size=1')).json();
+  const audit = await payload(await admin.get('admin/audit/?page_size=1'));
   const auditEventId = audit.results[0].id;
   await Promise.all([author.dispose(), editor.dispose(), reviewer.dispose(), admin.dispose()]);
   return { submitted, pending, accepted, draftId, assignmentId, auditEventId };

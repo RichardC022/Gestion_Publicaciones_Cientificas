@@ -50,7 +50,7 @@ describe('ManuscriptFormComponent', () => {
         ]),
         provideHttpClient(),
         provideHttpClientTesting(),
-        { provide: API_BASE_URL, useValue: '/api/' },
+        { provide: API_BASE_URL, useValue: '/api/v1/' },
       ],
     });
     http = TestBed.inject(HttpTestingController);
@@ -78,7 +78,7 @@ describe('ManuscriptFormComponent', () => {
   const edit = async (overrides = {}, etag = '"4"') => {
     const view = await open('/app/author/manuscripts/m-1/edit');
     http
-      .expectOne('/api/manuscripts/m-1/')
+      .expectOne('/api/v1/manuscripts/m-1/')
       .flush(buildManuscript(overrides), { headers: { ETag: etag } });
     await view.settle();
     return view;
@@ -139,7 +139,7 @@ describe('ManuscriptFormComponent', () => {
 
       await submit(element, settle);
 
-      const request = http.expectOne('/api/manuscripts/');
+      const request = http.expectOne('/api/v1/manuscripts/');
       expect(request.request.method).toBe('POST');
       expect(request.request.body).toEqual({
         title: 'Efecto del clima',
@@ -177,7 +177,7 @@ describe('ManuscriptFormComponent', () => {
 
       await submit(element, settle);
 
-      const request = http.expectOne('/api/manuscripts/');
+      const request = http.expectOne('/api/v1/manuscripts/');
       expect(request.request.body).toMatchObject({
         title: '',
         abstract: '',
@@ -364,7 +364,7 @@ describe('ManuscriptFormComponent', () => {
       fillAuthor(element, 0, { affiliation: 'UNL' });
       await submit(element, settle);
       http
-        .expectOne('/api/manuscripts/')
+        .expectOne('/api/v1/manuscripts/')
         .flush(buildManuscript({ id: 'x' }), { status: 201, statusText: 'Created' });
       await settle();
 
@@ -391,7 +391,7 @@ describe('ManuscriptFormComponent', () => {
       fillValid(element);
       await submit(element, settle);
 
-      http.expectOne('/api/manuscripts/').flush(
+      http.expectOne('/api/v1/manuscripts/').flush(
         errorEnvelope('VALIDATION_ERROR', 'Los datos enviados no son válidos.', {
           title: ['Asegúrese de que este campo no tenga más de 300 caracteres.'],
         }),
@@ -409,7 +409,7 @@ describe('ManuscriptFormComponent', () => {
       fillValid(element);
       await submit(element, settle);
 
-      http.expectOne('/api/manuscripts/').flush(
+      http.expectOne('/api/v1/manuscripts/').flush(
         errorEnvelope('VALIDATION_ERROR', 'Los datos enviados no son válidos.', {
           authors: ['El autor que registra el manuscrito debe figurar en la lista de autores.'],
         }),
@@ -426,7 +426,7 @@ describe('ManuscriptFormComponent', () => {
       await submit(element, settle);
 
       http
-        .expectOne('/api/manuscripts/')
+        .expectOne('/api/v1/manuscripts/')
         .flush(errorEnvelope('AUDIT_UNAVAILABLE', 'Sin auditoría.'), {
           status: 503,
           statusText: 'Unavailable',
@@ -449,7 +449,7 @@ describe('ManuscriptFormComponent', () => {
       await submit(element, settle);
 
       http
-        .expectOne('/api/manuscripts/')
+        .expectOne('/api/v1/manuscripts/')
         .flush(buildManuscript(), { status: 201, statusText: 'Created' });
     });
   });
@@ -481,7 +481,7 @@ describe('ManuscriptFormComponent', () => {
 
       await submit(element, settle);
 
-      const request = http.expectOne('/api/manuscripts/m-1/');
+      const request = http.expectOne('/api/v1/manuscripts/m-1/');
       expect(request.request.method).toBe('PATCH');
       expect(request.request.headers.get('If-Match')).toBe('"7"');
       expect(request.request.body.title).toBe('Título corregido');
@@ -493,7 +493,7 @@ describe('ManuscriptFormComponent', () => {
 
     it('sin ETag no intenta guardar y pide recargar', async () => {
       const view = await open('/app/author/manuscripts/m-1/edit');
-      http.expectOne('/api/manuscripts/m-1/').flush(buildManuscript());
+      http.expectOne('/api/v1/manuscripts/m-1/').flush(buildManuscript());
       await view.settle();
 
       await submit(view.element, view.settle);
@@ -508,7 +508,7 @@ describe('ManuscriptFormComponent', () => {
 
       await submit(element, settle);
 
-      const request = http.expectOne('/api/manuscripts/m-1/');
+      const request = http.expectOne('/api/v1/manuscripts/m-1/');
       expect(request.request.body.title).toBe('');
       request.flush(buildManuscript());
     });
@@ -559,7 +559,7 @@ describe('ManuscriptFormComponent', () => {
       await submit(element, settle);
 
       http
-        .expectOne('/api/manuscripts/m-1/')
+        .expectOne('/api/v1/manuscripts/m-1/')
         .flush(errorEnvelope('VERSION_CONFLICT', 'Cambió.', { lock_version: 2 }), {
           status: 409,
           statusText: 'Conflict',
@@ -576,7 +576,7 @@ describe('ManuscriptFormComponent', () => {
         ) as HTMLButtonElement
       ).click();
       await settle();
-      http.expectOne('/api/manuscripts/m-1/').flush(buildManuscript({ title: 'Título del otro' }), {
+      http.expectOne('/api/v1/manuscripts/m-1/').flush(buildManuscript({ title: 'Título del otro' }), {
         headers: { ETag: '"2"' },
       });
       await settle();
@@ -589,7 +589,7 @@ describe('ManuscriptFormComponent', () => {
     it('un manuscrito ajeno o inexistente muestra el error sin revelar nada y permite reintentar', async () => {
       const { element, settle } = await open('/app/author/manuscripts/ajeno/edit');
       http
-        .expectOne('/api/manuscripts/ajeno/')
+        .expectOne('/api/v1/manuscripts/ajeno/')
         .flush(errorEnvelope('NOT_FOUND', 'No encontrado.'), {
           status: 404,
           statusText: 'Not Found',
@@ -604,7 +604,7 @@ describe('ManuscriptFormComponent', () => {
       (element.querySelector('app-error-state button') as HTMLButtonElement).click();
       await settle();
       http
-        .expectOne('/api/manuscripts/ajeno/')
+        .expectOne('/api/v1/manuscripts/ajeno/')
         .flush(buildManuscript(), { headers: { ETag: '"0"' } });
       await settle();
       expect(element.querySelector('form')).not.toBeNull();

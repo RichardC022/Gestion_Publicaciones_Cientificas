@@ -25,8 +25,8 @@ from tests.factories import FACTORY_PASSWORD, UserFactory, UserRoleFactory
 
 pytestmark = pytest.mark.django_db
 
-LOGIN_URL = "/api/auth/login/"
-LOGOUT_URL = "/api/auth/logout/"
+LOGIN_URL = "/api/v1/auth/login/"
+LOGOUT_URL = "/api/v1/auth/logout/"
 COOKIE = settings.REFRESH_COOKIE_NAME
 
 

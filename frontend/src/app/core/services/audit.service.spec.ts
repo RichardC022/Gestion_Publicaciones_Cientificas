@@ -13,6 +13,7 @@ import { API_BASE_URL } from '../http/api-base-url.token';
 import { errorInterceptor } from '../http/error.interceptor';
 import { ApiError } from '../models/api-error.model';
 import { AuditService } from './audit.service';
+import { errorEnvelope } from '../testing/api-envelope.fixtures';
 
 describe('AuditService', () => {
   let service: AuditService;
@@ -23,7 +24,7 @@ describe('AuditService', () => {
       providers: [
         provideHttpClient(withInterceptors([authInterceptor, errorInterceptor])),
         provideHttpClientTesting(),
-        { provide: API_BASE_URL, useValue: '/api/' },
+        { provide: API_BASE_URL, useValue: '/api/v1/' },
       ],
     });
     service = TestBed.inject(AuditService);
@@ -35,7 +36,7 @@ describe('AuditService', () => {
   it('pide la primera página sin filtros', () => {
     service.list({}, 1, 25).subscribe();
 
-    const request = http.expectOne((r) => r.url === '/api/admin/audit/');
+    const request = http.expectOne((r) => r.url === '/api/v1/admin/audit/');
     expect(request.request.method).toBe('GET');
     expect(request.request.params.get('page_size')).toBe('25');
     expect(request.request.params.has('page')).toBe(false);
@@ -47,7 +48,7 @@ describe('AuditService', () => {
       .list({ date_from: '2026-10-01', action: 'LOGIN', result: 'FAILURE' }, 2, 25)
       .subscribe();
 
-    const params = http.expectOne((r) => r.url === '/api/admin/audit/').request.params;
+    const params = http.expectOne((r) => r.url === '/api/v1/admin/audit/').request.params;
     expect(params.get('date_from')).toBe('2026-10-01');
     expect(params.get('action')).toBe('LOGIN');
     expect(params.get('result')).toBe('FAILURE');
@@ -60,7 +61,7 @@ describe('AuditService', () => {
     let count = 0;
     service.list({}).subscribe((page) => (count = page.results.length));
 
-    http.expectOne((r) => r.url === '/api/admin/audit/').flush(buildEventPage([buildEvent()]));
+    http.expectOne((r) => r.url === '/api/v1/admin/audit/').flush(buildEventPage([buildEvent()]));
 
     expect(count).toBe(1);
   });
@@ -69,7 +70,7 @@ describe('AuditService', () => {
     let can: boolean | undefined;
     service.get(EVENT_ID).subscribe((entry) => (can = entry.can_authorize_correction));
 
-    const request = http.expectOne(`/api/admin/audit/${EVENT_ID}/`);
+    const request = http.expectOne(`/api/v1/admin/audit/${EVENT_ID}/`);
     expect(request.request.method).toBe('GET');
     request.flush(buildEventDetail({ can_authorize_correction: true }));
 
@@ -81,9 +82,9 @@ describe('AuditService', () => {
     service.list({}).subscribe({ error: (e: ApiError) => (error = e) });
 
     http
-      .expectOne((r) => r.url === '/api/admin/audit/')
+      .expectOne((r) => r.url === '/api/v1/admin/audit/')
       .flush(
-        { error: { code: 'FORBIDDEN', message: 'No autorizado.' } },
+        errorEnvelope('FORBIDDEN', 'No autorizado.'),
         { status: 403, statusText: 'Forbidden' },
       );
 
@@ -95,8 +96,8 @@ describe('AuditService', () => {
     service.get(EVENT_ID).subscribe({ error: (e: ApiError) => (error = e) });
 
     http
-      .expectOne(`/api/admin/audit/${EVENT_ID}/`)
-      .flush({ error: { code: 'NOT_FOUND', message: 'No encontrado.' } }, { status: 404, statusText: 'Not Found' });
+      .expectOne(`/api/v1/admin/audit/${EVENT_ID}/`)
+      .flush(errorEnvelope('NOT_FOUND', 'No encontrado.'), { status: 404, statusText: 'Not Found' });
 
     expect(error?.status).toBe(404);
   });
@@ -119,7 +120,7 @@ describe('AuditService', () => {
         .authorizeCorrection('vd-1', 'Error de captura en la decisión.', 'key-1')
         .subscribe((value) => (result = value));
 
-      const request = http.expectOne('/api/admin/verdicts/vd-1/authorize-correction/');
+      const request = http.expectOne('/api/v1/admin/verdicts/vd-1/authorize-correction/');
       expect(request.request.method).toBe('POST');
       expect(request.request.headers.get('Idempotency-Key')).toBe('key-1');
       expect(request.request.body).toEqual({ reason: 'Error de captura en la decisión.' });
@@ -130,7 +131,7 @@ describe('AuditService', () => {
     it('codifica el identificador en la ruta', () => {
       service.authorizeCorrection('a/b', 'Motivo suficiente.', 'key-1').subscribe();
 
-      http.expectOne('/api/admin/verdicts/a%2Fb/authorize-correction/').flush(authorized);
+      http.expectOne('/api/v1/admin/verdicts/a%2Fb/authorize-correction/').flush(authorized);
     });
 
     it.each([
@@ -144,8 +145,8 @@ describe('AuditService', () => {
         .subscribe({ error: (error: ApiError) => (failure = error) });
 
       http
-        .expectOne('/api/admin/verdicts/vd-1/authorize-correction/')
-        .flush({ error: { code, message: 'Rechazado.' } }, { status, statusText: 'Error' });
+        .expectOne('/api/v1/admin/verdicts/vd-1/authorize-correction/')
+        .flush(errorEnvelope(code, 'Rechazado.'), { status, statusText: 'Error' });
 
       expect(failure?.status).toBe(status);
       expect(failure?.code).toBe(code);

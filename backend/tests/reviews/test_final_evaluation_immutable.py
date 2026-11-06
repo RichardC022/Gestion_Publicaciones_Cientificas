@@ -20,8 +20,8 @@ from tests.reviews.test_editor_api import make_assignment, make_reviewer, submit
 
 pytestmark = pytest.mark.django_db
 
-REVIEWER = "/api/reviewer/assignments/"
-EDITOR = "/api/editor/"
+REVIEWER = "/api/v1/reviewer/assignments/"
+EDITOR = "/api/v1/editor/"
 FULL = {
     "originality_score": 4,
     "methodology_score": 3,

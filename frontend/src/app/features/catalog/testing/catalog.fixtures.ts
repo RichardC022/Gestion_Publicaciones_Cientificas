@@ -16,7 +16,7 @@ export function buildArticle(overrides: Partial<CatalogArticle> = {}): CatalogAr
     language: 'es',
     published_at: '2026-10-22T15:00:00Z',
     version_number: 1,
-    document_url: '/api/catalog/GPC-2026-000001/document/',
+    document_url: '/api/v1/catalog/GPC-2026-000001/document/',
     ...overrides,
   };
 }

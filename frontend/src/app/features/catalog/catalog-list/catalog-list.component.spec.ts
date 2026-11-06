@@ -17,11 +17,12 @@ import { HTTP_ERROR_CASES, errorResponse } from '../../../core/testing/http-erro
 import { CatalogArticle } from '../../../core/models/catalog.model';
 import { buildArticle, buildArticlePage } from '../testing/catalog.fixtures';
 import { CatalogListComponent, PAGE_SIZE } from './catalog-list.component';
+import { errorEnvelope } from '../../../core/testing/api-envelope.fixtures';
 
 @Component({ template: '' })
 class BlankComponent {}
 
-const LIST = '/api/catalog/';
+const LIST = '/api/v1/catalog/';
 
 describe('CatalogListComponent', () => {
   let http: HttpTestingController;
@@ -37,7 +38,7 @@ describe('CatalogListComponent', () => {
         ]),
         provideHttpClient(withInterceptors([authInterceptor, errorInterceptor])),
         provideHttpClientTesting(),
-        { provide: API_BASE_URL, useValue: '/api/' },
+        { provide: API_BASE_URL, useValue: '/api/v1/' },
       ],
     });
     http = TestBed.inject(HttpTestingController);
@@ -268,7 +269,7 @@ describe('CatalogListComponent', () => {
     it('muestra el error con reintento y vuelve a pedir la lista', async () => {
       const { element, settle } = await open();
       listRequest().flush(
-        { error: { code: 'SERVER_ERROR', message: 'Error interno', details: {} } },
+        errorEnvelope('SERVER_ERROR', 'Error interno', {}),
         { status: 500, statusText: 'Server Error' },
       );
       await settle();
