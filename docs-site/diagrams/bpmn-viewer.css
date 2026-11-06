@@ -1,0 +1,46 @@
+html,
+body {
+  height: 100%;
+  margin: 0;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  background: #fff;
+}
+
+#toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid #ddd;
+  background: #f8f9fa;
+}
+
+#toolbar button,
+#toolbar a {
+  padding: 4px 12px;
+  border: 1px solid #adb5bd;
+  border-radius: 4px;
+  background: #fff;
+  color: #212529;
+  font-size: 14px;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+#toolbar button:hover,
+#toolbar a:hover {
+  background: #e9ecef;
+}
+
+#canvas {
+  height: calc(100% - 49px);
+}
+
+#error {
+  margin: 16px;
+  padding: 12px;
+  border: 1px solid #dc3545;
+  border-radius: 4px;
+  color: #842029;
+  background: #f8d7da;
+}
