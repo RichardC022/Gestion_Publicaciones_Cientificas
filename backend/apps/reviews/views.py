@@ -20,14 +20,21 @@ from django.db.models import OuterRef, Q, QuerySet, Subquery
 from django.db.models.functions import Now
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
-from rest_framework import status
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import (
+    OpenApiParameter,
+    extend_schema,
+    extend_schema_view,
+    inline_serializer,
+)
+from rest_framework import serializers, status
 from rest_framework.generics import GenericAPIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.renderers import JSONRenderer
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from apps.publications.filters import apply_filters
+from apps.publications.filters import ManuscriptFilterSerializer, apply_filters
 from apps.publications.models import Manuscript, ManuscriptVersion, Verdict
 from apps.publications.services.downloads import authorize_sanitized_download, xaccel_response
 from apps.publications.services.idempotency import (
@@ -74,7 +81,54 @@ from apps.reviews.services.eligibility import eligibility_breakdown, eligible_re
 from apps.reviews.permissions import IsActiveAssignedReviewer, IsAssignedReviewer
 from apps.users.permissions import IsEditor, IsReviewer
 from config.exceptions import DomainError, ErrorCode
+from config.openapi import IDEMPOTENCY_KEY, IF_MATCH, PAGINATION, error_response
 from config.request_context import audit_request_context
+
+
+# --- Documentación OpenAPI: piezas que comparten varias vistas -------------------------
+ID = OpenApiParameter("id", OpenApiTypes.UUID, OpenApiParameter.PATH)
+STATE_409 = error_response("La acción no es válida en el estado actual (STATE_CONFLICT).")
+NOT_EDITOR_SCOPE = "Solo el Editor. Un manuscrito fuera de su alcance (o con conflicto de interés) responde 404."
+ETAG = {
+    "ETag": OpenApiParameter(
+        "ETag",
+        location=OpenApiParameter.HEADER,
+        response=True,
+        description='Versión actual del recurso (por ejemplo `"3"`); úsela en `If-Match`.',
+    )
+}
+StartReviewResult = inline_serializer(
+    "StartReviewResult",
+    {
+        "id": serializers.UUIDField(),
+        "code": serializers.CharField(),
+        "status": serializers.CharField(),
+        "assignment": AssignmentSerializer(allow_null=True),
+    },
+)
+VerdictRegistration = inline_serializer(
+    "VerdictRegistration",
+    {
+        "verdict": VerdictSerializer(),
+        "manuscript": inline_serializer(
+            "VerdictManuscript",
+            {
+                "id": serializers.UUIDField(),
+                "code": serializers.CharField(),
+                "status": serializers.CharField(),
+                "current_round": serializers.IntegerField(),
+                "current_version": serializers.IntegerField(),
+            },
+        ),
+        "catalog_entry": inline_serializer(
+            "VerdictCatalogEntry",
+            {"id": serializers.UUIDField(), "published_at": serializers.DateTimeField()},
+            allow_null=True,
+        ),
+        "opened_round": serializers.IntegerField(allow_null=True),
+        "history": VerdictSerializer(many=True),
+    },
+)
 
 
 class EditorBaseView(GenericAPIView):
@@ -108,6 +162,16 @@ class EditorBaseView(GenericAPIView):
         return AssignmentSerializer(fresh, context={"request": self.request}).data
 
 
+@extend_schema_view(
+    get=extend_schema(
+        tags=["Editor"],
+        operation_id="editor_submissions_list",
+        summary="Bandeja de envíos",
+        description="Solo el Editor. Manuscritos `SUBMITTED` de su alcance, con los mismos filtros que la lista del Autor.",
+        parameters=[ManuscriptFilterSerializer, *PAGINATION],
+        responses={200: SubmissionListSerializer(many=True)},
+    ),
+)
 class SubmissionListView(EditorBaseView):
     """``GET /api/v1/editor/submissions/``: the inbox of ``SUBMITTED`` manuscripts."""
 
@@ -127,6 +191,16 @@ class SubmissionListView(EditorBaseView):
         return self.get_paginated_response(SubmissionListSerializer(page, many=True).data)
 
 
+@extend_schema_view(
+    get=extend_schema(
+        tags=["Editor"],
+        operation_id="editor_submissions_retrieve",
+        summary="Detalle de un envío",
+        description=NOT_EDITOR_SCOPE + " Incluye metadatos, autores, PDFs e historial.",
+        parameters=[ID],
+        responses={200: SubmissionDetailSerializer},
+    ),
+)
 class SubmissionDetailView(EditorBaseView):
     """``GET /api/v1/editor/submissions/{id}/``: metadata, authors, PDFs and history."""
 
@@ -138,6 +212,20 @@ class SubmissionDetailView(EditorBaseView):
         return response
 
 
+@extend_schema_view(
+    post=extend_schema(
+        tags=["Editor"],
+        operation_id="editor_submissions_start_review",
+        summary="Iniciar la revisión",
+        description=(
+            "`SUBMITTED` pasa a `UNDER_REVIEW`. Con `reviewer_id`, el revisor se asigna en la "
+            "misma transacción. " + NOT_EDITOR_SCOPE
+        ),
+        parameters=[ID],
+        request=StartReviewSerializer,
+        responses={200: StartReviewResult, 409: STATE_409},
+    ),
+)
 class StartReviewView(EditorBaseView):
     """``POST /api/v1/editor/submissions/{id}/start-review/``.
 
@@ -168,6 +256,19 @@ class StartReviewView(EditorBaseView):
         return response
 
 
+@extend_schema_view(
+    get=extend_schema(
+        tags=["Editor"],
+        operation_id="editor_reviewers_list",
+        summary="Revisores elegibles",
+        description=(
+            "Revisores disponibles y sin conflicto de interés. Si no hay ninguno, `meta.diagnosis` "
+            "explica cuántas cuentas hay y cuántas excluye cada regla."
+        ),
+        parameters=[ReviewerFilterSerializer, *PAGINATION],
+        responses={200: EligibleReviewerSerializer(many=True)},
+    ),
+)
 class EligibleReviewersView(EditorBaseView):
     """``GET /api/v1/editor/reviewers/``: available reviewers free of conflicts.
 
@@ -193,6 +294,28 @@ class EligibleReviewersView(EditorBaseView):
         return response
 
 
+@extend_schema_view(
+    get=extend_schema(
+        tags=["Editor"],
+        operation_id="editor_manuscript_assignments_list",
+        summary="Historial de asignaciones",
+        description=NOT_EDITOR_SCOPE,
+        parameters=[ID, *PAGINATION],
+        responses={200: AssignmentSerializer(many=True)},
+    ),
+    post=extend_schema(
+        tags=["Editor"],
+        operation_id="editor_manuscript_assignments_create",
+        summary="Asignar un revisor",
+        description="Exactamente un revisor activo por manuscrito. " + NOT_EDITOR_SCOPE,
+        parameters=[ID],
+        request=AssignReviewerSerializer,
+        responses={
+            201: AssignmentSerializer,
+            409: error_response("Ya hay un revisor activo o la asignación es inválida (ASSIGNMENT_CONFLICT)."),
+        },
+    ),
+)
 class ManuscriptAssignmentsView(EditorBaseView):
     """``/api/v1/editor/manuscripts/{id}/assignments/``: history and new assignment."""
 
@@ -220,6 +343,16 @@ class ManuscriptAssignmentsView(EditorBaseView):
         return Response(self.represent_assignment(assignment), status=status.HTTP_201_CREATED)
 
 
+@extend_schema_view(
+    post=extend_schema(
+        tags=["Editor"],
+        operation_id="editor_assignments_revoke",
+        summary="Revocar una asignación",
+        parameters=[ID],
+        request=RevokeAssignmentSerializer,
+        responses={200: AssignmentSerializer, 409: STATE_409},
+    ),
+)
 class AssignmentRevokeView(EditorBaseView):
     """``POST /api/v1/editor/assignments/{id}/revoke/``."""
 
@@ -244,6 +377,19 @@ class AssignmentRevokeView(EditorBaseView):
         return Response(self.represent_assignment(revoked))
 
 
+@extend_schema_view(
+    get=extend_schema(
+        tags=["Editor"],
+        operation_id="editor_assignments_expired",
+        summary="Asignaciones vencidas",
+        description=(
+            "Asignaciones `EXPIRED` y las `ACTIVE` ya pasadas de `due_at` que la tarea programada "
+            "aún no marcó. El corte usa siempre el reloj de la base de datos."
+        ),
+        parameters=PAGINATION,
+        responses={200: AssignmentSerializer(many=True)},
+    ),
+)
 class ExpiredAssignmentsView(EditorBaseView):
     """``GET /api/v1/editor/assignments/expired/``: overdue assignments awaiting a decision.
 
@@ -299,6 +445,33 @@ def render_verdict(result: VerdictResult) -> tuple[int, dict]:
     return status.HTTP_201_CREATED, json.loads(JSONRenderer().render(data))
 
 
+@extend_schema_view(
+    get=extend_schema(
+        tags=["Editor"],
+        operation_id="editor_manuscript_verdicts_list",
+        summary="Historial de veredictos",
+        description=NOT_EDITOR_SCOPE,
+        parameters=[ID, *PAGINATION],
+        responses={200: VerdictSerializer(many=True)},
+    ),
+    post=extend_schema(
+        tags=["Editor"],
+        operation_id="editor_manuscript_verdicts_create",
+        summary="Registrar un veredicto",
+        description=(
+            "Un veredicto registrado nunca se edita (no hay PUT, PATCH ni DELETE: 405). Exige "
+            "`Idempotency-Key` y `If-Match` con el ETag del manuscrito. Un Editor con conflicto "
+            "de interés recibe 403 y el intento queda auditado."
+        ),
+        parameters=[ID, IDEMPOTENCY_KEY, IF_MATCH],
+        request=RegisterVerdictSerializer,
+        responses={
+            201: VerdictRegistration,
+            403: error_response("Conflicto de interés del Editor (FORBIDDEN); queda auditado."),
+            409: error_response("Ya existe un veredicto para esa versión (VERDICT_CONFLICT) o el estado no lo permite."),
+        },
+    ),
+)
 class ManuscriptVerdictsView(EditorBaseView):
     """``/api/v1/editor/manuscripts/{id}/verdicts/``: the verdict history and a new verdict.
 
@@ -361,6 +534,16 @@ class ManuscriptVerdictsView(EditorBaseView):
         return response
 
 
+@extend_schema_view(
+    get=extend_schema(
+        tags=["Editor"],
+        operation_id="editor_manuscript_evaluations_list",
+        summary="Evaluaciones finales de un manuscrito",
+        description=NOT_EDITOR_SCOPE + " Solo evaluaciones finales; los borradores del revisor no se listan.",
+        parameters=[ID, *PAGINATION],
+        responses={200: EditorEvaluationSerializer(many=True)},
+    ),
+)
 class ManuscriptEvaluationsView(EditorBaseView):
     """``GET /api/v1/editor/manuscripts/{id}/evaluations/``: the final evaluations.
 
@@ -380,6 +563,28 @@ class ManuscriptEvaluationsView(EditorBaseView):
         return self.get_paginated_response(EditorEvaluationSerializer(page, many=True).data)
 
 
+@extend_schema_view(
+    get=extend_schema(
+        tags=["Editor"],
+        operation_id="editor_incidents_list",
+        summary="Incidentes confidenciales",
+        description=(
+            "Reportes confidenciales de los revisores, los abiertos primero. Se excluyen los de "
+            "manuscritos que el Editor registró o coescribió."
+        ),
+        parameters=[
+            OpenApiParameter(
+                "status",
+                OpenApiTypes.STR,
+                OpenApiParameter.QUERY,
+                enum=["OPEN", "RESOLVED"],
+                description="Filtra por estado. Otro valor responde 400.",
+            ),
+            *PAGINATION,
+        ],
+        responses={200: EditorIncidentSerializer(many=True)},
+    ),
+)
 class IncidentListView(EditorBaseView):
     """``GET /api/v1/editor/incidents/``: the confidential reports, open ones first.
 
@@ -403,6 +608,17 @@ class IncidentListView(EditorBaseView):
         return self.get_paginated_response(EditorIncidentSerializer(page, many=True).data)
 
 
+@extend_schema_view(
+    post=extend_schema(
+        tags=["Editor"],
+        operation_id="editor_incidents_resolve",
+        summary="Resolver un incidente",
+        description="Se resuelve una sola vez: la segunda responde 409.",
+        parameters=[ID],
+        request=ResolveIncidentSerializer,
+        responses={200: EditorIncidentSerializer, 409: STATE_409},
+    ),
+)
 class IncidentResolveView(EditorBaseView):
     """``POST /api/v1/editor/incidents/{id}/resolve/``: resolve once (``409`` the second time)."""
 
@@ -437,6 +653,16 @@ class ReviewerBaseView(GenericAPIView):
         return get_object_or_404(self.scoped_assignments(), pk=pk)
 
 
+@extend_schema_view(
+    get=extend_schema(
+        tags=["Revisor"],
+        operation_id="reviewer_assignments_list",
+        summary="Mis asignaciones",
+        description="Bandeja del revisor. Nunca incluye manuscritos retirados ni los que el revisor coescribió.",
+        parameters=PAGINATION,
+        responses={200: ReviewerAssignmentSerializer(many=True)},
+    ),
+)
 class ReviewerAssignmentListView(ReviewerBaseView):
     """``GET /api/v1/reviewer/assignments/``: the reviewer's own inbox."""
 
@@ -445,6 +671,19 @@ class ReviewerAssignmentListView(ReviewerBaseView):
         return self.get_paginated_response(ReviewerAssignmentSerializer(page, many=True).data)
 
 
+@extend_schema_view(
+    get=extend_schema(
+        tags=["Revisor"],
+        operation_id="reviewer_assignments_retrieve",
+        summary="Detalle ciego de una asignación",
+        description=(
+            "Doble ciego: la respuesta nunca contiene nombre, correo ni filiación del Autor. Una "
+            "asignación ajena responde 404."
+        ),
+        parameters=[ID],
+        responses={200: ReviewerAssignmentDetailSerializer},
+    ),
+)
 class ReviewerAssignmentDetailView(ReviewerBaseView):
     """``GET /api/v1/reviewer/assignments/{id}/``: blind detail of an ``ACTIVE`` or ``COMPLETED`` one."""
 
@@ -456,6 +695,24 @@ class ReviewerAssignmentDetailView(ReviewerBaseView):
         )
 
 
+@extend_schema_view(
+    get=extend_schema(
+        tags=["Revisor"],
+        operation_id="reviewer_assignments_document",
+        summary="Descargar el PDF sanitizado",
+        description=(
+            "Solo con la asignación `ACTIVE`; en otro estado responde 410. Entrega la copia "
+            "sanitizada con nombre genérico, así que el original ni el nombre del archivo del Autor "
+            "llegan al revisor. La descarga se audita antes; si falla, 503 sin redirigir."
+        ),
+        parameters=[ID],
+        responses={
+            (200, "application/pdf"): OpenApiTypes.BINARY,
+            410: error_response("La asignación ya no permite descargar el documento."),
+            503: error_response("La auditoría no está disponible (AUDIT_UNAVAILABLE)."),
+        },
+    ),
+)
 class ReviewerAssignmentDocumentView(ReviewerBaseView):
     """``GET /api/v1/reviewer/assignments/{id}/document/``: the sanitized PDF.
 
@@ -497,6 +754,28 @@ def evaluation_response(evaluation: Evaluation) -> Response:
     return response
 
 
+@extend_schema_view(
+    get=extend_schema(
+        tags=["Revisor"],
+        operation_id="reviewer_assignment_evaluation_retrieve",
+        summary="Ver mi evaluación (borrador o final)",
+        description="Antes del primer guardado devuelve un borrador vacío con ETag `\"0\"`.",
+        parameters=[ID],
+        responses={200: ReviewerEvaluationSerializer},
+    ),
+    put=extend_schema(
+        tags=["Revisor"],
+        operation_id="reviewer_assignment_evaluation_save_draft",
+        summary="Guardar el borrador",
+        description=(
+            "Cambia solo los campos enviados. Exige `If-Match` con el ETag leído (`\"0\"` para el "
+            "borrador vacío). El servicio decide si la asignación todavía admite escritura."
+        ),
+        parameters=[ID, IF_MATCH],
+        request=EvaluationDraftSerializer,
+        responses={200: ReviewerEvaluationSerializer, 409: STATE_409},
+    ),
+)
 class ReviewerEvaluationView(ReviewerBaseView):
     """``GET``/``PUT /api/v1/reviewer/assignments/{id}/evaluation/``: the private draft or the final.
 
@@ -533,6 +812,17 @@ class ReviewerEvaluationView(ReviewerBaseView):
         return evaluation_response(evaluation)
 
 
+@extend_schema_view(
+    post=extend_schema(
+        tags=["Revisor"],
+        operation_id="reviewer_assignment_evaluation_submit",
+        summary="Enviar la evaluación final",
+        description="La evaluación final es inmutable. Exige `If-Match` con el ETag del borrador.",
+        parameters=[ID, IF_MATCH],
+        request=None,
+        responses={200: ReviewerEvaluationSerializer, 409: STATE_409},
+    ),
+)
 class ReviewerEvaluationSubmitView(ReviewerBaseView):
     """``POST /api/v1/reviewer/assignments/{id}/evaluation/submit/``: the immutable final."""
 
@@ -549,6 +839,20 @@ class ReviewerEvaluationSubmitView(ReviewerBaseView):
         return evaluation_response(evaluation)
 
 
+@extend_schema_view(
+    post=extend_schema(
+        tags=["Revisor"],
+        operation_id="reviewer_assignment_conflict",
+        summary="Declarar un conflicto de interés",
+        description=(
+            "Bloquea la evaluación (no más guardados ni envío) y avisa al Editor. La asignación "
+            "sigue `ACTIVE` hasta que el Editor decida."
+        ),
+        parameters=[ID],
+        request=DeclareConflictSerializer,
+        responses={200: ReviewerEvaluationSerializer, 409: STATE_409},
+    ),
+)
 class ReviewerConflictView(ReviewerBaseView):
     """``POST /api/v1/reviewer/assignments/{id}/conflict/``: declare a conflict of interest.
 
@@ -599,6 +903,16 @@ class ReviewerHistoryBaseView(GenericAPIView):
         )
 
 
+@extend_schema_view(
+    get=extend_schema(
+        tags=["Revisor"],
+        operation_id="reviewer_evaluations_list",
+        summary="Historial de mis evaluaciones",
+        description="Solo evaluaciones finales propias; los borradores nunca se listan.",
+        parameters=PAGINATION,
+        responses={200: ReviewerEvaluationHistorySerializer(many=True)},
+    ),
+)
 class ReviewerEvaluationListView(ReviewerHistoryBaseView):
     """``GET /api/v1/reviewer/evaluations/``: history of the reviewer's final evaluations."""
 
@@ -609,6 +923,16 @@ class ReviewerEvaluationListView(ReviewerHistoryBaseView):
         )
 
 
+@extend_schema_view(
+    get=extend_schema(
+        tags=["Revisor"],
+        operation_id="reviewer_evaluations_retrieve",
+        summary="Ver una evaluación final",
+        description="Solo lectura. Una evaluación ajena responde 404.",
+        parameters=[ID],
+        responses={200: ReviewerEvaluationHistoryDetailSerializer},
+    ),
+)
 class ReviewerEvaluationDetailView(ReviewerHistoryBaseView):
     """``GET /api/v1/reviewer/evaluations/{id}/``: one final evaluation, read-only."""
 
@@ -617,6 +941,21 @@ class ReviewerEvaluationDetailView(ReviewerHistoryBaseView):
         return Response(ReviewerEvaluationHistoryDetailSerializer(evaluation).data)
 
 
+@extend_schema_view(
+    post=extend_schema(
+        tags=["Revisor"],
+        operation_id="reviewer_assignment_identity_leak",
+        summary="Reportar una filtración de identidad",
+        description=(
+            "Reporte confidencial: no cambia la evaluación, el PDF ni el manuscrito, y el Autor "
+            "nunca se entera. Solo el dueño de una asignación `ACTIVE`; un segundo reporte abierto "
+            "responde 409."
+        ),
+        parameters=[ID],
+        request=ReportIncidentSerializer,
+        responses={201: ReviewerIncidentSerializer, 409: STATE_409},
+    ),
+)
 class ReviewerIdentityLeakView(ReviewerBaseView):
     """``POST /api/v1/reviewer/assignments/{id}/identity-leak/``: a confidential report.
 
