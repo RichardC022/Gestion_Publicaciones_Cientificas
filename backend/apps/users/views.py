@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from django.conf import settings
 from django.db import transaction
+from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.request import Request
@@ -22,6 +23,8 @@ from apps.users.models import RevocationReason
 from apps.users.serializers import (
     DashboardSerializer,
     LoginSerializer,
+    MeSerializer,
+    SessionSerializer,
     SessionUserSerializer,
     navigation_permissions,
 )
@@ -36,6 +39,7 @@ from apps.users.services.auth import (
 from apps.users.services.dashboard import build_dashboard
 from config.exceptions import DomainError, ErrorCode
 from config.middleware import get_request_id
+from config.openapi import error_response
 from config.request_context import client_ip
 
 
@@ -60,6 +64,28 @@ def _clear_refresh_cookie(response: Response) -> None:
     )
 
 
+@extend_schema_view(
+    post=extend_schema(
+        tags=["Autenticación"],
+        operation_id="auth_login",
+        summary="Iniciar sesión",
+        description=(
+            "Valida las credenciales institucionales y abre la sesión. Devuelve el token de "
+            "acceso en `data.access` y deja el de renovación en la cookie `gpc_refresh` "
+            "(`HttpOnly`, `SameSite=Strict`). Toda falla de credenciales responde lo mismo "
+            "(`AUTH_INVALID`) para no revelar qué cuentas existen. Cinco fallos en quince "
+            "minutos bloquean el identificador (`AUTH_LOCKED`, con `Retry-After`)."
+        ),
+        request=LoginSerializer,
+        responses={
+            200: SessionSerializer,
+            401: error_response("Credenciales inválidas (AUTH_INVALID)."),
+            429: error_response("Identificador bloqueado temporalmente (AUTH_LOCKED)."),
+            503: error_response("La auditoría no está disponible (AUDIT_UNAVAILABLE)."),
+        },
+        auth=[],
+    ),
+)
 class LoginView(APIView):
     """``POST /api/v1/auth/login/``: validate credentials, open the session.
 
@@ -96,6 +122,23 @@ class LoginView(APIView):
         return response
 
 
+@extend_schema_view(
+    post=extend_schema(
+        tags=["Autenticación"],
+        operation_id="auth_refresh",
+        summary="Renovar la sesión",
+        description=(
+            "Rota la cookie de renovación `gpc_refresh` y emite un token de acceso nuevo. "
+            "No lleva cuerpo ni `Authorization`: la cookie es la credencial."
+        ),
+        request=None,
+        responses={
+            200: SessionSerializer,
+            401: error_response("Cookie ausente, vencida o revocada (AUTH_INVALID)."),
+        },
+        auth=[],
+    ),
+)
 class RefreshView(APIView):
     """``POST /api/v1/auth/refresh/``: rotate the cookie, issue a new access."""
 
@@ -120,6 +163,22 @@ class RefreshView(APIView):
         return response
 
 
+@extend_schema_view(
+    post=extend_schema(
+        tags=["Autenticación"],
+        operation_id="auth_logout",
+        summary="Cerrar sesión",
+        description=(
+            "Revoca el token de renovación actual y borra la cookie. La revocación y la "
+            "auditoría comparten transacción: si no se puede auditar, no se revoca y responde 503."
+        ),
+        request=None,
+        responses={
+            204: None,
+            503: error_response("La auditoría no está disponible (AUDIT_UNAVAILABLE)."),
+        },
+    ),
+)
 class LogoutView(APIView):
     """``POST /api/v1/auth/logout/``: revoke the current refresh token (204).
 
@@ -156,6 +215,15 @@ class LogoutView(APIView):
         return response
 
 
+@extend_schema_view(
+    get=extend_schema(
+        tags=["Autenticación"],
+        operation_id="auth_me",
+        summary="Usuario autenticado",
+        description="Identidad, roles activos (releídos de la base de datos) y módulos de navegación.",
+        responses={200: MeSerializer},
+    ),
+)
 class MeView(APIView):
     """``GET /api/v1/auth/me/``: identity, active roles and navigation.
 
@@ -176,6 +244,18 @@ class MeView(APIView):
         )
 
 
+@extend_schema_view(
+    get=extend_schema(
+        tags=["Tablero"],
+        operation_id="dashboard_retrieve",
+        summary="Tablero unificado",
+        description=(
+            "Una sección por cada rol activo. Cada sección se resuelve por separado: si una "
+            "falla, la respuesta sigue siendo 200 y esa sección trae `status: error`."
+        ),
+        responses={200: DashboardSerializer},
+    ),
+)
 class DashboardView(APIView):
     """``GET /api/v1/dashboard/``: every enabled section in one response.
 

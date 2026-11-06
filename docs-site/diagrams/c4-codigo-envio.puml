@@ -1,0 +1,102 @@
+@startuml c4-codigo-envio
+title C4 nivel 4 · Código del envío formal de un manuscrito
+
+skinparam shadowing false
+skinparam defaultFontName SansSerif
+skinparam classAttributeIconSize 0
+skinparam ClassBackgroundColor #FFFFFF
+skinparam ClassBorderColor #438DD5
+skinparam ArrowColor #555555
+skinparam packageStyle rectangle
+hide empty members
+set namespaceSeparator none
+
+package "apps.publications.views" {
+  class ManuscriptSubmitView <<vista>> {
+    + post(request, pk) : Response
+    - idempotency_scope(request, request_hash_of)
+  }
+}
+
+package "apps.publications.services" {
+  class submit_manuscript <<servicio>> {
+    manuscript_id, user, idempotency_key,
+    context, idempotency
+  }
+  class IdempotencyScope <<servicio>> {
+    + find() : StoredResponse
+    + lock_and_find() : StoredResponse
+    + store_result(result)
+  }
+  class PdfService <<servicio>> {
+    + validate(source) : PdfInfo
+    + sanitize(source, destination)
+  }
+  class storage <<módulo>> {
+    + allocate_version_dir(manuscript_id, version_number)
+    + copy_exclusive(source, destination) : CopyResult
+    + write_exclusive(path, data)
+  }
+  class snapshot <<módulo>> {
+    + build_metadata_snapshot(manuscript)
+    + canonical_json(snapshot)
+    + metadata_sha256(canonical)
+  }
+  class missing_requirements <<servicio>> {
+    manuscript : Manuscript
+  }
+}
+
+package "apps.audit" {
+  class AuditService <<servicio>> {
+    + record(action, entity_type, result, actor, ...)
+  }
+}
+
+package "apps.publications.models" {
+  class Manuscript {
+    code
+    status
+    lock_version
+    is_active
+  }
+  class ManuscriptVersion <<append-only>> {
+    version_number
+    round_number
+    original_sha256
+    metadata_sha256
+  }
+  class CorrectionRound {
+    round_number
+    opened_at
+  }
+  class StatusEvent <<append-only>> {
+    from_status
+    to_status
+  }
+}
+
+ManuscriptSubmitView ..> IdempotencyScope : reintento seguro
+ManuscriptSubmitView --> submit_manuscript : llama
+submit_manuscript ..> missing_requirements : valida metadatos
+submit_manuscript --> PdfService : valida y sanea el PDF
+submit_manuscript --> storage : copia sin sobrescribir
+submit_manuscript --> snapshot : congela los metadatos
+submit_manuscript --> AuditService : misma transacción
+submit_manuscript ..> IdempotencyScope : guarda la respuesta
+submit_manuscript --> Manuscript : DRAFT → SUBMITTED
+submit_manuscript --> ManuscriptVersion : crea la versión 1
+submit_manuscript --> CorrectionRound : abre la ronda 0
+submit_manuscript --> StatusEvent : registra la transición
+
+Manuscript "1" o-- "*" ManuscriptVersion
+Manuscript "1" o-- "*" CorrectionRound
+Manuscript "1" o-- "*" StatusEvent
+
+note right of submit_manuscript
+  Una sola transacción:
+  si falla cualquier paso
+  (archivo, base o auditoría)
+  no queda nada a medias.
+end note
+@enduml

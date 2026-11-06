@@ -30,3 +30,16 @@ load-report*.json
 # Playwright (TSK-91)
 frontend/test-results/
 frontend/playwright-report/
+
+# Documentación (Quarto): salida generada y caché
+docs-site/_site/
+docs-site/.quarto/
+/.quarto/
+# Documentación: archivos que genera el CI (scripts/build_docs_api.sh y build_docs_diagrams.sh)
+docs-site/api/openapi.yaml
+docs-site/api/swagger-ui-bundle.js
+docs-site/api/swagger-ui.css
+docs-site/api/favicon-32x32.png
+docs-site/api/LICENSE-swagger-ui.txt
+docs-site/diagrams/vendor/
+docs-site/diagrams/out/

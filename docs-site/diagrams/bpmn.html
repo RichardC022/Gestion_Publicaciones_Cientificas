@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Proceso editorial (BPMN 2.0.2)</title>
+    <!-- Los archivos de vendor/ los copia scripts/build_docs_diagrams.sh desde bpmn-js (no se versionan). -->
+    <link rel="stylesheet" href="vendor/diagram-js.css" />
+    <link rel="stylesheet" href="vendor/bpmn-js.css" />
+    <link rel="stylesheet" href="bpmn-viewer.css" />
+  </head>
+  <body>
+    <div id="toolbar" role="toolbar" aria-label="Controles del diagrama">
+      <button type="button" id="zoom-in" aria-label="Acercar">+</button>
+      <button type="button" id="zoom-out" aria-label="Alejar">−</button>
+      <button type="button" id="zoom-fit">Ajustar</button>
+      <a id="download" href="proceso-editorial.bpmn" download>Descargar .bpmn</a>
+    </div>
+    <div id="canvas" aria-label="Diagrama BPMN del proceso editorial"></div>
+    <p id="error" role="alert" hidden></p>
+    <script src="vendor/bpmn-navigated-viewer.production.min.js"></script>
+    <script src="bpmn-viewer.js"></script>
+  </body>
+</html>

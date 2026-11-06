@@ -19,12 +19,16 @@ import tempfile
 
 from django.conf import settings
 from django.db import connections
+from drf_spectacular.utils import inline_serializer
+from drf_spectacular.utils import extend_schema, extend_schema_view
+from rest_framework import serializers
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from config.exceptions import ErrorCode, build_error_envelope
 from config.middleware import get_request_id
+from config.openapi import error_response
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +67,25 @@ def check_media_volume() -> None:
         handle.close()
 
 
+@extend_schema_view(
+    get=extend_schema(
+        tags=["Sistema"],
+        operation_id="health_retrieve",
+        summary="Estado del servicio",
+        description=(
+            "Público. Comprueba que PostgreSQL responde y que el volumen de medios admite "
+            "escritura. También se sirve sin versión en `/api/health/` (lo usan Docker y los "
+            "scripts de operación). Ante una falla responde 503 genérico, sin revelar el componente."
+        ),
+        responses={
+            200: inline_serializer(
+                "Health", {"status": serializers.CharField(read_only=True, default="ok")}
+            ),
+            503: error_response("Base de datos o volumen de medios no disponibles."),
+        },
+        auth=[],
+    ),
+)
 class HealthView(APIView):
     """Public health probe: ``200`` when everything works, ``503`` otherwise."""
 
@@ -84,3 +107,11 @@ class HealthView(APIView):
             )
             return Response(error, status=503)
         return Response({"status": "ok"})
+
+
+@extend_schema_view(get=extend_schema(exclude=True))
+class UnversionedHealthView(HealthView):
+    """``GET /api/health/``: el mismo health sin versión, que usan Docker y los scripts.
+
+    Se excluye del schema OpenAPI para no duplicar la operación de ``/api/v1/health/``.
+    """

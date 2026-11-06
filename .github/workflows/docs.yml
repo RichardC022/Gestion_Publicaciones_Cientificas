@@ -1,0 +1,135 @@
+name: Documentación
+
+# Construye el portal de documentación (Quarto) y, si el repositorio lo habilita,
+# lo publica en GitHub Pages.
+#
+# * El trabajo `build` corre en cada cambio relevante (incluidos los pull requests) y
+#   falla si el schema OpenAPI, un diagrama o un enlace están rotos.
+# * El trabajo `deploy` publica solo desde la rama predeterminada (o a mano con
+#   «Run workflow») y solo cuando el repositorio define la variable DOCS_DEPLOY=true.
+#   Así el mismo workflow convive con repositorios que aún no tienen Pages activo:
+#   `build` sigue validando y `deploy` no corre ni falla.
+#
+# Para activar la publicación en un repositorio:
+#   1. Settings → Pages → Build and deployment → Source: «GitHub Actions».
+#   2. Settings → Secrets and variables → Actions → Variables → DOCS_DEPLOY = true.
+
+on:
+  push:
+    branches:
+      - "**"
+    paths:
+      - "docs-site/**"
+      - "scripts/build_docs_*.sh"
+      - "scripts/check_docs_site.py"
+      - "backend/**"
+      - ".github/workflows/docs.yml"
+  pull_request:
+    paths:
+      - "docs-site/**"
+      - "scripts/build_docs_*.sh"
+      - "scripts/check_docs_site.py"
+      - "backend/**"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "22"
+  # Versión fija de Quarto: el sitio debe construirse igual hoy y dentro de seis meses.
+  QUARTO_VERSION: "1.11.9"
+
+jobs:
+  build:
+    name: Construir el portal
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: backend/requirements/*.txt
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      # El schema OpenAPI se genera del código: hacen falta las dependencias del backend,
+      # pero no PostgreSQL (la generación no abre ninguna conexión).
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --requirement backend/requirements/base.txt
+
+      - name: Install PlantUML and Graphviz
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends plantuml graphviz
+
+      - name: Build the static API reference (OpenAPI + Swagger UI)
+        run: ./scripts/build_docs_api.sh
+
+      - name: Build the diagrams (BPMN viewer, Structurizr C4, PlantUML)
+        run: ./scripts/build_docs_diagrams.sh all
+
+      - name: Check the documentation sources
+        run: python scripts/check_docs_site.py
+
+      - name: Set up Quarto
+        uses: quarto-dev/quarto-actions/setup@v2
+        with:
+          version: ${{ env.QUARTO_VERSION }}
+
+      - name: Render the site
+        run: quarto render docs-site
+
+      - name: Check the rendered site
+        run: python scripts/check_docs_site.py --built
+
+      - name: Upload the site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs-site/_site
+
+  deploy:
+    name: Publicar en GitHub Pages
+    needs: build
+    # Solo desde la rama predeterminada o a mano, y solo si el repositorio lo habilitó.
+    if: >-
+      vars.DOCS_DEPLOY == 'true' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    permissions:
+      pages: write
+      id-token: write
+
+    # Nunca se cancela un despliegue en curso: Pages debe quedar siempre en un estado coherente.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

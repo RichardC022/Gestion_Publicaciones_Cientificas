@@ -12,6 +12,8 @@ from __future__ import annotations
 import json
 
 from django.shortcuts import get_object_or_404
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from rest_framework import serializers, status
 from rest_framework.generics import GenericAPIView
 from rest_framework.permissions import IsAuthenticated
@@ -24,6 +26,7 @@ from apps.publications.services.corrections import authorize_correction
 from apps.publications.services.idempotency import IdempotencyScope, IdempotentReplay, request_hash
 from apps.publications.views import parse_idempotency_key, replayed
 from apps.users.permissions import IsAdmin
+from config.openapi import IDEMPOTENCY_KEY, error_response
 from config.request_context import audit_request_context
 
 REASON_MIN, REASON_MAX = 10, 1000
@@ -45,6 +48,19 @@ class AuthorizeCorrectionSerializer(serializers.Serializer):
     )
 
 
+class CorrectionAuthorizationSerializer(serializers.Serializer):
+    """Autorización creada: solo datos públicos del manuscrito, sin autores ni evaluaciones."""
+
+    id = serializers.UUIDField(read_only=True)
+    verdict_id = serializers.UUIDField(read_only=True)
+    manuscript_code = serializers.CharField(read_only=True)
+    decision = serializers.CharField(read_only=True)
+    decided_at = serializers.DateTimeField(read_only=True)
+    reason = serializers.CharField(read_only=True)
+    authorized_at = serializers.DateTimeField(read_only=True)
+    is_active = serializers.BooleanField(read_only=True)
+
+
 def render_correction(correction: VerdictCorrection) -> tuple[int, dict]:
     """``(status, body)`` of a created authorization; the body is what gets stored."""
     data = {
@@ -60,6 +76,26 @@ def render_correction(correction: VerdictCorrection) -> tuple[int, dict]:
     return status.HTTP_201_CREATED, json.loads(JSONRenderer().render(data))
 
 
+@extend_schema_view(
+    post=extend_schema(
+        tags=["Administración"],
+        operation_id="admin_verdicts_authorize_correction",
+        summary="Autorizar la corrección de un veredicto",
+        description=(
+            "Única escritura del Administrador. Habilita al Editor a corregir un veredicto ya "
+            "emitido. Exige `Idempotency-Key` y un `reason` de 10 a 1000 caracteres."
+        ),
+        parameters=[
+            IDEMPOTENCY_KEY,
+            OpenApiParameter("id", OpenApiTypes.UUID, OpenApiParameter.PATH),
+        ],
+        request=AuthorizeCorrectionSerializer,
+        responses={
+            201: CorrectionAuthorizationSerializer,
+            409: error_response("Ya hay una autorización activa o el veredicto no admite corrección."),
+        },
+    ),
+)
 class AuthorizeCorrectionView(GenericAPIView):
     permission_classes = [IsAuthenticated, IsAdmin]
     serializer_class = AuthorizeCorrectionSerializer

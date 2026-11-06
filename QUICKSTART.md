@@ -98,7 +98,7 @@ curl -ks https://localhost/api/health/; echo
 curl -ks -o /dev/null -w "admin: %{http_code}\n" https://localhost/admin/
 ```
 
-Debes ver los servicios en `healthy`/`running`, `"success":true` con `"data":{"status":"ok"}` y `admin: 404`. Abre `https://<tu-dominio>` e inicia sesión con `$ADMIN_ID`.
+Debes ver los servicios en `healthy`/`running`, `"success":true` con `"data":{"status":"ok"}` y `admin: 404`. Abre `https://<tu-dominio>` e inicia sesión con `$ADMIN_ID`. Si activaste `API_DOCS_ENABLED=1` en `.env`, la documentación interactiva de la API está en `https://<tu-dominio>/api/v1/docs/`.
 
 ---
 

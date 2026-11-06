@@ -267,3 +267,45 @@ class HistoryEntrySerializer(serializers.BaseSerializer):
             key: formatter.to_representation(value) if isinstance(value, datetime) else value
             for key, value in entry.items()
         }
+
+
+class DraftFileSummarySerializer(serializers.Serializer):
+    """Nombre, tamaño y fecha del PDF del borrador; nunca su ruta."""
+
+    filename = serializers.CharField(read_only=True)
+    size_bytes = serializers.IntegerField(read_only=True)
+    uploaded_at = serializers.DateTimeField(read_only=True)
+
+
+class PdfUploadSerializer(serializers.Serializer):
+    """Cuerpo `multipart/form-data` de las cargas de PDF."""
+
+    file = serializers.FileField(
+        help_text="Archivo PDF (máximo 50 MB). Se valida la firma y la estructura, no la extensión."
+    )
+
+
+class HistoryEntryDocSerializer(serializers.Serializer):
+    """Entrada del historial (solo documentación; ver `HistoryEntrySerializer`).
+
+    Los campos presentes dependen de `type`: `CREATED`, `STATUS_CHANGED` y `WITHDRAWN`
+    traen los estados; `VERSION_SUBMITTED`, la versión y los sellos de integridad;
+    `ROUND_OPENED`, los datos de la ronda de correcciones.
+    """
+
+    type = serializers.ChoiceField(
+        choices=("CREATED", "STATUS_CHANGED", "WITHDRAWN", "VERSION_SUBMITTED", "ROUND_OPENED")
+    )
+    occurred_at = serializers.DateTimeField()
+    from_status = serializers.CharField(required=False, allow_null=True)
+    to_status = serializers.CharField(required=False)
+    reason = serializers.CharField(required=False, allow_null=True)
+    version_id = serializers.UUIDField(required=False)
+    version_number = serializers.IntegerField(required=False, allow_null=True)
+    round_number = serializers.IntegerField(required=False, allow_null=True)
+    original_filename = serializers.CharField(required=False)
+    original_size_bytes = serializers.IntegerField(required=False)
+    integrity_seal = serializers.CharField(required=False, help_text="`sha256:<hex>` del PDF original.")
+    metadata_sha256 = serializers.CharField(required=False)
+    closed_at = serializers.DateTimeField(required=False, allow_null=True)
+    closed_by_version_number = serializers.IntegerField(required=False, allow_null=True)

@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Referencia de la API · Gestión de Publicaciones Científicas</title>
+    <link rel="icon" href="favicon-32x32.png" />
+    <!-- Los archivos de Swagger UI y openapi.yaml los genera scripts/build_docs_api.sh. -->
+    <link rel="stylesheet" href="swagger-ui.css" />
+    <style>
+      html { box-sizing: border-box; overflow-y: scroll; }
+      *, *:before, *:after { box-sizing: inherit; }
+      body { margin: 0; background: #fafafa; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
+      .gpc-banner {
+        padding: 10px 20px;
+        background: #e7f1ff;
+        border-bottom: 1px solid #b6d4fe;
+        color: #052c65;
+        font-size: 14px;
+      }
+      .gpc-banner a { color: inherit; font-weight: 600; }
+    </style>
+  </head>
+  <body>
+    <div class="gpc-banner" role="note">
+      Copia de <strong>solo lectura</strong> del contrato OpenAPI: aquí no se ejecutan peticiones.
+      Para probar los endpoints use «Try it out» en <code>/api/v1/docs/</code> de un despliegue
+      con <code>API_DOCS_ENABLED=1</code>. · <a href="openapi.yaml" download>Descargar openapi.yaml</a>
+      · <a href="../index.html">Volver a la documentación</a>
+    </div>
+    <div id="swagger-ui"></div>
+    <script src="swagger-ui-bundle.js"></script>
+    <script src="swagger-initializer.js"></script>
+  </body>
+</html>

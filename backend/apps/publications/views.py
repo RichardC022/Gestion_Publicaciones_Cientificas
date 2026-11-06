@@ -20,6 +20,14 @@ import re
 from django.db.models import Prefetch
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import (
+    OpenApiParameter,
+    OpenApiResponse,
+    PolymorphicProxySerializer,
+    extend_schema,
+    extend_schema_view,
+)
 from rest_framework import status
 from rest_framework.generics import GenericAPIView
 from rest_framework.parsers import MultiPartParser
@@ -28,13 +36,17 @@ from rest_framework.renderers import JSONRenderer
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from apps.publications.filters import apply_filters
+from apps.publications.filters import ManuscriptFilterSerializer, apply_filters
 from apps.publications.models import Manuscript, ManuscriptVersion, Verdict
 from apps.publications.permissions import IsManuscriptOwner
 from apps.publications.serializers import (
     AuthorManuscriptSerializer,
+    DraftFileSummarySerializer,
+    EditorManuscriptSerializer,
+    HistoryEntryDocSerializer,
     HistoryEntrySerializer,
     ManuscriptVersionSummarySerializer,
+    PdfUploadSerializer,
     SubmissionSerializer,
     WithdrawalSerializer,
     draft_file_summary,
@@ -61,6 +73,7 @@ from apps.publications.services.withdraw import ensure_active, withdraw_manuscri
 from apps.users.models import Role
 from apps.users.permissions import IsAuthor, IsEditor, request_active_roles
 from config.exceptions import DomainError, ErrorCode
+from config.openapi import IDEMPOTENCY_KEY, IF_MATCH, PAGINATION, error_response
 from config.request_context import audit_request_context
 
 _IF_MATCH_PATTERN = re.compile(r'^(?:W/)?"?(\d+)"?$')
@@ -118,6 +131,30 @@ def uploaded_pdf(request: Request):
     return uploaded
 
 
+# Un manuscrito se representa distinto según quién lo lee: el Autor ve el suyo con las
+# evaluaciones que le corresponden; el Editor, la vista de gestión.
+ManuscriptRepresentation = PolymorphicProxySerializer(
+    component_name="Manuscript",
+    serializers=[AuthorManuscriptSerializer, EditorManuscriptSerializer],
+    resource_type_field_name=None,
+)
+ManuscriptRepresentationList = PolymorphicProxySerializer(
+    component_name="Manuscript",
+    serializers=[AuthorManuscriptSerializer, EditorManuscriptSerializer],
+    resource_type_field_name=None,
+    many=True,
+)
+ETAG_HEADER = {
+    "ETag": OpenApiParameter(
+        "ETag",
+        location=OpenApiParameter.HEADER,
+        response=True,
+        description='Versión actual del manuscrito (por ejemplo `"3"`); úsela en `If-Match`.',
+    )
+}
+STATE_409 = error_response("La acción no es válida en el estado actual (STATE_CONFLICT).")
+
+
 class ManuscriptBaseView(GenericAPIView):
     """Shared scope and representation of the manuscript endpoints."""
 
@@ -170,6 +207,27 @@ class ManuscriptBaseView(GenericAPIView):
         return response
 
 
+@extend_schema_view(
+    get=extend_schema(
+        tags=["Autor"],
+        operation_id="manuscripts_list",
+        summary="Listar manuscritos",
+        description=(
+            "El Autor ve sus manuscritos; el Editor, los que están en su alcance. Los retirados "
+            "(`archived=true`) se listan aparte. Un parámetro mal formado responde 400."
+        ),
+        parameters=[ManuscriptFilterSerializer, *PAGINATION],
+        responses={200: ManuscriptRepresentationList},
+    ),
+    post=extend_schema(
+        tags=["Autor"],
+        operation_id="manuscripts_create",
+        summary="Crear un borrador",
+        description="Solo el Autor. Registra un manuscrito en estado `DRAFT`; el PDF se adjunta después.",
+        request=AuthorManuscriptSerializer,
+        responses={201: ManuscriptRepresentation},
+    ),
+)
 class ManuscriptListCreateView(ManuscriptBaseView):
     """List the manuscripts in scope or register a new draft."""
 
@@ -196,6 +254,27 @@ class ManuscriptListCreateView(ManuscriptBaseView):
         return self.respond(manuscript, status.HTTP_201_CREATED)
 
 
+@extend_schema_view(
+    get=extend_schema(
+        tags=["Autor"],
+        operation_id="manuscripts_retrieve",
+        summary="Ver un manuscrito",
+        description="Fuera del alcance del usuario responde 404, igual que un recurso inexistente.",
+        responses={200: ManuscriptRepresentation},
+    ),
+    patch=extend_schema(
+        tags=["Autor"],
+        operation_id="manuscripts_partial_update",
+        summary="Editar los metadatos",
+        description=(
+            "Solo el Autor propietario, en `DRAFT` o `REQUIRES_CORRECTIONS`. No crea versión. "
+            "Exige `If-Match`; si el manuscrito cambió, responde 409."
+        ),
+        parameters=[IF_MATCH],
+        request=AuthorManuscriptSerializer,
+        responses={200: ManuscriptRepresentation, 409: STATE_409},
+    ),
+)
 class ManuscriptDetailView(ManuscriptBaseView):
     """Read a manuscript in scope or edit the owner's one."""
 
@@ -228,6 +307,27 @@ class ManuscriptDetailView(ManuscriptBaseView):
         return self.respond(updated)
 
 
+@extend_schema_view(
+    post=extend_schema(
+        tags=["Autor"],
+        operation_id="manuscripts_draft_file",
+        summary="Adjuntar o reemplazar el PDF del borrador",
+        description=(
+            "Solo el Autor propietario y solo en `DRAFT`. No crea versión ni ronda. El archivo viaja "
+            "en el campo `file` de una solicitud `multipart/form-data`. Responde 201 si lo adjunta "
+            "y 200 si reemplaza el anterior."
+        ),
+        request={"multipart/form-data": PdfUploadSerializer},
+        responses={
+            200: DraftFileSummarySerializer,
+            201: DraftFileSummarySerializer,
+            409: STATE_409,
+            413: error_response("El PDF supera 50 MB (PDF_TOO_LARGE)."),
+            415: error_response("No es `multipart/form-data` (PDF_UNSUPPORTED)."),
+            503: error_response("El almacenamiento no está disponible (STORAGE_UNAVAILABLE)."),
+        },
+    ),
+)
 class ManuscriptDraftFileView(ManuscriptBaseView):
     """``POST /api/v1/manuscripts/{id}/draft-file/``: attach or replace the draft PDF.
 
@@ -260,6 +360,25 @@ class ManuscriptDraftFileView(ManuscriptBaseView):
         )
 
 
+@extend_schema_view(
+    post=extend_schema(
+        tags=["Autor"],
+        operation_id="manuscripts_submit",
+        summary="Enviar el manuscrito",
+        description=(
+            "Envío formal: solo el Autor propietario, desde `DRAFT`. Crea exactamente la versión 1 y "
+            "la ronda 0, congela los metadatos y devuelve el código de seguimiento y el sello de "
+            "integridad. Es idempotente por `Idempotency-Key`."
+        ),
+        parameters=[IDEMPOTENCY_KEY],
+        request=None,
+        responses={
+            201: SubmissionSerializer,
+            409: STATE_409,
+            503: error_response("Almacenamiento o auditoría no disponibles; no se creó nada."),
+        },
+    ),
+)
 class ManuscriptSubmitView(ManuscriptBaseView):
     """``POST /api/v1/manuscripts/{id}/submit/``: the formal submission.
 
@@ -299,6 +418,36 @@ class ManuscriptSubmitView(ManuscriptBaseView):
         return response
 
 
+@extend_schema_view(
+    get=extend_schema(
+        tags=["Autor"],
+        operation_id="manuscripts_versions_list",
+        summary="Listar las versiones",
+        description="Las iteraciones del manuscrito, de la más antigua a la más reciente.",
+        parameters=PAGINATION,
+        responses={200: ManuscriptVersionSummarySerializer(many=True)},
+    ),
+    post=extend_schema(
+        tags=["Autor"],
+        operation_id="manuscripts_versions_create",
+        summary="Enviar una nueva versión",
+        description=(
+            "Respuesta a una solicitud de correcciones: solo el Autor propietario y solo desde "
+            "`REQUIRES_CORRECTIONS`. Crea la versión consecutiva, la ata a la ronda vigente y "
+            "conserva intactas las anteriores. El PDF viaja en `file`. Idempotente por "
+            "`Idempotency-Key`: la misma clave con otro PDF responde 409."
+        ),
+        parameters=[IDEMPOTENCY_KEY],
+        request={"multipart/form-data": PdfUploadSerializer},
+        responses={
+            201: SubmissionSerializer,
+            409: STATE_409,
+            413: error_response("El PDF supera 50 MB (PDF_TOO_LARGE)."),
+            415: error_response("No es `multipart/form-data` (PDF_UNSUPPORTED)."),
+            503: error_response("Almacenamiento o auditoría no disponibles; no se creó nada."),
+        },
+    ),
+)
 class ManuscriptVersionsView(ManuscriptBaseView):
     """``/api/v1/manuscripts/{id}/versions/``: list the iterations or answer a correction request.
 
@@ -364,6 +513,19 @@ class ManuscriptVersionsView(ManuscriptBaseView):
         return response
 
 
+@extend_schema_view(
+    post=extend_schema(
+        tags=["Autor"],
+        operation_id="manuscripts_withdraw",
+        summary="Retirar el manuscrito",
+        description=(
+            "Retiro lógico: solo el Autor propietario, desde cualquier estado. No borra nada. El "
+            "motivo es obligatorio si está en revisión o aceptado. Un segundo retiro responde 409."
+        ),
+        request=WithdrawalSerializer,
+        responses={200: ManuscriptRepresentation, 409: STATE_409},
+    ),
+)
 class ManuscriptWithdrawView(ManuscriptBaseView):
     """``POST /api/v1/manuscripts/{id}/withdraw/``: logical withdrawal.
 
@@ -392,6 +554,25 @@ class ManuscriptWithdrawView(ManuscriptBaseView):
         return self.respond(withdrawn)
 
 
+@extend_schema_view(
+    get=extend_schema(
+        tags=["Autor"],
+        operation_id="manuscripts_version_file",
+        summary="Descargar el PDF original de una versión",
+        description=(
+            "Para el Autor propietario y el Editor del alcance. La descarga se audita antes de "
+            "entregarse; si la auditoría falla, responde 503 sin redirigir. El Revisor nunca llega "
+            "aquí: tiene su propio endpoint con la copia sanitizada."
+        ),
+        parameters=[
+            OpenApiParameter("version_id", OpenApiTypes.UUID, OpenApiParameter.PATH),
+        ],
+        responses={
+            (200, "application/pdf"): OpenApiTypes.BINARY,
+            503: error_response("La auditoría no está disponible (AUDIT_UNAVAILABLE)."),
+        },
+    ),
+)
 class ManuscriptVersionFileView(ManuscriptBaseView):
     """``GET /api/v1/manuscripts/{id}/versions/{version_id}/file/``: the exact original PDF.
 
@@ -418,6 +599,19 @@ class ManuscriptVersionFileView(ManuscriptBaseView):
         return xaccel_response(internal_uri, f"{manuscript.code}-v{version.version_number}.pdf")
 
 
+@extend_schema_view(
+    get=extend_schema(
+        tags=["Autor"],
+        operation_id="manuscripts_history",
+        summary="Historial del manuscrito",
+        description=(
+            "Cronología inmutable de estados, versiones y rondas, también tras un retiro lógico. "
+            "No incluye actores, rutas ni la copia sanitizada."
+        ),
+        parameters=PAGINATION,
+    responses={200: HistoryEntryDocSerializer(many=True)},
+    ),
+)
 class ManuscriptHistoryView(ManuscriptBaseView):
     """``GET /api/v1/manuscripts/{id}/history/``: the immutable chronological history.
 
