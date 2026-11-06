@@ -36,6 +36,10 @@ DEBUG = env_bool("DEBUG", False)
 # deja siempre apagado (`/admin/` responde 404); solo desarrollo lo enciende.
 ADMIN_ENABLED = False
 
+# Documentación interactiva de la API (`/api/v1/docs/` y `/api/v1/schema/`). Apagada por
+# defecto: en cada despliegue se decide con `API_DOCS_ENABLED=1`; desarrollo la enciende.
+API_DOCS_ENABLED = env_bool("API_DOCS_ENABLED", False)
+
 ALLOWED_HOSTS = env_list("ALLOWED_HOSTS", ("localhost", "127.0.0.1", "testserver"))
 CSRF_TRUSTED_ORIGINS = env_list("CSRF_TRUSTED_ORIGINS")
 
@@ -47,6 +51,10 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "rest_framework",
+    # Documentación OpenAPI (drf-spectacular); el sidecar sirve Swagger UI desde
+    # /static/, sin CDN, para cumplir la CSP `script-src 'self'` de Nginx.
+    "drf_spectacular",
+    "drf_spectacular_sidecar",
     "apps.users",
     "apps.publications",
     "apps.reviews",
@@ -191,8 +199,65 @@ REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": [
         "config.renderers.EnvelopeJSONRenderer",
     ],
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     "DEFAULT_PAGINATION_CLASS": "config.pagination.StandardPagination",
     "EXCEPTION_HANDLER": "config.exceptions.exception_handler",
+}
+
+SPECTACULAR_SETTINGS = {
+    "TITLE": "API de Gestión de Publicaciones Científicas",
+    "DESCRIPTION": (
+        "API REST del sistema de gestión editorial de la UNL: manuscritos, revisión por "
+        "pares con doble ciego, veredictos, catálogo público y auditoría.\n\n"
+        "## Contrato de respuesta\n"
+        "Toda respuesta JSON usa el mismo sobre: "
+        "`{success, message, data, errors, meta}`. En un éxito, `data` lleva la carga del "
+        "endpoint y `errors` está vacío; en una lista, `meta.pagination` trae `count`, `next` "
+        "y `previous`. En un error, `success` es `false`, `data` es `null` y `errors` lista "
+        "entradas `{code, message, field, details}`. `meta.request_id` identifica la "
+        "solicitud (cabecera `X-Request-ID`).\n\n"
+        "## Autenticación\n"
+        "`POST /auth/login/` entrega un token de acceso; envíelo como "
+        "`Authorization: Bearer <token>`. La renovación usa una cookie `HttpOnly`.\n\n"
+        "## Errores\n"
+        "Cualquier endpoint puede responder `500` (`SERVER_ERROR`) sin detalles internos. "
+        "Una ruta inexistente bajo `/api/` responde `404` con el mismo sobre."
+    ),
+    "VERSION": "1.0.0",
+    "SERVE_INCLUDE_SCHEMA": False,
+    "SCHEMA_PATH_PREFIX": r"/api/v1",
+    "SWAGGER_UI_DIST": "SIDECAR",
+    "SWAGGER_UI_FAVICON_HREF": "SIDECAR",
+    "COMPONENT_SPLIT_REQUEST": True,
+    # Nombres estables para los enums: sin esto drf-spectacular los llama `Status39bEnum`.
+    "ENUM_NAME_OVERRIDES": {
+        "ManuscriptStatusEnum": "apps.publications.models.Manuscript.Status",
+        "AssignmentStatusEnum": "apps.reviews.models.Assignment.Status",
+        "EvaluationStatusEnum": "apps.reviews.models.Evaluation.Status",
+        "IncidentStatusEnum": "apps.reviews.models.IncidentReport.Status",
+        "RoleEnum": "apps.users.models.Role.Code",
+    },
+    "POSTPROCESSING_HOOKS": [
+        "drf_spectacular.hooks.postprocess_schema_enums",
+        "config.openapi.wrap_in_envelope",
+    ],
+    "SWAGGER_UI_SETTINGS": {
+        "deepLinking": True,
+        "persistAuthorization": False,
+        "displayOperationId": False,
+        "tagsSorter": "alpha",
+    },
+    "TAGS": [
+        {"name": "Sistema", "description": "Estado del servicio."},
+        {"name": "Autenticación", "description": "Inicio, renovación y cierre de sesión."},
+        {"name": "Tablero", "description": "Resumen por rol del usuario autenticado."},
+        {"name": "Autor", "description": "Manuscritos propios, versiones y correcciones."},
+        {"name": "Catálogo", "description": "Artículos publicados (público, sin sesión)."},
+        {"name": "Editor", "description": "Bandeja, asignación de revisores, veredictos e incidentes."},
+        {"name": "Revisor", "description": "Asignaciones y evaluaciones (doble ciego)."},
+        {"name": "Administración", "description": "Auditoría y autorización de correcciones."},
+        {"name": "Notificaciones", "description": "Avisos del usuario autenticado."},
+    ],
 }
 
 # Correlación de logs con el request_id que asigna el middleware.
