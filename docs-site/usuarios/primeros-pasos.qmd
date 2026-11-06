@@ -1,0 +1,63 @@
+---
+title: "Primeros pasos"
+subtitle: "Iniciar sesión, entender el panel y recibir avisos"
+---
+
+## Quién puede entrar
+
+El acceso es solo con **credenciales institucionales**. No existe autorregistro: las cuentas las da de alta el Administrador de sistemas. Con su cuenta puede iniciar sesión con cualquiera de estos tres datos, junto con su contraseña:
+
+- su identificador institucional,
+- su nombre de usuario, o
+- su correo electrónico.
+
+::: {.callout-note}
+## Si la contraseña falla
+El sistema responde siempre lo mismo ante cualquier error de credenciales, sin decir si la cuenta existe. Tras **cinco intentos fallidos en quince minutos** el identificador se bloquea temporalmente; espere unos minutos y vuelva a intentarlo.
+:::
+
+## El panel unificado
+
+Al entrar **no se le pide elegir un rol**. El panel muestra a la vez todos los apartados que su cuenta tiene habilitados, con una separación visual clara. Una persona puede ser Autor y Revisor al mismo tiempo; en ese caso ve ambos apartados juntos.
+
+| Si su cuenta tiene el rol… | El menú le muestra |
+|---|---|
+| Autor | Mis manuscritos |
+| Revisor | Mis asignaciones · Historial de evaluaciones |
+| Editor | Bandeja de envíos · Plazos vencidos · Incidentes confidenciales |
+| Administrador | Auditoría |
+
+Cada sección del panel se carga por separado. Si una falla, las demás siguen funcionando y la que falló ofrece un botón para recargar.
+
+::: {.callout-important}
+## Los roles suman, pero no se saltan las reglas
+Tener varios roles no le da acceso a todo. Cada acción sigue dependiendo de su relación con el documento: nadie evalúa su propio manuscrito, nadie decide sobre un manuscrito del que es autor o coautor, y un Revisor solo ve lo que se le asignó.
+:::
+
+## Su sesión
+
+- Mientras trabaja, la sesión se renueva sola. Si está **30 minutos sin actividad**, se cierra.
+- Si la sesión caduca mientras escribe, el sistema intenta renovarla una vez; si no puede, lo lleva a la pantalla de inicio de sesión.
+- Para salir, use **Cerrar sesión**. Queda registrado en la auditoría.
+
+## Avisos
+
+Los eventos importantes generan un aviso en su panel (y un correo institucional): por ejemplo, un manuscrito enviado, una asignación nueva, una evaluación recibida o un veredicto. En la sección **Avisos** puede filtrarlos por leídos o no leídos y marcarlos como leídos de uno en uno o todos a la vez.
+
+Los avisos respetan el doble ciego: un aviso al Revisor nunca menciona al Autor, y viceversa.
+
+## Cuando algo no sale como esperaba
+
+El sistema explica los errores con mensajes accionables. Los más habituales:
+
+| Mensaje (resumen) | Qué significa | Qué hacer |
+|---|---|---|
+| «Su sesión no es válida o expiró» | La sesión caducó o se cerró. | Inicie sesión de nuevo. |
+| «Acceso denegado: su rol no habilita esta sección» | Esa pantalla no corresponde a su rol. | Use las secciones de su menú. |
+| «El recurso solicitado no existe o no está disponible» | No existe o no está en su alcance (por privacidad, ambos casos se ven igual). | Vuelva al listado. |
+| «La acción no es válida en el estado actual» | El manuscrito cambió de estado mientras trabajaba. | Recargue los datos e intente de nuevo. |
+| «Los datos cambiaron mientras los editaba» | Otra persona (u otra pestaña) lo modificó antes. | Recargue y repita su cambio. |
+| «El archivo supera el límite de 50 MB» | El PDF es demasiado grande. | Reduzca el PDF. |
+| «Servicio no disponible temporalmente» | Un componente interno no respondió. | Espere unos minutos y reintente; nada se guardó a medias. |
+
+Cuando contacte a soporte, indique el **identificador de solicitud** (`request_id`) que acompaña a los errores: permite encontrar exactamente qué pasó.

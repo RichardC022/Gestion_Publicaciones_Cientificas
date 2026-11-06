@@ -1,0 +1,38 @@
+---
+title: "ADR-0006 · Django Admin apagado en producción"
+---
+
+**Estado:** Aceptada · **Fecha:** 1 de noviembre de 2026 (decisión D-31)
+
+## Contexto
+
+Django incluye un panel de administración que permite editar cualquier fila de cualquier modelo. Es cómodo en desarrollo, pero en este sistema **saltaría las reglas que lo definen**: el doble ciego, la inmutabilidad de versiones y veredictos, la separación de funciones y la auditoría obligatoria. Un administrador de Django podría, por ejemplo, ver identidades o modificar datos sin dejar la evidencia que exige el proceso. Además, es una superficie de ataque adicional (formulario de acceso, estáticos, rutas conocidas).
+
+## Decisión
+
+- En **producción el Django Admin no se monta**: `/admin/` responde `404`, tanto en Nginx (que ni siquiera lo reenvía) como en Django, y **ninguna variable de entorno lo enciende**.
+- Las cuentas y los roles se gestionan por consola con comandos de gestión (`create_user`, `seed_roles`), que generan contraseñas aleatorias mostradas una sola vez.
+- El **entorno de desarrollo** puede montarlo para inspeccionar datos (`ADMIN_ENABLED`, activo por defecto solo en `config.settings.development`; se apaga con `ADMIN_ENABLED=0`).
+- Toda la funcionalidad editorial se expone únicamente por la API, que aplica las reglas de negocio y la auditoría.
+
+## Alternativas consideradas
+
+| Alternativa | Por qué no |
+|---|---|
+| Dejar el Admin activo detrás de VPN o de una lista de IP | Sigue permitiendo escribir datos sin reglas ni auditoría; la restricción de red no arregla eso. |
+| Personalizar el Admin para que respete las reglas | Duplicaría la lógica de negocio fuera de los servicios (viola DRY) y sería frágil. |
+| Activarlo con una variable en producción | Un error de configuración lo expondría; es mejor que no exista el interruptor. |
+
+## Consecuencias
+
+- ✅ Menos superficie expuesta y ninguna vía para saltarse la auditoría desde un panel.
+- ✅ Una sola forma de modificar datos: la API, con sus reglas.
+- ⚠️ La administración de cuentas es por línea de comandos; requiere acceso al servidor.
+- ⚠️ Para inspeccionar datos en producción hay que usar la auditoría, los logs o `psql` con el rol adecuado, no un panel.
+
+## Referencias
+
+- Código: `backend/config/urls.py` (`ADMIN_ENABLED`), `config/settings/base.py`, `production.py`, `development.py`.
+- Nginx: bloque `location ^~ /admin/` y `/static/admin/` en `nginx/conf.d/default.conf`.
+- Pruebas: `tests/test_urls.py` (`test_django_admin_is_mounted_only_when_enabled`).
+- Operación: README §5.6 y QUICKSTART A6.

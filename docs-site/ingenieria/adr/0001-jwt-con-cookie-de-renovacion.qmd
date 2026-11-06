@@ -1,0 +1,43 @@
+---
+title: "ADR-0001 · JWT de acceso en memoria y renovación en cookie HttpOnly"
+---
+
+**Estado:** Aceptada · **Fecha:** octubre de 2026
+
+## Contexto
+
+La interfaz es una SPA de Angular que consume una API REST. Hace falta autenticar a personas con cuentas institucionales, cerrar la sesión por inactividad, poder **revocar** una sesión y no exponer credenciales de larga vida a un ataque de *cross-site scripting* (XSS). Además, los roles de una persona pueden cambiar (se retira un rol, se deshabilita una cuenta) y el cambio debe surtir efecto de inmediato.
+
+## Decisión
+
+- El **token de acceso** es un JWT de vida corta (15 minutos). El cliente lo guarda **solo en memoria**: nunca en `localStorage`, `sessionStorage` ni cookies.
+- El **token de renovación** (7 días) viaja **únicamente** en la cookie `gpc_refresh` con `HttpOnly`, `SameSite=Strict` y `Secure` en producción, restringida a la ruta `/api/v1/auth/`. JavaScript no puede leerla.
+- Cada token de renovación se registra en la base de datos (`RefreshToken`) y es **de un solo uso**: al rotar queda revocado y apunta a su reemplazo. Reutilizar uno ya consumido se detecta y la cadena de reemplazo muere con él.
+- Los **roles y el estado de la cuenta se releen de PostgreSQL en cada solicitud**; la reclamación del JWT es solo una pista y nunca autoriza por sí sola.
+- Toda falla de autenticación responde el mismo `AUTH_INVALID`, sin revelar la causa.
+- Cinco intentos fallidos por identificador en quince minutos bloquean el acceso (`AUTH_LOCKED`).
+
+## Alternativas consideradas
+
+| Alternativa | Por qué no |
+|---|---|
+| JWT largo guardado en `localStorage` | Un XSS lo robaría y daría acceso por días. |
+| Sesiones de Django con cookie de sesión | Acopla la SPA a la sesión del servidor, exige tratar CSRF en cada escritura y complica el escalado; el diseño por token deja la API sin estado de sesión en el cliente. |
+| JWT sin registro de renovación | No permitiría revocar una sesión ni detectar el robo de un token. |
+| Confiar en los roles del JWT | Un rol retirado seguiría funcionando hasta que el token caduque. |
+
+## Consecuencias
+
+- ✅ Un XSS no puede leer el token de renovación, y el de acceso dura minutos.
+- ✅ Revocar una sesión o un rol surte efecto en la siguiente solicitud.
+- ✅ La API no filtra qué cuentas existen.
+- ⚠️ Cada solicitud consulta los roles en la base de datos (un costo pequeño, aceptado por la escala del piloto).
+- ⚠️ La renovación depende de que el navegador y la API compartan origen, lo que se cumple porque Nginx sirve ambos bajo el mismo dominio.
+- ⚠️ Al recargar la página el token de acceso se pierde; la SPA lo recupera al arrancar con una renovación (`restoreSession`).
+
+## Referencias
+
+- Código: `apps/users/authentication.py`, `apps/users/services/auth.py`, `apps/users/models.py` (`RefreshToken`, `LoginAttempt`).
+- Frontend: `core/auth/` (`AuthService`, `AuthStore`, interceptores).
+- Pruebas: `tests/users/`, `tests/audit/test_auth_flow_chain.py`, E2E `01-sesion`.
+- Configuración: `JWT_ACCESS_MINUTES`, `JWT_REFRESH_DAYS`, `SESSION_IDLE_MINUTES`, `COOKIE_SECURE`.

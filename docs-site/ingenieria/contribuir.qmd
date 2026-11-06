@@ -1,0 +1,93 @@
+---
+title: "Cómo contribuir"
+subtitle: "Ramas, convenciones, revisión y publicación de esta documentación"
+---
+
+## Metodología
+
+El proyecto sigue **Specification-Driven Development** con SpecKit: primero la constitución y la especificación, después la clarificación, el plan y las tareas, y solo entonces el código. Toda decisión de alcance debe reflejarse en `.spec-kit/specify.md` y `.spec-kit/plan.md` **antes** de implementarse.
+
+## Ramas
+
+| Rama | Uso |
+|---|---|
+| `main` | Producción. |
+| `develop` | Integración principal. |
+| `dev/<integrante>-setup` | Rama de trabajo de cada integrante. |
+
+Flujo habitual: trabaje en su rama `dev/…`, integre `develop` en ella para resolver conflictos, y envíe el cambio a `develop` mediante *pull request*.
+
+## Convenciones
+
+- **Código, endpoints e identificadores en inglés; comentarios, documentación y commits en español.**
+- Commits con prefijo convencional: `feat:`, `fix:`, `docs:`, `test:`, `chore:`, `refactor:`.
+- **SOLID, KISS, DRY y YAGNI.** Reglas de negocio en `services/`; las vistas solo hablan HTTP.
+- Una ruta nueva exige: permiso explícito, entrada en la matriz de acceso (`tests/security/test_access_matrix.py`), anotación OpenAPI (`@extend_schema`) y pruebas.
+- Una respuesta nueva usa el contrato universal; no devuelva JSON a mano fuera del renderer.
+- Toda acción crítica se audita en la misma transacción que la acción.
+- Ningún secreto en el repositorio.
+
+## Antes de abrir un *pull request*
+
+```bash
+# Backend
+docker compose run --rm backend python -m pytest
+
+# Schema OpenAPI sin advertencias
+docker compose run --rm backend python manage.py spectacular --validate --fail-on-warn --file /tmp/openapi.yaml
+
+# Frontend
+cd frontend && npx tsc -p tsconfig.app.json --noEmit && npx tsc -p tsconfig.spec.json --noEmit && npx ng test --watch=false
+```
+
+El CI repite estas comprobaciones y añade las auditorías de dependencias; vea [Pruebas](pruebas.qmd).
+
+## Añadir un endpoint (receta)
+
+1. Escriba el **servicio** en `apps/<app>/services/` con la regla y la transacción.
+2. Cree el **serializador** de entrada y de salida.
+3. Cree la **vista** con sus permisos y anótela con `@extend_schema` (etiqueta, resumen, cuerpo, respuestas y errores de dominio).
+4. Registre la **ruta** en `urls.py` de la *app*.
+5. Clasifíquela en la **matriz de acceso**.
+6. Escriba las **pruebas** (servicio y API) y compruebe que el schema sigue válido.
+7. Si cambia el comportamiento visible para una persona, actualice la [guía de usuario](../usuarios/primeros-pasos.qmd).
+
+## Esta documentación
+
+El sitio vive en `docs-site/` y se construye con [Quarto](https://quarto.org). Las páginas son archivos `.qmd` (Markdown con bloques ejecutables); los diagramas son bloques ```` ```{mermaid} ````.
+
+Parte del sitio no se versiona porque lo genera el CI en cada publicación: el schema OpenAPI y Swagger UI estático (`docs-site/api/`) y los diagramas renderizados (`docs-site/diagrams/vendor/` y `out/`). Para construir todo en local:
+
+```bash
+python -m pip install -r backend/requirements/base.txt
+./scripts/build_docs_api.sh            # schema OpenAPI + Swagger UI estático
+./scripts/build_docs_diagrams.sh all   # visor BPMN y diagramas C4 (requiere Docker y PlantUML)
+
+python scripts/check_docs_site.py      # comprueba fuentes y enlaces
+quarto render docs-site                # construye docs-site/_site
+python scripts/check_docs_site.py --built
+
+quarto preview docs-site               # vista previa con recarga automática
+```
+
+### Publicación
+
+El flujo `.github/workflows/docs.yml` construye el sitio en **cada** *push* y *pull request* que toque la documentación y **falla** si el schema OpenAPI tiene advertencias, si un diagrama no se genera o si hay un enlace roto. La publicación en GitHub Pages ocurre solo desde la rama predeterminada (o a mano) y únicamente si el repositorio define la variable `DOCS_DEPLOY=true`. Los pasos para activarla están en el `README.md` (§14).
+
+### Diagramas
+
+| Diagrama | Fuente | Herramienta |
+|---|---|---|
+| Bocetos de arquitectura, estados y flujos | Bloques ```` ```{mermaid} ```` dentro de las páginas | Mermaid (en el navegador) |
+| C4 niveles 1 a 3 | `docs-site/diagrams/workspace.dsl` | Structurizr → PlantUML → SVG |
+| C4 nivel 4 (código) | `docs-site/diagrams/c4-codigo-envio.puml` | PlantUML → SVG |
+| Proceso editorial | `docs-site/diagrams/proceso-editorial.bpmn` | BPMN 2.0.2, visor bpmn-js |
+
+Si cambia el comportamiento que un diagrama describe, actualice su fuente **en el mismo cambio**.
+
+Convenciones de escritura:
+
+- En español, con tildes, y en segunda persona de cortesía en las guías de usuario.
+- Cada guía de rol responde tres preguntas: *qué hace este rol*, *cómo se hace cada tarea* y *qué hacer cuando algo falla*.
+- Los enlaces internos son relativos (`../usuarios/autor.qmd`) para que el sitio funcione bajo cualquier URL base de GitHub Pages.
+- Si cambia el comportamiento del sistema, actualice la página correspondiente **en el mismo cambio**.

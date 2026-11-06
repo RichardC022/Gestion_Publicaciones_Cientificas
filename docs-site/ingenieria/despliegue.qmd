@@ -1,0 +1,129 @@
+---
+title: "Despliegue y operación"
+subtitle: "Levantar el sistema con Docker, configurarlo y mantenerlo"
+---
+
+Esta página es el resumen para ingenieros. Los procedimientos completos, paso a paso y pensados para quien no conoce el código, están en tres documentos del repositorio:
+
+| Documento | Para qué |
+|---|---|
+| `QUICKSTART.md` | Levantar el sistema en menos de cinco minutos (producción o local). |
+| `README.md` | Referencia técnica: instalación, operación diaria, TLS, respaldos, pruebas y seguridad. |
+| `docs/RUNBOOK.md` | Guía de operación del servidor: despliegue, TLS, respaldos, restauración, cron, credenciales, incidentes y criterios de aceptación del piloto. |
+
+## Requisitos
+
+Linux o macOS con `git`, `openssl`, `curl` y Docker con Compose v2 (`docker compose version`). Los puertos 80 y 443 deben estar libres.
+
+## Servicios
+
+| Servicio | Imagen / rol | Puertos |
+|---|---|---|
+| `db` | PostgreSQL 16 | Ninguno publicado. |
+| `backend` | Django + Gunicorn. Al arrancar valida `.env`, prepara el volumen, **migra** (con el rol administrador), aplica los privilegios de la base y ejecuta `collectstatic` | Ninguno publicado. |
+| `web` | Nginx con la SPA compilada | **80 y 443** (el único que publica). |
+
+Volúmenes: `media_data` (PDF), `static_data` (estáticos de Django) y los datos de PostgreSQL.
+
+## Despliegue en cinco pasos
+
+```bash
+# 1. Clonar
+git clone <URL-del-repositorio> && cd Gestion_Publicaciones_Cientificas
+
+# 2. Configuración: .env con secretos únicos y permisos 600
+cp .env.example .env
+# edite DJANGO_SECRET_KEY, POSTGRES_PASSWORD, APP_DB_PASSWORD, ALLOWED_HOSTS,
+# CSRF_TRUSTED_ORIGINS y el SMTP (el QUICKSTART lo automatiza con openssl rand)
+chmod 600 .env
+
+# 3. Certificado TLS (autofirmado para arrancar; use el institucional en producción)
+./scripts/make_dev_cert.sh
+
+# 4. Construir y levantar
+docker compose up -d --build --wait
+
+# 5. Roles y primera cuenta de administrador
+docker compose exec backend python manage.py seed_roles
+docker compose exec backend python manage.py create_user admin \
+  --first-name Nombre --last-name Apellido --email admin@unl.edu.ec --role ADMIN
+```
+
+Compruebe:
+
+```bash
+docker compose ps
+curl -ks https://localhost/api/health/
+curl -ks -o /dev/null -w "admin: %{http_code}\n" https://localhost/admin/   # debe dar 404
+```
+
+::: {.callout-warning}
+## Cuentas
+En producción las cuentas se crean **siempre** con `create_user` (no hay Django Admin). No ejecute `seed_dev_users` en producción: se niega a correr sin una variable explícita.
+:::
+
+## Variables de entorno
+
+Todas viven en `.env` (nunca se versiona). `.env.example` es la plantilla.
+
+| Variable | Qué controla |
+|---|---|
+| `DJANGO_SETTINGS_MODULE`, `DEBUG` | Entorno de ajustes; `DEBUG` debe estar apagado en producción. |
+| `DJANGO_SECRET_KEY` | Clave de firma. Única por despliegue; el arranque falla si es `change-me`. |
+| `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS` | Dominios permitidos. Obligatorios en producción. |
+| `POSTGRES_*` | Conexión y base de datos; es el rol **administrador** que migra. |
+| `APP_DB_USER`, `APP_DB_PASSWORD` | Rol de ejecución de la aplicación (sin superusuario y sin `UPDATE`/`DELETE` sobre la auditoría). |
+| `JWT_ACCESS_MINUTES`, `JWT_REFRESH_DAYS`, `SESSION_IDLE_MINUTES` | Duración del acceso (15), de la renovación (7) y de la inactividad (30). |
+| `COOKIE_SECURE` | Debe ser `1` en producción. |
+| `API_DOCS_ENABLED` | `1` publica Swagger UI en `/api/v1/docs/` y el schema en `/api/v1/schema/`; `0` las apaga (`404`). |
+| `MAX_PDF_SIZE_MB`, `NGINX_CLIENT_MAX_BODY_SIZE` | Límite del PDF (50) y de la solicitud (60m). Deben coincidir entre Nginx, Django y Angular. |
+| `MEDIA_ROOT` | Ruta del volumen de PDF. |
+| `BACKUP_ROOT`, `RETENTION_DAYS` | Destino del respaldo (fuera del repo y de `/data/media`) y retención (30 días). |
+| `EMAIL_*`, `DEFAULT_FROM_EMAIL` | Servidor SMTP institucional para los avisos. |
+| `TZ` | Zona horaria institucional (`America/Guayaquil`). |
+
+## Tareas programadas (cron del host)
+
+Se instalan desde `scripts/cron/gpc.cron`; usan `flock` para que no se solapen.
+
+| Frecuencia | Tarea | Comando |
+|---|---|---|
+| Cada minuto | Marcar asignaciones vencidas | `manage.py mark_expired_assignments` |
+| Cada minuto | Enviar y reintentar avisos | `manage.py send_pending_notifications` |
+| Diaria, 02:15 | Respaldo de PostgreSQL y del volumen | `scripts/backup.sh` |
+| Diaria, 03:00 | Limpiar claves de idempotencia caducadas | `manage.py cleanup_idempotency_keys` |
+| Mensual, día 1 a las 03:30 | Verificar la cadena de auditoría | `manage.py verify_integrity` |
+
+## Respaldo y restauración
+
+- **Respaldo diario** (`scripts/backup.sh`): `pg_dump` en formato *custom*, `tar` del volumen de PDF y sellos de integridad, con **retención de 30 días**.
+- **Restauración** (`scripts/restore.sh`) y **prueba mensual** de restauración, documentada en el runbook.
+- `scripts/verify_pilot.sh` verifica el despliegue completo, incluida la restauración.
+
+::: {.callout-note}
+## Pendiente de declararse
+El respaldo local no cifra ni copia fuera del servidor; el runbook lo señala como decisión abierta antes de abrir el piloto a usuarios reales.
+:::
+
+## Observabilidad
+
+| Señal | Dónde |
+|---|---|
+| **Health check** | `GET /api/health/` (y `/api/v1/health/`): comprueba PostgreSQL y el volumen de medios. 200 si todo funciona; 503 genérico si no. Docker lo usa como *healthcheck* del `backend`. |
+| **Logs de aplicación** | Salida estándar del contenedor; cada línea lleva `[request_id=…]`. |
+| **Correlación** | El mismo `request_id` aparece en `X-Request-ID`, en `meta.request_id` de la respuesta, en el log y en la auditoría. |
+| **Errores estructurados** | Contrato `{success, message, data, errors, meta}` con códigos estables. |
+| **Auditoría** | Registro inmutable de acciones críticas, consultable por el Administrador. |
+| **Logs de cron** | `/var/log/gpc-*.log`, rotados semanalmente (8 copias) o mensualmente (12). |
+
+Cuando alguien reporte un error, pídale el `request_id`: con él se localiza la solicitud exacta en los logs.
+
+## Actualizar el sistema
+
+```bash
+git pull
+docker compose up -d --build --wait
+curl -ks https://localhost/api/health/
+```
+
+No hace falta migrar a mano: al reiniciarse, el `backend` aplica las migraciones pendientes con el rol administrador (`DB_USE_ADMIN=1`) y vuelve a aplicar los privilegios; la aplicación en ejecución usa el rol restringido.

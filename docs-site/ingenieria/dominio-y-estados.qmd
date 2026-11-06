@@ -1,0 +1,122 @@
+---
+title: "Modelo de dominio y estados"
+subtitle: "Entidades, relaciones, máquina de estados e invariantes"
+---
+
+## Entidades principales
+
+```{mermaid}
+erDiagram
+    USER ||--o{ USER_ROLE : tiene
+    ROLE ||--o{ USER_ROLE : concede
+    USER ||--o| REVIEWER_PROFILE : "áreas de especialidad"
+
+    USER ||--o{ MANUSCRIPT : registra
+    MANUSCRIPT ||--|{ MANUSCRIPT_AUTHOR : "lista de autores"
+    MANUSCRIPT ||--o{ MANUSCRIPT_VERSION : "iteraciones (inmutables)"
+    MANUSCRIPT ||--o{ CORRECTION_ROUND : rondas
+    MANUSCRIPT ||--o{ STATUS_EVENT : "historial de estados"
+
+    MANUSCRIPT_VERSION ||--o{ ASSIGNMENT : "se asigna"
+    USER ||--o{ ASSIGNMENT : "revisa"
+    ASSIGNMENT ||--o| EVALUATION : produce
+    ASSIGNMENT ||--o{ INCIDENT_REPORT : "reporte confidencial"
+
+    EVALUATION ||--o{ VERDICT : fundamenta
+    MANUSCRIPT ||--o{ VERDICT : decide
+    VERDICT ||--o{ VERDICT_CORRECTION : "habilitación del Admin"
+    MANUSCRIPT ||--o| CATALOG_ENTRY : "si es aceptado"
+
+    USER ||--o{ AUDIT_LOG : "actor"
+    USER ||--o{ NOTIFICATION : recibe
+    USER ||--o{ IDEMPOTENCY_KEY : usa
+    USER ||--o{ REFRESH_TOKEN : sesiones
+```
+
+| Entidad | Para qué sirve | Notas de diseño |
+|---|---|---|
+| `Manuscript` | Metadatos y estado editorial. | `code` único de seguimiento; `is_active` para el retiro lógico; `lock_version` para el bloqueo optimista; disparador que prohíbe `DELETE`. |
+| `ManuscriptVersion` | Una iteración enviada. | **Append-only**: guarda el PDF exacto, su sello SHA-256 y la instantánea canónica de los metadatos de esa ronda. |
+| `CorrectionRound` | Ronda abierta por «Requiere correcciones». | El envío inicial es la ronda 0. Contador independiente de las versiones. |
+| `StatusEvent` | Historial de cambios de estado. | Append-only. |
+| `Assignment` | Revisor asignado a una versión. | Un solo Revisor activo por manuscrito; `due_at` = `assigned_at` + 20 días. |
+| `Evaluation` | Borrador privado que se vuelve evaluación final. | Final = inmutable. Cinco puntuaciones de 1 a 5, recomendación y dos textos de comentarios. |
+| `Verdict` | Decisión editorial. | Append-only; nunca se edita. |
+| `VerdictCorrection` | Habilitación del Administrador para corregir un veredicto. | Sin ella, una segunda decisión sobre la misma versión se rechaza. |
+| `IncidentReport` | Reporte confidencial del Revisor (fuga de identidad u otro). | Invisible para el Autor. |
+| `CatalogEntry` | Publicación de un artículo aceptado. | Apunta a la copia pública del PDF. |
+| `AuditLog` | Auditoría global. | Cadena de huellas SHA-256 y rechazo de `UPDATE`/`DELETE` en la base de datos. |
+| `Notification` | Avisos por panel y correo. | Reintentos con *backoff*; un fallo nunca revierte la acción. |
+| `IdempotencyKey` | Respuesta guardada de un `POST` reintentable. | Caduca a las 24 horas; limpieza programada. |
+
+## Máquina de estados del manuscrito
+
+```{mermaid}
+stateDiagram-v2
+    [*] --> DRAFT
+    DRAFT --> SUBMITTED: Autor · submit
+    SUBMITTED --> UNDER_REVIEW: Editor · start-review
+    UNDER_REVIEW --> UNDER_REVIEW: Editor · revocar y reasignar
+    UNDER_REVIEW --> REQUIRES_CORRECTIONS: Editor · veredicto (observaciones obligatorias)
+    UNDER_REVIEW --> ACCEPTED: Editor · veredicto
+    UNDER_REVIEW --> REJECTED: Editor · veredicto (justificación obligatoria)
+    REQUIRES_CORRECTIONS --> SUBMITTED: Autor · nueva versión
+    ACCEPTED --> [*]
+    REJECTED --> [*]
+```
+
+| Desde | Hacia | Actor | Condición |
+|---|---|---|---|
+| `DRAFT` | `SUBMITTED` | Autor | Metadatos completos y PDF válido. |
+| `SUBMITTED` | `UNDER_REVIEW` | Editor | Revisión inicial; puede asignar al Revisor en la misma acción. |
+| `UNDER_REVIEW` | `UNDER_REVIEW` | Editor | Revocación y reasignación (plazo vencido, conflicto o error). |
+| `UNDER_REVIEW` | `REQUIRES_CORRECTIONS` | Editor | Evaluación final registrada y observaciones obligatorias. |
+| `UNDER_REVIEW` | `ACCEPTED` | Editor | Evaluación final registrada. |
+| `UNDER_REVIEW` | `REJECTED` | Editor | Evaluación final registrada y justificación obligatoria. |
+| `REQUIRES_CORRECTIONS` | `SUBMITTED` | Autor | Nueva versión válida con los metadatos actualizados. |
+
+**Transiciones prohibidas** (se bloquean y se registran): `DRAFT → UNDER_REVIEW`, `SUBMITTED → ACCEPTED/REJECTED`, `REQUIRES_CORRECTIONS → ACCEPTED/REJECTED` sin nuevo envío y evaluación, y cualquier edición desde `ACCEPTED` o `REJECTED`.
+
+El **retiro lógico** no es un estado: es la marca `is_active = false`, aplicable desde cualquier estado.
+
+## Versiones y rondas
+
+```{mermaid}
+flowchart LR
+    v1["v1 · ronda 0<br/>envío inicial"] -->|"veredicto: requiere correcciones"| r1["ronda 1 abierta"]
+    r1 -->|"el Autor responde"| v2["v2 · ronda 1"]
+    v2 -->|"veredicto: requiere correcciones"| r2["ronda 2 abierta"]
+    r2 -->|"el Autor responde"| v3["v3 · ronda 2"]
+    v3 -->|"veredicto: aceptado"| fin(["Aceptado"])
+```
+
+1. El primer envío crea la **v1** y la **ronda 0**.
+2. Cada veredicto «Requiere correcciones» abre la siguiente ronda.
+3. La respuesta del Autor se registra como la versión consecutiva.
+4. Editar metadatos **no** crea versión ni ronda; solo el envío formal de un PDF crea una iteración.
+5. Reasignar un Revisor no altera ronda ni versión; el nuevo Revisor recibe su propio plazo.
+6. Puede haber más versiones que rondas si el Autor abandona una corrección.
+
+## Invariantes que la base de datos hace cumplir
+
+No todo se confía a la aplicación. PostgreSQL rechaza, con disparadores y restricciones:
+
+- `UPDATE` o `DELETE` sobre la auditoría, las versiones, los veredictos y el historial de estados.
+- `DELETE` físico de manuscritos.
+- La reescritura de una evaluación final.
+- Puntuaciones fuera del rango de 1 a 5.
+
+Además, el rol con el que corre la aplicación **no** es superusuario y no tiene permisos de `UPDATE`/`DELETE` sobre la auditoría (`apply_db_privileges`). Las migraciones usan un rol administrador aparte.
+
+## Estados de una asignación
+
+```{mermaid}
+stateDiagram-v2
+    [*] --> ACTIVE: Editor asigna (20 días)
+    ACTIVE --> COMPLETED: Revisor envía la evaluación final
+    ACTIVE --> EXPIRED: Pasan 20 días (cron)
+    ACTIVE --> REVOKED: Editor revoca
+    EXPIRED --> REVOKED: Editor revoca y reasigna
+```
+
+Una asignación solo admite escrituras mientras está `ACTIVE` **y** antes de `due_at`; el corte usa siempre el reloj de la base de datos, no el del servidor de aplicación.
